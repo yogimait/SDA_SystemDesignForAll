@@ -1,0 +1,596 @@
+import type { INestApplication } from "@nestjs/common";
+import { Test } from "@nestjs/testing";
+import type {
+  CreateProjectResponse,
+  GenerationRun,
+  GetArchitectureResponse,
+  RequirementsResponse,
+  StartRunResponse,
+} from "@sda/contracts";
+import request from "supertest";
+import type { App } from "supertest/types";
+import { AppModule } from "../src/app.module.js";
+import { configureApp } from "../src/bootstrap.js";
+import { AppError } from "../src/common/errors/app-error.js";
+import type {
+  GenerateStructuredInput,
+  GeneratedStructured,
+  ModelProvider,
+} from "../src/providers/model-provider.js";
+import { MockProvider } from "../src/providers/mock/mock.provider.js";
+import { ProviderRegistry } from "../src/providers/provider.registry.js";
+
+const IDEA =
+  "A collaborative workspace where small teams organize shared items and invite collaborators.";
+
+interface Envelope<T> {
+  status: boolean;
+  statusCode: number;
+  data: T;
+  message?: string;
+  error?: { code: string; details?: Record<string, unknown> };
+}
+
+interface TestApp {
+  app: INestApplication<App>;
+  server: App;
+}
+
+function setEnv(overrides: Record<string, string>): void {
+  Object.assign(process.env, {
+    NODE_ENV: "test",
+    PORT: "3001",
+    PGLITE_DATA_DIR: "memory://",
+    MOCK_PROVIDER: "1",
+    DEFAULT_PROVIDER: "openrouter",
+    DEFAULT_MODEL: "test/model",
+    GENERATION_POLL_INTERVAL_MS: "10",
+    THROTTLE_LIMIT: "1000",
+    THROTTLE_TTL_MS: "60000",
+    MAX_REQUEST_BYTES: "2048",
+    ...overrides,
+  });
+}
+
+async function createTestApp(
+  overrides: Record<string, string> = {},
+  provider?: ModelProvider,
+): Promise<TestApp> {
+  setEnv(overrides);
+  const builder = Test.createTestingModule({ imports: [AppModule] });
+  if (provider) {
+    builder.overrideProvider(ProviderRegistry).useValue({
+      mockEnabled: true,
+      defaultProvider: "mock",
+      defaultModel: "test/model",
+      resolve: () => provider,
+      list: () => [
+        {
+          id: "mock",
+          models: ["test/model"],
+          supportsStructuredOutput: true,
+        },
+      ],
+    });
+  }
+
+  const moduleRef = await builder.compile();
+  const app = moduleRef.createNestApplication<INestApplication<App>>(
+    undefined,
+    { bodyParser: false },
+  );
+  configureApp(app);
+  await app.init();
+  return { app, server: app.getHttpServer() };
+}
+
+async function createProject(
+  server: App,
+  idea = IDEA,
+): Promise<CreateProjectResponse> {
+  const response = await request(server).post("/api/projects").send({ idea });
+  expect(response.status).toBe(201);
+  const body = response.body as Envelope<CreateProjectResponse>;
+  expect(body.status).toBe(true);
+  expect(body.statusCode).toBe(201);
+  return body.data;
+}
+
+async function waitForRun(
+  server: App,
+  runId: string,
+  accessKey: string,
+): Promise<GenerationRun> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const response = await request(server)
+      .get(`/api/runs/${runId}`)
+      .set("x-project-key", accessKey);
+    expect(response.status).toBe(200);
+    const run = (response.body as Envelope<GenerationRun>).data;
+    if (["succeeded", "failed", "interrupted"].includes(run.status)) {
+      return run;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Run ${runId} did not reach a terminal state in time.`);
+}
+
+async function startRequirements(
+  server: App,
+  projectId: string,
+  accessKey: string,
+): Promise<string> {
+  const response = await request(server)
+    .post(`/api/projects/${projectId}/requirements`)
+    .set("x-project-key", accessKey)
+    .send({});
+  expect(response.status).toBe(202);
+  return (response.body as Envelope<StartRunResponse>).data.runId;
+}
+
+class ControlledProvider implements ModelProvider {
+  readonly id = "mock";
+  private readonly mock = new MockProvider();
+  private mode: "normal" | "invalid" | "invalid_json" | "block" = "normal";
+  private gate: Promise<void> = Promise.resolve();
+  private releaseGate: () => void = () => undefined;
+  private started: Promise<void> = Promise.resolve();
+  private signalStarted: () => void = () => undefined;
+
+  armBlock(): { started: Promise<void>; release: () => void } {
+    this.mode = "block";
+    this.gate = new Promise((resolve) => {
+      this.releaseGate = resolve;
+    });
+    this.started = new Promise((resolve) => {
+      this.signalStarted = resolve;
+    });
+    return { started: this.started, release: () => this.releaseGate() };
+  }
+
+  rejectSchema(): void {
+    this.mode = "invalid";
+  }
+
+  rejectJson(): void {
+    this.mode = "invalid_json";
+  }
+
+  async generateStructured(
+    input: GenerateStructuredInput,
+  ): Promise<GeneratedStructured> {
+    if (this.mode === "invalid") {
+      return { data: { functional: [] } };
+    }
+    if (this.mode === "invalid_json") {
+      throw new AppError(
+        "INVALID_MODEL_OUTPUT",
+        "The model returned invalid JSON.",
+      );
+    }
+    if (this.mode === "block") {
+      this.mode = "normal";
+      this.signalStarted();
+      await this.gate;
+    }
+    return this.mock.generateStructured(input);
+  }
+}
+
+describe("API (e2e)", () => {
+  describe("full journey", () => {
+    let app: INestApplication<App>;
+    let server: App;
+
+    beforeAll(async () => {
+      ({ app, server } = await createTestApp());
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it("reports health inside the success envelope", async () => {
+      const response = await request(server).get("/api/health");
+      expect(response.status).toBe(200);
+      const body = response.body as Envelope<{
+        status: string;
+        database: string;
+      }>;
+      expect(body).toMatchObject({
+        status: true,
+        statusCode: 200,
+        data: { status: "ok", database: "pglite" },
+      });
+    });
+
+    it("lists provider configuration without secrets", async () => {
+      const response = await request(server).get("/api/providers");
+      expect(response.status).toBe(200);
+      const body = response.body as Envelope<Record<string, unknown>>;
+      expect(body.data).toMatchObject({
+        defaultModel: "test/model",
+        mock: true,
+      });
+      expect(JSON.stringify(body)).not.toContain("apiKey");
+    });
+
+    it("validates project creation input", async () => {
+      const response = await request(server)
+        .post("/api/projects")
+        .send({ idea: "" });
+      expect(response.status).toBe(400);
+      const body = response.body as Envelope<null>;
+      expect(body).toMatchObject({
+        status: false,
+        statusCode: 400,
+        error: { code: "VALIDATION_ERROR" },
+      });
+    });
+
+    it("rejects bodies above MAX_REQUEST_BYTES with the envelope", async () => {
+      const response = await request(server)
+        .post("/api/projects")
+        .send({ idea: "x".repeat(4000) });
+      expect(response.status).toBe(413);
+      expect(response.body).toMatchObject({
+        status: false,
+        statusCode: 413,
+        error: { code: "PAYLOAD_TOO_LARGE" },
+      });
+    });
+
+    it("creates a project and protects it with the access key", async () => {
+      const created = await createProject(server);
+
+      const denied = await request(server).get(
+        `/api/projects/${created.project.id}`,
+      );
+      expect(denied.status).toBe(403);
+      expect(denied.body).toMatchObject({
+        error: { code: "PROJECT_ACCESS_DENIED" },
+      });
+
+      const wrongKey = await request(server)
+        .get(`/api/projects/${created.project.id}`)
+        .set("x-project-key", "not-the-key");
+      expect(wrongKey.status).toBe(403);
+
+      const allowed = await request(server)
+        .get(`/api/projects/${created.project.id}`)
+        .set("x-project-key", created.accessKey);
+      expect(allowed.status).toBe(200);
+      expect(allowed.body).toMatchObject({
+        data: {
+          id: created.project.id,
+          status: "requirements_pending",
+          confirmedAt: null,
+        },
+      });
+    });
+
+    it("generates, confirms, and versions the architecture", async () => {
+      const created = await createProject(server);
+      const projectId = created.project.id;
+      const key = created.accessKey;
+
+      const requirementsRunId = await startRequirements(server, projectId, key);
+      const requirementsRun = await waitForRun(
+        server,
+        requirementsRunId,
+        key,
+      );
+      expect(requirementsRun).toMatchObject({
+        status: "succeeded",
+        type: "requirements",
+        provider: "mock",
+        model: "test/model",
+      });
+      expect(requirementsRun.stages.map((stage) => stage.name)).toEqual([
+        "analyze_idea",
+        "persist",
+      ]);
+      expect(
+        requirementsRun.stages.every((stage) => stage.status === "succeeded"),
+      ).toBe(true);
+      expect(requirementsRun.usage.totalTokens).toBeGreaterThan(0);
+
+      const generated = await request(server)
+        .get(`/api/projects/${projectId}/requirements`)
+        .set("x-project-key", key);
+      expect(generated.status).toBe(200);
+      const spec = (generated.body as Envelope<RequirementsResponse>).data.spec;
+      if (!spec) {
+        throw new Error("Expected generated requirements.");
+      }
+      expect(spec.functional[0]?.id).toMatch(/^fr_/);
+      expect(spec.nonFunctional[0]?.id).toMatch(/^nfr_/);
+
+      const confirmed = await request(server)
+        .put(`/api/projects/${projectId}/requirements`)
+        .set("x-project-key", key)
+        .send({
+          functional: spec.functional.map(({ id, text, priority }) => ({
+            id,
+            text,
+            priority,
+          })),
+          nonFunctional: spec.nonFunctional.map(
+            ({ id, text, priority, category, target }) => ({
+              id,
+              text,
+              priority,
+              category,
+              target,
+            }),
+          ),
+          assumptions: spec.assumptions.map(({ id, text }) => ({ id, text })),
+          clarifications: spec.clarifications.map(
+            ({ id, question, answer }) => ({ id, question, answer }),
+          ),
+          confirm: true,
+        });
+      expect(confirmed.status).toBe(200);
+      expect(
+        (confirmed.body as Envelope<RequirementsResponse>).data.confirmedAt,
+      ).toEqual(expect.any(String));
+
+      const architectureRunId = (
+        await request(server)
+          .post(`/api/projects/${projectId}/architecture`)
+          .set("x-project-key", key)
+          .send({})
+      ).body.data.runId as string;
+      const architectureRun = await waitForRun(
+        server,
+        architectureRunId,
+        key,
+      );
+      expect(architectureRun.status).toBe("succeeded");
+      expect(architectureRun.stages.map((stage) => stage.name)).toEqual([
+        "hld_model",
+        "lld_dsa_model",
+        "validate",
+        "persist",
+      ]);
+
+      const first = await request(server)
+        .get(`/api/projects/${projectId}/architecture`)
+        .set("x-project-key", key);
+      const firstBody = (first.body as Envelope<GetArchitectureResponse>).data;
+      if (!firstBody.version) {
+        throw new Error("Expected the first architecture version.");
+      }
+      expect(firstBody.version.version).toBe(1);
+      expect(firstBody.version.model.meta.title).toBe("Collaborative workspace");
+      expect(firstBody.version.validation.valid).toBe(true);
+      expect(
+        firstBody.version.validation.warnings.map((warning) => warning.rule),
+      ).toContain("unreferenced_must_requirement");
+
+      const regenerate = await request(server)
+        .post(`/api/projects/${projectId}/architecture/regenerate`)
+        .set("x-project-key", key)
+        .send({ scope: "dsa" });
+      expect(regenerate.status).toBe(202);
+      const scopedRun = await waitForRun(
+        server,
+        regenerate.body.data.runId as string,
+        key,
+      );
+      expect(scopedRun.status).toBe("succeeded");
+      expect(scopedRun.scope).toBe("dsa");
+      expect(scopedRun.stages.map((stage) => stage.name)).toEqual([
+        "dsa_model",
+        "validate",
+        "persist",
+      ]);
+
+      const second = await request(server)
+        .get(`/api/projects/${projectId}/architecture`)
+        .set("x-project-key", key);
+      const secondVersion = (
+        second.body as Envelope<GetArchitectureResponse>
+      ).data.version;
+      if (!secondVersion) {
+        throw new Error("Expected the regenerated architecture version.");
+      }
+      expect(secondVersion.version).toBe(2);
+      expect(secondVersion.model.hld).toEqual(firstBody.version.model.hld);
+      expect(secondVersion.model.lld).toEqual(firstBody.version.model.lld);
+      expect(secondVersion.model.dsa).toEqual(firstBody.version.model.dsa);
+      expect(JSON.stringify(secondVersion.model.hld)).toBe(
+        JSON.stringify(firstBody.version.model.hld),
+      );
+      expect(JSON.stringify(secondVersion.model.lld)).toBe(
+        JSON.stringify(firstBody.version.model.lld),
+      );
+
+      const project = await request(server)
+        .get(`/api/projects/${projectId}`)
+        .set("x-project-key", key);
+      expect(project.body).toMatchObject({
+        data: { status: "architecture_ready", currentArchitectureVersion: 2 },
+      });
+    });
+
+    it("requires confirmed requirements before architecture generation", async () => {
+      const created = await createProject(server);
+      const response = await request(server)
+        .post(`/api/projects/${created.project.id}/architecture`)
+        .set("x-project-key", created.accessKey)
+        .send({});
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({
+        error: {
+          code: "VALIDATION_ERROR",
+          details: { reason: "requirements_not_confirmed" },
+        },
+      });
+    });
+
+    it("protects run polling with the project key", async () => {
+      const missing = await request(server).get(
+        "/api/runs/00000000-0000-0000-0000-000000000000",
+      );
+      expect(missing.status).toBe(403);
+
+      const created = await createProject(server);
+      const unknown = await request(server)
+        .get("/api/runs/00000000-0000-0000-0000-000000000000")
+        .set("x-project-key", created.accessKey);
+      expect(unknown.status).toBe(404);
+      expect(unknown.body).toMatchObject({ error: { code: "RUN_NOT_FOUND" } });
+    });
+  });
+
+  describe("run failures and conflicts", () => {
+    let app: INestApplication<App>;
+    let server: App;
+    const provider = new ControlledProvider();
+
+    beforeAll(async () => {
+      ({ app, server } = await createTestApp({}, provider));
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it("rejects a second active run for the same project", async () => {
+      const created = await createProject(server);
+      const block = provider.armBlock();
+      const runId = await startRequirements(
+        server,
+        created.project.id,
+        created.accessKey,
+      );
+      await block.started;
+
+      const conflict = await request(server)
+        .post(`/api/projects/${created.project.id}/requirements`)
+        .set("x-project-key", created.accessKey)
+        .send({});
+      expect(conflict.status).toBe(409);
+      expect(conflict.body).toMatchObject({
+        error: { code: "RUN_CONFLICT" },
+      });
+
+      block.release();
+      const run = await waitForRun(server, runId, created.accessKey);
+      expect(run.status).toBe("succeeded");
+    });
+
+    it("allows only one of two simultaneous run starts", async () => {
+      const created = await createProject(server);
+      const block = provider.armBlock();
+      const start = () =>
+        request(server)
+          .post(`/api/projects/${created.project.id}/requirements`)
+          .set("x-project-key", created.accessKey)
+          .send({});
+
+      const responses = await Promise.all([start(), start()]);
+      expect(
+        responses.map((response) => response.status).sort((a, b) => a - b),
+      ).toEqual([
+        202, 409,
+      ]);
+      const accepted = responses.find((response) => response.status === 202);
+      const rejected = responses.find((response) => response.status === 409);
+      if (!accepted || !rejected) {
+        throw new Error("Expected one accepted and one rejected start.");
+      }
+      expect(rejected.body).toMatchObject({
+        error: { code: "RUN_CONFLICT" },
+      });
+
+      await block.started;
+      block.release();
+      const run = await waitForRun(
+        server,
+        accepted.body.data.runId as string,
+        created.accessKey,
+      );
+      expect(run.status).toBe("succeeded");
+    });
+
+    it("fails the run when model output stays invalid", async () => {
+      const created = await createProject(server);
+      provider.rejectSchema();
+      const runId = await startRequirements(
+        server,
+        created.project.id,
+        created.accessKey,
+      );
+      const run = await waitForRun(server, runId, created.accessKey);
+
+      expect(run.status).toBe("failed");
+      expect(run.error).toMatchObject({
+        code: "GENERATION_REPAIR_FAILED",
+        details: { attempts: 2 },
+      });
+      const failedStage = run.stages.find(
+        (stage) => stage.name === "analyze_idea",
+      );
+      expect(failedStage).toMatchObject({
+        status: "failed",
+        error: { code: "GENERATION_REPAIR_FAILED" },
+      });
+      expect(run.provider).toBe("mock");
+    });
+
+    it("fails with GENERATION_REPAIR_FAILED after invalid JSON twice", async () => {
+      const created = await createProject(server);
+      provider.rejectJson();
+      const runId = await startRequirements(
+        server,
+        created.project.id,
+        created.accessKey,
+      );
+      const run = await waitForRun(server, runId, created.accessKey);
+
+      expect(run.status).toBe("failed");
+      expect(run.error).toMatchObject({
+        code: "GENERATION_REPAIR_FAILED",
+        details: { attempts: 2 },
+      });
+    });
+  });
+
+  describe("throttling", () => {
+    let app: INestApplication<App>;
+    let server: App;
+
+    beforeAll(async () => {
+      ({ app, server } = await createTestApp({ THROTTLE_LIMIT: "1" }));
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it("returns QUOTA_EXCEEDED when the run-start limit is hit", async () => {
+      const created = await createProject(server);
+      const firstRunId = await startRequirements(
+        server,
+        created.project.id,
+        created.accessKey,
+      );
+
+      const throttled = await request(server)
+        .post(`/api/projects/${created.project.id}/requirements`)
+        .set("x-project-key", created.accessKey)
+        .send({});
+      expect(throttled.status).toBe(429);
+      expect(throttled.body).toMatchObject({
+        status: false,
+        statusCode: 429,
+        error: { code: "QUOTA_EXCEEDED" },
+      });
+
+      await waitForRun(server, firstRunId, created.accessKey);
+    });
+  });
+});

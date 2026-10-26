@@ -1,0 +1,5 @@
+# root workspace
+/node_modules
+/.data
+.env
+.env.local

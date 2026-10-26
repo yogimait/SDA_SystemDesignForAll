@@ -1,0 +1,16 @@
+{
+  "name": "system-design-all-in-one",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend_client",
+    "backend-server",
+    "packages/contracts"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev --workspace frontend_client",
+    "dev:backend": "npm run start:dev --workspace backend-server",
+    "build:frontend": "npm run build --workspace frontend_client",
+    "postinstall": "npm run build --workspace @sda/contracts"
+  }
+}

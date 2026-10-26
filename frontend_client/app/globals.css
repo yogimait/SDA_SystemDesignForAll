@@ -1,0 +1,156 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-heading);
+  --font-space-grotesk: var(--font-space-grotesk);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-data: var(--data);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Single "coffee" theme (Stitch design system 16d57281596d40f4b8d031ea3afa8e15):
+ * slightly dark warm charcoal with a coffee undertone, copper accent, AA contrast.
+ * Deliberately NOT auto-switching light/dark — the dark coffee look IS the brand
+ * (user decision 2026-10-23). One theme keeps accessibility simpler to hold.
+ */
+:root {
+  --background: oklch(0.19 0.008 60); /* #201D1A deep warm charcoal */
+  --foreground: oklch(0.93 0.008 60); /* #F2EFE9 warm off-white */
+  --card: oklch(0.225 0.009 60); /* #262320 surfaces */
+  --card-foreground: oklch(0.93 0.008 60);
+  --popover: oklch(0.25 0.009 60); /* #2E2A27 raised */
+  --popover-foreground: oklch(0.93 0.008 60);
+  /* Copper accent (interactive: buttons, links, rings) */
+  --primary: oklch(0.78 0.09 74); /* #D9A05B */
+  --primary-foreground: oklch(0.19 0.02 60); /* #201409 on accent */
+  --secondary: oklch(0.26 0.008 60);
+  --secondary-foreground: oklch(0.93 0.008 60);
+  --muted: oklch(0.25 0.008 60);
+  --muted-foreground: oklch(0.7 0.008 60); /* #B8B2AA secondary text */
+  --accent: oklch(0.26 0.01 60);
+  --accent-foreground: oklch(0.93 0.008 60);
+  --destructive: oklch(0.66 0.17 25); /* #E27868 */
+  --success: oklch(0.76 0.09 150); /* #8FBF9F */
+  --warning: oklch(0.79 0.09 85); /* #D9B36A */
+  --data: oklch(0.72 0.07 255); /* #7FA8D9 — diagrams only (F3/F4) */
+  --border: oklch(0.32 0.008 60); /* #3A3631 */
+  --input: oklch(0.32 0.008 60);
+  --ring: oklch(0.78 0.09 74); /* copper focus ring */
+  --chart-1: oklch(0.78 0.09 74);
+  --chart-2: oklch(0.72 0.07 255);
+  --chart-3: oklch(0.55 0.005 60);
+  --chart-4: oklch(0.44 0.005 60);
+  --chart-5: oklch(0.34 0.005 60);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.205 0.008 60);
+  --sidebar-foreground: oklch(0.93 0.008 60);
+  --sidebar-primary: oklch(0.78 0.09 74);
+  --sidebar-primary-foreground: oklch(0.19 0.02 60);
+  --sidebar-accent: oklch(0.26 0.01 60);
+  --sidebar-accent-foreground: oklch(0.93 0.008 60);
+  --sidebar-border: oklch(0.32 0.008 60);
+  --sidebar-ring: oklch(0.78 0.09 74);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-heading;
+  }
+}
+
+/* Motion vocabulary: quiet, few, always subtle.
+   fade-up = 8px rise + fade for section entrances, staggered via delay steps.
+   Everything here is also disarmed by the prefers-reduced-motion kill switch. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animation-delay-1 {
+  animation-delay: 60ms;
+}
+.animation-delay-2 {
+  animation-delay: 120ms;
+}
+.animation-delay-3 {
+  animation-delay: 180ms;
+}
+
+/* Respect OS reduced-motion: kill transitions/animations, keep opacity changes.
+   Guided-mode animations must also honor this (F5). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
