@@ -33,6 +33,8 @@ Failure:
 
 The provider key must never be put in URLs, query strings, logs, or persisted data.
 
+Unknown API routes return a 404 envelope with `ROUTE_NOT_FOUND`. Responses set `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, a restrictive `Content-Security-Policy`, and a restrictive `Permissions-Policy`; Express `X-Powered-By` is disabled.
+
 ## Endpoints
 
 | Method | Path | Success | Purpose |
@@ -118,9 +120,9 @@ Returns:
 }
 ```
 
-Send `Authorization: Bearer <accessToken>` to `GET /api/auth/me`, `POST /api/auth/logout`, project list/owner access, provider config, preferences, and dashboard. Passwords are stored as scrypt hashes with per-password salt; session tokens are stored only as SHA-256 hashes.
+Send `Authorization: Bearer <accessToken>` to `GET /api/auth/me`, `POST /api/auth/logout`, project list/owner access, provider config, preferences, and dashboard. Passwords are stored as scrypt hashes with per-password salt; session tokens are stored only as SHA-256 hashes. Unknown-email login performs a dummy scrypt verification so timing does not reveal whether the account exists.
 
-`POST /api/projects` with a Bearer token sets `ownerId`; without one it stays anonymous and `ownerId` is null. Anonymous projects remain accessible with their `x-project-key`. An owner can use a Bearer token without the project key.
+`POST /api/projects` with a Bearer token sets `ownerId`; without one it stays anonymous and `ownerId` is null. Anonymous projects remain accessible with their `x-project-key`. An owner can use a Bearer token without the project key. A valid Bearer session for a non-owner gets the same `PROJECT_NOT_FOUND` 404 as an unknown project.
 
 `GET /api/projects?limit=20&status=architecture_ready&cursor=...` returns owned projects only. Cursor values are opaque; malformed cursors are `VALIDATION_ERROR`.
 
@@ -134,7 +136,7 @@ Content-Type: application/json
 { "provider": "openrouter", "model": "z-ai/glm-5.3-flash", "reasoningEffort": "low" }
 ```
 
-No API key is accepted or persisted here. BYOK remains per-run through `x-provider-api-key`. `GET` without a saved config returns `PROVIDER_CONFIG_NOT_FOUND`. The same routes are also available under `/api/users/me/provider-config` and `/api/users/me/preferences`.
+No API key is accepted or persisted here. BYOK remains per-run through `x-provider-api-key`. Requests containing unexpected body keys — an `apiKey` for example — fail with `VALIDATION_ERROR` (the request schema is strict) rather than silently dropping the field. `GET` without a saved config returns `PROVIDER_CONFIG_NOT_FOUND`. The same routes are also available under `/api/users/me/provider-config` and `/api/users/me/preferences`. Path parameters enforce the id shape: a malformed project or run id is a `PROJECT_NOT_FOUND` / `RUN_NOT_FOUND` 404 envelope, not a database 500.
 
 `PUT /api/preferences` accepts optional `theme`, `defaultProvider`, `defaultModel`, and `defaultReasoningEffort`; omitted fields keep their current values. `GET /api/preferences` returns `{ "preferences": {} }` before the first save.
 
@@ -147,7 +149,7 @@ Plan limits use existing error codes:
 - Free: 3 projects, 50 runs per 30 days, 500k tokens per 30 days.
 - Pro: 100 projects, 1,000 runs per 30 days, 10M tokens per 30 days.
 - Scoped regeneration requires Pro for owned projects (`PLAN_UPGRADE_REQUIRED`).
-- Anonymous projects and project-key access are not charged to an account limit.
+- Owned-project generation counts against the owner's plan whether access uses Bearer or `x-project-key`; anonymous projects have no account limit.
 
 ## Start a run
 
@@ -202,7 +204,7 @@ Content-Type: application/json
 ```
 
 - Existing items keep their ids; new items omit `id` and receive a prefixed server id.
-- Duplicate ids are rejected.
+- Duplicate ids are rejected. Requirement, assumption, and clarification ids are a global namespace; reusing an id from another project returns `VALIDATION_ERROR` 400.
 - `confirm: true` freezes a snapshot in `projects.requirements_snapshot`; architecture generation reads that snapshot.
 - Saving with `confirm: false` clears the snapshot and returns the project to `requirements_ready`, so architecture generation must be started again after reconfirmation.
 
@@ -294,8 +296,9 @@ Terminal statuses are `succeeded`, `failed`, and `interrupted`. A failed run car
 | Code | HTTP | Meaning |
 | --- | --- | --- |
 | `VALIDATION_ERROR` | 400 | Request or domain input failed validation. |
+| `ROUTE_NOT_FOUND` | 404 | Unknown route. |
 | `PROJECT_NOT_FOUND` | 404 | Project does not exist. |
-| `PROJECT_ACCESS_DENIED` | 403 | Missing/wrong project key or non-owner Bearer access. |
+| `PROJECT_ACCESS_DENIED` | 403 | Missing/wrong project key. |
 | `AUTH_REQUIRED` | 401 | Missing, invalid, expired, or revoked Bearer session. |
 | `AUTH_INVALID_CREDENTIALS` | 401 | Login email/password mismatch. |
 | `AUTH_EMAIL_TAKEN` | 409 | Registration email already exists. |

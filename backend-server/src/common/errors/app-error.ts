@@ -6,6 +6,7 @@ import type { ErrorCode } from "@sda/contracts";
  */
 export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   VALIDATION_ERROR: 400,
+  ROUTE_NOT_FOUND: 404,
   PROJECT_NOT_FOUND: 404,
   PROJECT_ACCESS_DENIED: 403,
   AUTH_REQUIRED: 401,
@@ -33,6 +34,7 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
 /** Safe, actionable default copy. Services may override with more context. */
 export const ERROR_DEFAULT_MESSAGES: Record<ErrorCode, string> = {
   VALIDATION_ERROR: "The request is invalid. Check the submitted fields.",
+  ROUTE_NOT_FOUND: "The requested route does not exist.",
   PROJECT_NOT_FOUND: "The requested project does not exist.",
   PROJECT_ACCESS_DENIED:
     "Access denied. Send the project key in the x-project-key header.",

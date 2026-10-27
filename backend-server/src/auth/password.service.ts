@@ -16,6 +16,8 @@ const scrypt = promisify(nodeScrypt) as (
 
 const PARAMS = { N: 16_384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 } as const;
 const KEY_LENGTH = 64;
+const DUMMY_PASSWORD_HASH =
+  "scrypt$16384$8$1$JhZna3f2tThoPAxEiQiTnQ$W_N7f6j2SKEtKBVgqZmpPSJ5YyQbZwo8IhHn0N5gN7NwNb1lfYIZCNXOjqJVZnijJe-EUpN3AjehRkOk69lr2A";
 
 /** scrypt with a per-password salt; encoded string is safe to persist. */
 @Injectable()
@@ -54,5 +56,10 @@ export class PasswordService {
       derived.length === expected.length &&
       timingSafeEqual(derived, expected)
     );
+  }
+
+  /** Equalizes unknown-email login cost with a wrong-password attempt. */
+  async verifyDummy(password: string): Promise<boolean> {
+    return this.verify(password, DUMMY_PASSWORD_HASH);
   }
 }

@@ -4,8 +4,7 @@ import Link from "next/link";
 import { LogOutIcon } from "lucide-react";
 import { ProviderDialog } from "./provider-dialog";
 import { Button } from "@/components/ui/button";
-import { useSession } from "@/hooks/use-session";
-import { clearSession } from "@/lib/session/auth";
+import { useSession, signOut } from "@/hooks/use-session";
 
 export function SiteHeader() {
   const session = useSession();
@@ -72,7 +71,7 @@ export function SiteHeader() {
                 size="icon-sm"
                 aria-label="Sign out"
                 title="Sign out"
-                onClick={() => clearSession()}
+                onClick={() => void signOut()}
               >
                 <LogOutIcon />
               </Button>

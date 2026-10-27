@@ -18,4 +18,11 @@ describe("PasswordService", () => {
       await service.hash("same password"),
     );
   });
+
+  it("has a valid dummy hash for unknown-email login checks", async () => {
+    const service = new PasswordService();
+    await expect(
+      service.verifyDummy("timing-equalization-dummy"),
+    ).resolves.toBe(true);
+  });
 });

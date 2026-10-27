@@ -53,6 +53,19 @@ describe("AllExceptionsFilter", () => {
     );
   });
 
+  it("maps an unknown route to ROUTE_NOT_FOUND", () => {
+    const { host, status, json } = fakeHost();
+    filter.catch(new HttpException("Cannot GET /api/missing", 404), host);
+
+    expect(status).toHaveBeenCalledWith(404);
+    expect(json).toHaveBeenCalledWith({
+      status: false,
+      statusCode: 404,
+      message: "The requested route does not exist.",
+      error: { code: "ROUTE_NOT_FOUND" },
+    });
+  });
+
   it("maps payload and database failures", () => {
     const payload = fakeHost();
     filter.catch(

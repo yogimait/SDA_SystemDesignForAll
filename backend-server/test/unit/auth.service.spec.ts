@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AuthService } from "../../src/auth/auth.service.js";
 import { PasswordService } from "../../src/auth/password.service.js";
 import type { SessionRow } from "../../src/database/repositories/session.repository.js";
@@ -117,5 +117,22 @@ describe("AuthService", () => {
         password: "wrong-password",
       }),
     ).rejects.toMatchObject({ code: "AUTH_INVALID_CREDENTIALS" });
+  });
+
+  it("performs a dummy password verification for an unknown email", async () => {
+    const verifyDummy = vi.fn(async () => false);
+    const service = new AuthService(
+      { findByEmail: async () => null } as never,
+      {} as never,
+      { verifyDummy } as never,
+    );
+
+    await expect(
+      service.login({
+        email: "missing@example.com",
+        password: "password123",
+      }),
+    ).rejects.toMatchObject({ code: "AUTH_INVALID_CREDENTIALS" });
+    expect(verifyDummy).toHaveBeenCalledWith("password123");
   });
 });

@@ -7,6 +7,7 @@ import { z } from "zod";
  */
 export const ErrorCodeSchema = z.enum([
   "VALIDATION_ERROR",
+  "ROUTE_NOT_FOUND",
   "PROJECT_NOT_FOUND",
   "PROJECT_ACCESS_DENIED",
   "AUTH_REQUIRED",

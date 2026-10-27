@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { LogOutIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/hooks/use-session";
-import { clearSession } from "@/lib/session/auth";
+import { signOut } from "@/hooks/use-session";
 import { cn } from "cn";
 
 const NAV = [
@@ -68,7 +68,7 @@ export function PortalHeader({ current }: { current: "library" | "dashboard" | "
                 size="icon-sm"
                 aria-label="Sign out"
                 onClick={() => {
-                  clearSession();
+                  void signOut();
                   router.push("/login");
                 }}
               >

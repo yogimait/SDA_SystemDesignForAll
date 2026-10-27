@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   SavedProviderConfigResponseSchema,
   UserPreferencesResponseSchema,
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch, ApiError } from "@/lib/api/client";
+import { saveThemePreference } from "@/lib/theme/preferences";
 import { useHydrated, useSession } from "@/hooks/use-session";
 import { useRouter } from "next/navigation";
 
@@ -103,7 +105,9 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
   const [provider, setProvider] = useState<string>("");
   const [model, setModel] = useState<string>("");
   const [reasoningEffort, setReasoningEffort] = useState<string>("");
-  const [loaded, setLoaded] = useState<"loading" | "empty" | "active">("loading");
+  const [loaded, setLoaded] = useState<
+    "loading" | "empty" | "active" | "auth-required" | "error"
+  >("loading");
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const [error, setError] = useState<{ user: string; detail: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -124,7 +128,11 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
           setLoaded("empty");
           return;
         }
-        setLoaded("empty");
+        if (caught instanceof ApiError && caught.code === "AUTH_REQUIRED") {
+          setLoaded("auth-required");
+          return;
+        }
+        setLoaded("error");
       }
     })();
   }, []);
@@ -148,7 +156,7 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
       setModel(data.config.model);
       setReasoningEffort(data.config.reasoningEffort ?? "");
       setLoaded("active");
-      setSavedNote(`Saved ${new Date(data.config.updatedAt).toLocaleTimeString("en-US")}`);
+      setSavedNote(new Date(data.config.updatedAt).toLocaleTimeString("en-US"));
     } catch (caught) {
       if (caught instanceof ApiError) {
         setError({ user: caught.userMessage, detail: caught.message });
@@ -177,13 +185,38 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
             (loaded === "active" ? "text-success" : "text-muted-foreground")
           }
         >
-          {loaded === "loading" ? "loading" : loaded === "active" ? "saved" : "not set"}
+          {loaded === "loading"
+            ? "loading"
+            : loaded === "active"
+              ? "saved"
+              : loaded === "error"
+                ? "error"
+                : loaded === "auth-required"
+                  ? "sign in"
+                  : "not set"}
         </span>
       </div>
 
+      {loaded === "auth-required" ? (
+        <div className="bg-primary/10 border-primary/40 mt-4 rounded-lg border border-dashed p-4">
+          <p className="text-foreground text-sm font-medium">
+            Sign in to manage your saved configuration.
+          </p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            The session for this tab is missing or expired.
+          </p>
+          <Link
+            href="/login?next=%2Fsettings"
+            className="text-primary hover:underline mt-3 inline-block text-sm underline-offset-4"
+          >
+            Sign in
+          </Link>
+        </div>
+      ) : null}
+
       {loaded === "loading" ? <Skeleton className="mt-4 h-24 rounded-lg" /> : null}
 
-      {loaded !== "loading" ? (
+      {loaded !== "loading" && loaded !== "auth-required" ? (
         <form
           className="mt-4 grid gap-3"
           onSubmit={(event) => {
@@ -197,7 +230,7 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
                 Provider
               </label>
               <Select
-                value={provider === "" ? undefined : provider}
+                value={provider === "" ? null : provider}
                 onValueChange={(value: string | null) => {
                   if (value === null) return;
                   setProvider(value);
@@ -254,7 +287,7 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
           {savedNote !== null ? (
             <p role="status" className="text-success flex items-center gap-1.5 text-xs">
               <CheckIcon className="size-3.5" aria-hidden="true" />
-              Saved {savedNote}
+              Saved at {savedNote}
             </p>
           ) : null}
           {error !== null ? (
@@ -277,7 +310,7 @@ function PreferencesCard() {
   const [theme, setTheme] = useState<UserPreferences["theme"]>("system");
   const [defaultProvider, setDefaultProvider] = useState("");
   const [defaultModel, setDefaultModel] = useState("");
-  const [loaded, setLoaded] = useState<"loading" | "ready">("loading");
+  const [loaded, setLoaded] = useState<"loading" | "ready" | "auth-required">("loading");
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const [error, setError] = useState<{ user: string; detail: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -292,11 +325,16 @@ function PreferencesCard() {
         setTheme(data.preferences.theme ?? "dark");
         setDefaultProvider(data.preferences.defaultProvider ?? "");
         setDefaultModel(data.preferences.defaultModel ?? "");
-      } catch {
+        saveThemePreference(data.preferences.theme ?? "dark");
+      } catch (caught) {
+        if (caught instanceof ApiError && caught.code === "AUTH_REQUIRED") {
+          setLoaded("auth-required");
+          return;
+        }
         // No saved preferences yet — keep the contract default.
         setTheme("dark");
       } finally {
-        setLoaded("ready");
+        setLoaded((current) => (current === "auth-required" ? current : "ready"));
       }
     })();
   }, []);
@@ -319,6 +357,7 @@ function PreferencesCard() {
       setTheme(data.preferences.theme ?? "dark");
       setDefaultProvider(data.preferences.defaultProvider ?? "");
       setDefaultModel(data.preferences.defaultModel ?? "");
+      saveThemePreference(data.preferences.theme ?? "dark");
       setSavedNote("Preferences saved");
     } catch (caught) {
       if (caught instanceof ApiError) {
@@ -335,11 +374,27 @@ function PreferencesCard() {
     <section aria-label="User preferences" className="bg-card border-border rounded-xl border border-solid p-4">
       <h2 className="text-foreground text-sm font-semibold tracking-tight">Preferences</h2>
       <p className="text-muted-foreground mt-1 text-xs">
-        Stored server-side for your account. Theme follows the stored value;
-        the interface currently ships in the branded dark palette.
+        Stored server-side for your account. The stored theme lands on the
+        document (<span className="font-mono text-[11px]">data-theme</span>); the
+        palette you see is the branded dark look — switching colors lands when
+        a light palette ships.
       </p>
 
       {loaded === "loading" ? <Skeleton className="mt-4 h-24 rounded-lg" /> : null}
+
+      {loaded === "auth-required" ? (
+        <div className="bg-primary/10 border-primary/40 mt-4 rounded-lg border border-dashed p-4">
+          <p className="text-foreground text-sm font-medium">
+            Sign in to manage your preferences.
+          </p>
+          <Link
+            href="/login?next=%2Fsettings"
+            className="text-primary hover:underline mt-2 inline-block text-sm underline-offset-4"
+          >
+            Sign in
+          </Link>
+        </div>
+      ) : null}
 
       {loaded === "ready" ? (
         <form

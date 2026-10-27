@@ -201,9 +201,9 @@ function DashboardBody({ data }: { data: DashboardData }) {
         />
         <TotalCard
           icon={<DatabaseIcon className="size-4" aria-hidden="true" />}
-          label={`Window: ${rangeLabel(data.range)}`}
-          value={String(data.buckets.length)}
-          sub="usage buckets with activity"
+          label={`${rangeLabel(data.range)} window`}
+          value={String(data.usage.projectCount)}
+          sub="projects with provider runs in this window"
         />
       </section>
 
@@ -212,28 +212,7 @@ function DashboardBody({ data }: { data: DashboardData }) {
         {data.buckets.length === 0 ? (
           <p className="text-muted-foreground mt-2 text-xs italic">No bucketed activity in this window.</p>
         ) : (
-          <ul className="mt-3 space-y-2">
-            {data.buckets.map((bucket) => {
-              const max = Math.max(1, ...data.buckets.map((b) => b.totalTokens));
-              return (
-                <li key={bucket.periodStart} className="flex items-center gap-3">
-                  <span className="text-muted-foreground w-40 flex-none truncate font-mono text-[10px]">
-                    {new Date(bucket.periodStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  </span>
-                  <span className="bg-muted h-2.5 min-w-0 flex-1 overflow-hidden rounded-full">
-                    <span
-                      className="bg-primary block h-2.5 rounded-full"
-                      style={{ width: `${usageBarPercent(bucket.totalTokens, max)}%` }}
-                      aria-hidden="true"
-                    />
-                  </span>
-                  <span className="text-muted-foreground w-16 flex-none text-right font-mono text-[10px]">
-                    {formatTokensCompact(bucket.totalTokens)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          <UsageBuckets buckets={data.buckets} />
         )}
       </section>
 
@@ -308,6 +287,36 @@ function DashboardBody({ data }: { data: DashboardData }) {
         not appear.
       </p>
     </div>
+  );
+}
+
+/** Daily token-usage bars; max computed once, width via usageBarPercent. */
+function UsageBuckets({
+  buckets,
+}: {
+  buckets: import("@sda/contracts").DashboardData["buckets"];
+}) {
+  const max = Math.max(1, ...buckets.map((bucket) => bucket.totalTokens));
+  return (
+    <ul className="mt-3 space-y-2">
+      {buckets.map((bucket) => (
+        <li key={bucket.periodStart} className="flex items-center gap-3">
+          <span className="text-muted-foreground w-40 flex-none truncate font-mono text-[10px]">
+            {new Date(bucket.periodStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          </span>
+          <span className="bg-muted h-2.5 min-w-0 flex-1 overflow-hidden rounded-full">
+            <span
+              className="bg-primary block h-2.5 rounded-full"
+              style={{ width: `${usageBarPercent(bucket.totalTokens, max)}%` }}
+              aria-hidden="true"
+            />
+          </span>
+          <span className="text-muted-foreground w-16 flex-none text-right font-mono text-[10px]">
+            {formatTokensCompact(bucket.totalTokens)}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

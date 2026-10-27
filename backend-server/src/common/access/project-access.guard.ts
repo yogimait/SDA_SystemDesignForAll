@@ -62,6 +62,7 @@ export class ProjectAccessGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<ProjectRequest>();
     const key = readHeader(request, "x-project-key");
     const hasBearer = readBearerToken(request) !== undefined;
+    const isRunRoute = firstParam(request.params.runId) !== undefined;
     const user = await this.auth.resolveOptional(request);
 
     if (!key && !hasBearer) {
@@ -98,7 +99,7 @@ export class ProjectAccessGuard implements CanActivate {
       );
     }
     if (project.ownerId !== user.id) {
-      throw new AppError("PROJECT_ACCESS_DENIED");
+      throw new AppError(isRunRoute ? "RUN_NOT_FOUND" : "PROJECT_NOT_FOUND");
     }
 
     request.user = user;
@@ -109,6 +110,7 @@ export class ProjectAccessGuard implements CanActivate {
   private async resolveProjectId(request: ProjectRequest): Promise<string> {
     const runId = firstParam(request.params.runId);
     if (runId) {
+      assertIdShape(runId, "run");
       const run = await this.runs.findById(runId);
       if (!run) {
         throw new AppError("RUN_NOT_FOUND");
@@ -120,7 +122,19 @@ export class ProjectAccessGuard implements CanActivate {
     if (!projectId) {
       throw new AppError("PROJECT_NOT_FOUND");
     }
+    assertIdShape(projectId, "project");
     return projectId;
+  }
+}
+
+/** Project and run ids are UUIDs; anything malformed is a lookup miss (404),
+ * not a database error shaped like a 500. */
+const UUID_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+function assertIdShape(id: string, kind: "project" | "run"): void {
+  if (!UUID_PATTERN.test(id)) {
+    throw new AppError(kind === "run" ? "RUN_NOT_FOUND" : "PROJECT_NOT_FOUND");
   }
 }
 

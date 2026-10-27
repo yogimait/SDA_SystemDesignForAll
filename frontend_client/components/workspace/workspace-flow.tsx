@@ -79,6 +79,7 @@ import {
   loadProjectAccessKey,
   loadProviderSetup,
 } from "@/lib/session/keys";
+import { loadSession } from "@/lib/session/auth";
 import { cn } from "cn";
 
 const KIND_CHIP: Record<string, string> = {
@@ -109,6 +110,7 @@ function guidedStorageKey(scope: GuidedScope, projectId: string): string {
 export function WorkspaceFlow({ projectId }: { projectId: string }) {
   const [projectKey, setProjectKey] = useState<string | null>(null);
   const [noAccessKey, setNoAccessKey] = useState(false);
+  const [authed, setAuthed] = useState(false);
   const [activeView, setActiveView] = useState<GuidedScope>("lld");
   const [focusMode, setFocusMode] = useState(false);
   const [lldSelection, setLldSelection] = useState<WorkspaceSelection>(null);
@@ -194,15 +196,17 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
         ? (hldSelection?.id ?? null)
         : null;
 
-  // Access gate once per mount, same pattern as the requirements page.
+  // Access gate once per mount, same pattern as the requirements page. An
+  // owner without the creator's tab key goes through with their Bearer.
   useEffect(() => {
     void (async () => {
       const key = loadProjectAccessKey(projectId);
-      if (key === null) {
+      if (key === null && loadSession() === null) {
         setNoAccessKey(true);
         return;
       }
       setProjectKey(key);
+      setAuthed(loadSession() !== null);
       // Guided-mode resume (per view): mid-session refresh restarts at each
       // saved cursor and reopens the last view that had one. Only a stored
       // cursor enables resume — a plain workspace load never auto-starts.
@@ -227,20 +231,22 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
 
   const project = useQuery({
     queryKey: queryKeys.project(projectId),
-    enabled: projectKey !== null,
+    enabled: projectKey !== null || authed,
     queryFn: () =>
       apiFetch(`/api/projects/${projectId}`, {
-        projectKey: projectKey as string,
+        projectKey: projectKey ?? undefined,
+        auth: loadSession() !== null,
         dataSchema: ProjectSchema,
       }),
   });
 
   const architecture = useQuery({
     queryKey: queryKeys.architecture(projectId),
-    enabled: projectKey !== null,
+    enabled: projectKey !== null || authed,
     queryFn: () =>
       apiFetch(`/api/projects/${projectId}/architecture`, {
-        projectKey: projectKey as string,
+        projectKey: projectKey ?? undefined,
+        auth: loadSession() !== null,
         dataSchema: GetArchitectureResponseSchema,
       }),
   });
@@ -641,7 +647,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
   }, [model, hldSelection, hldSearch]);
 
   async function regenerate(scope: RegenerateScope) {
-    if (projectKey === null) return;
+    if (projectKey === null && loadSession() === null) return;
     setRegenError(null);
     setRegenScope(scope);
     try {
@@ -652,7 +658,8 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
       const started = await apiFetch(`/api/projects/${projectId}/architecture/regenerate`, {
         method: "POST",
         body: JSON.stringify({ scope, ...options }),
-        projectKey,
+        projectKey: projectKey ?? undefined,
+        auth: loadSession() !== null,
         ...(setup === null || setup.apiKey.trim() === ""
           ? {}
           : { providerKey: setup.apiKey.trim() }),
@@ -682,7 +689,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
   }
 
   const queryError = project.error ?? architecture.error;
-  if (queryError !== null && projectKey !== null) {
+  if (queryError !== null && (projectKey !== null || authed)) {
     const user =
       queryError instanceof ApiError
         ? queryError.userMessage
@@ -701,7 +708,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
     );
   }
 
-  if (project.isPending || architecture.isPending || projectKey === null) {
+  if (project.isPending || architecture.isPending || (projectKey === null && !authed)) {
     return (
       <div aria-busy="true" className="flex h-[100dvh] flex-col">
         <div className="bg-card border-border border-b border-solid px-5 py-4">
@@ -1117,7 +1124,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
         </>
       ) : null}
 
-      {regenRunId !== null && projectKey !== null ? (
+      {regenRunId !== null ? (
         <RegenRunPhase
           runId={regenRunId}
           projectKey={projectKey}
@@ -1361,7 +1368,7 @@ function RegenRunPhase({
   onRetry,
 }: {
   runId: string;
-  projectKey: string;
+  projectKey: string | null;
   projectId: string;
   onSettledClose: () => void;
   onRetry: () => void;

@@ -72,6 +72,8 @@ export function ProviderDialog() {
             event.preventDefault();
             saveProviderSetup({ ...draft, provider: "openrouter" });
             setReady(true);
+            // Closing IS the confirmation; the trigger flips to "Provider ready".
+            setOpen(false);
           }}
         >
           <div>

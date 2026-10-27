@@ -50,6 +50,7 @@ import {
   type NonFunctionalRow,
 } from "@/lib/requirements/editor";
 import type { ProviderSetup } from "@/lib/session/keys";
+import { loadSession } from "@/lib/session/auth";
 
 const MAX_ROWS = 30;
 const PRIORITIES = ["must", "should", "could"] as const;
@@ -183,6 +184,7 @@ export function SpecEditor({
         method: "PUT",
         body: JSON.stringify(buildRequest(confirm)),
         projectKey,
+        auth: loadSession() !== null,
         dataSchema: RequirementsResponseSchema,
       });
       applyResponseSpec(response.spec);
@@ -198,6 +200,7 @@ export function SpecEditor({
         method: "POST",
         body: JSON.stringify(options),
         projectKey,
+        auth: loadSession() !== null,
         ...(setup === null ? {} : setup.apiKey.trim() === "" ? {} : { providerKey: setup.apiKey.trim() }),
         dataSchema: StartRunResponseSchema,
       });

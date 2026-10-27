@@ -13,6 +13,7 @@ import {
   saveProjectAccessKey,
 } from "@/lib/session/keys";
 import { useHydrated } from "@/hooks/use-session";
+import { loadSession } from "@/lib/session/auth";
 
 const EXAMPLE_IDEAS = [
   "Build Spotify",
@@ -59,6 +60,7 @@ export function IdeaForm() {
       const created = await apiFetch("/api/projects", {
         method: "POST",
         body: JSON.stringify(request),
+        auth: loadSession() !== null,
         dataSchema: CreateProjectResponseSchema,
       });
       saveProjectAccessKey(created.project.id, created.accessKey);

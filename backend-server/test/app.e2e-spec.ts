@@ -203,6 +203,20 @@ describe("API (e2e)", () => {
         statusCode: 200,
         data: { status: "ok", database: "pglite" },
       });
+      expect(response.headers["x-powered-by"]).toBeUndefined();
+      expect(response.headers["x-content-type-options"]).toBe("nosniff");
+      expect(response.headers["x-frame-options"]).toBe("DENY");
+      expect(response.headers["referrer-policy"]).toBe("no-referrer");
+    });
+
+    it("returns a route-not-found envelope for unknown routes", async () => {
+      const response = await request(server).get("/api/no-such-route");
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({
+        status: false,
+        statusCode: 404,
+        error: { code: "ROUTE_NOT_FOUND" },
+      });
     });
 
     it("lists provider configuration without secrets", async () => {

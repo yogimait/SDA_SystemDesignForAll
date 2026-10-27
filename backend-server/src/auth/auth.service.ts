@@ -61,6 +61,7 @@ export class AuthService {
   async login(request: LoginUserRequest): Promise<AuthResponse> {
     const user = await this.users.findByEmail(normalizeEmail(request.email));
     if (!user) {
+      await this.passwords.verifyDummy(request.password);
       throw new AppError("AUTH_INVALID_CREDENTIALS");
     }
     const valid = await this.passwords.verify(

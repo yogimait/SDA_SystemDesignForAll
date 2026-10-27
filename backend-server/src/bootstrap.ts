@@ -1,6 +1,12 @@
 import type { INestApplication } from "@nestjs/common";
 import { fail } from "@sda/contracts";
-import { json, type NextFunction, type Request, type Response } from "express";
+import {
+  json,
+  type Application,
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import { isPayloadTooLarge } from "./common/errors/payload-too-large.js";
 import { RedactingLogger } from "./common/logging/redacting.logger.js";
 import { APP_CONFIG } from "./config/config.module.js";
@@ -17,6 +23,22 @@ export function configureApp(app: INestApplication): void {
     .filter(Boolean);
 
   app.setGlobalPrefix("api");
+  const express = app.getHttpAdapter().getInstance() as Application;
+  express.disable("x-powered-by");
+  app.use((_request: Request, response: Response, next: NextFunction) => {
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    response.setHeader("X-Frame-Options", "DENY");
+    response.setHeader("Referrer-Policy", "no-referrer");
+    response.setHeader(
+      "Content-Security-Policy",
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    );
+    response.setHeader(
+      "Permissions-Policy",
+      "camera=(), microphone=(), geolocation=()",
+    );
+    next();
+  });
   app.enableCors({
     origin: origins,
     methods: ["GET", "POST", "PUT", "OPTIONS"],

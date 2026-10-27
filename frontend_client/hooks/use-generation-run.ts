@@ -3,6 +3,7 @@ import { GenerationRunSchema, type GenerationRun } from "@sda/contracts";
 import { useEffect } from "react";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
+import { loadSession } from "@/lib/session/auth";
 
 const ACTIVE_STATUSES = new Set(["queued", "running"]);
 /** Mock provider runs finish quickly; saves an LLM round trip per stage. */
@@ -10,14 +11,16 @@ const POLL_INTERVAL_MS = 1200;
 
 /**
  * Polls GET /api/runs/:runId while the run is queued|running. Stage state is
- * whatever the backend persisted (no client-side simulation).
+ * whatever the backend persisted (no client-side simulation). The project
+ * key is optional when the caller authorizes as the owner via Bearer.
  */
-export function useGenerationRun(runId: string, projectKey: string) {
+export function useGenerationRun(runId: string, projectKey: string | null) {
   const query = useQuery<GenerationRun>({
     queryKey: queryKeys.run(runId),
     queryFn: () =>
       apiFetch(`/api/runs/${runId}`, {
-        projectKey,
+        projectKey: projectKey ?? undefined,
+        auth: loadSession() !== null,
         dataSchema: GenerationRunSchema,
       }),
     refetchInterval: (query) =>

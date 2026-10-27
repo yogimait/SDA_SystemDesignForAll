@@ -162,5 +162,7 @@ Start at [docs/Home.md](docs/Home.md): architecture, API, data model, generation
 - Passwords use scrypt with per-password salt; session tokens are opaque and stored only as SHA-256 hashes.
 - Provider keys are never logged, persisted, or included in error details.
 - Request bodies are capped; error messages are redacted and bounded.
+- Login performs a dummy scrypt verification for unknown emails so response timing does not reveal account existence.
+- API responses set `nosniff`, frame-deny, no-referrer, restrictive CSP/Permissions-Policy headers, and omit `X-Powered-By`.
 - `MOCK_PROVIDER` is off unless explicitly set.
 - Bearer sessions and project keys are the access boundaries; anonymous projects remain key-scoped.

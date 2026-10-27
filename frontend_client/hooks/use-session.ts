@@ -14,6 +14,7 @@ import {
   clearSession,
   loadSession,
 } from "@/lib/session/auth";
+import { apiFetch } from "@/lib/api/client";
 
 function subscribe(onChange: () => void): () => void {
   const bound = () => {
@@ -57,6 +58,20 @@ export function useHydrated(): boolean {
   );
 }
 
-export function useActiveSession(): { session: StoredSession | null; signOut: () => void } {
-  return { session: useSession(), signOut: clearSession };
+/**
+ * Revokes the server session (best effort — the row dies at TTL anyway; a
+ * network failure must never strand the user signed in) and clears the
+ * local store.
+ */
+export async function signOut(): Promise<void> {
+  try {
+    await apiFetch("/api/auth/logout", { method: "POST", auth: true });
+  } catch {
+    // Token invalid / backend unreachable — the local clear below is enough.
+  }
+  clearSession();
+}
+
+export function useActiveSession(): { session: StoredSession | null; signOut: () => Promise<void> } {
+  return { session: useSession(), signOut };
 }

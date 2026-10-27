@@ -105,6 +105,13 @@ function mapException(exception: unknown): MappedException {
         statusCode,
       };
     }
+    if (statusCode === 404) {
+      return {
+        code: "ROUTE_NOT_FOUND",
+        message: "The requested route does not exist.",
+        statusCode,
+      };
+    }
 
     return {
       code: statusCode >= 500 ? "INTERNAL_ERROR" : "VALIDATION_ERROR",

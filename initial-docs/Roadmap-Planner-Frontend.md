@@ -250,6 +250,30 @@ Contracts landed in `packages/contracts` (users, analytics, projects list, provi
 - Decisions kept: token lives in sessionStorage per contract shape "Bearer token, no refresh"; `AUTH_REQUIRED` surfaces mapped copy + a "Sign in again" link instead of silently clearing the store; the timeout-deferred load effects satisfy the `react-hooks/set-state-in-effect` ban.
 - [x] **Sign-in-and-continue hand-off (2026-10-27, policy set with the user: require auth, keep key access)** — when the backend enforces signed-in project creation (`AUTH_REQUIRED` on `POST /api/projects`), the landing form stashes the typed idea (`sda:pending-idea`) and rides to `/login?next=/` with a "your idea is saved" notice; after sign-in the landing pre-fills the textarea (consume-once helpers + tests). Dormant until the backend adds the guard; covered by 2 new e2e journeys (16 in the user file, 18 total).
 
+---
+
+## Defect-triage round (2026-10-28, D1–D12 + unblocking tests)
+
+The joint triage list (user + backend agent) split this way — backend ownership/plan logic was already correct, most blockers were missing Bearer headers on the frontend:
+
+- [x] **D1/D1b (backend correct, frontend hole)**: `POST /api/projects` from the landing page previously sent no Bearer, so signed-in users built anonymous projects and bypassed plan limits. The idea form now sends `auth: loadSession() !== null`; the backend attaches `ownerId` and enforces free/pro limits (verified live: ownerId set, plan path active).
+- [x] **D2 (frontend hole)**: library projects were unreachable in a fresh tab because the requirements/workspace/run flows sent only `x-project-key`. All project-scoped calls (project, requirements, architecture, confirm, regenerate, run polling) now send the owner's Bearer too; live-verified Bearer-only reopen works.
+- [x] **D3 (frontend hole)**: the backend logout route (POST /api/auth/logout) existed and revoked the session row — the UI never called it. Header sign-out now does a best-effort revoke then clears the local store. Live-verified: the token is rejected after logout.
+- [x] **D5 (backend)**: malformed project/run ids bound into PGlite produced 500s. `ProjectAccessGuard` now validates id shape before any DB call (400 → 404 envelope `PROJECT_NOT_FOUND`/`RUN_NOT_FOUND`); new e2e asserts both codes. Live server needs a restart (coordinated separately) to pick it up.
+- [x] **D10 (contracts)**: `SaveProviderConfigRequestSchema` is now strict — an `apiKey` in the body fails `VALIDATION_ERROR` naming the key; backend e2e updated for both mounts.
+- [x] **D4**: settings surfaces `AUTH_REQUIRED` with a sign-in prompt on both cards instead of the misleading "not set".
+- [x] **D6**: the BYOK provider dialog closes on save (trigger flips to "Provider ready" = the confirmation).
+- [x] **D7**: theme plumbing mounted (`ThemeApplier` + `lib/theme/preferences.ts` + `html[data-theme]`); the palette stays the single dark brand by recorded decision — a light palette swap lands with light tokens, the plumbing is ready.
+- [x] **D8/D12**: dashboard totals card copy rewritten (projects-with-activity); "Saved Saved" → "Saved at …"; Base UI Select controlled-value warning removed (value `null` instead of undefined-flapping).
+- [x] **D9 (investigated, no code change)**: "stale route DOM" is React's Offscreen retention during app-router transitions — outgoing pages stay in the DOM but `display:none` (inert, a11y-safe); Playwright resolves them as "hidden", users never interact with them. The user-facing redirects that made this visible were fixed earlier (hydration guard). No framework-level fix exists or is needed.
+- [x] **D11**: sign-in-and-continue already shipped (previous round).
+- Blocked tests unblocked: FE journeys for library pagination (cursor page 2 + Load more), `RUN_CONFLICT` (409 → "wait for it to finish" copy), `QUOTA_EXCEEDED` (429 → limit copy), and failed-run UI (persisted `GENERATION_REPAIR_FAILED` banner + Retry re-fire). Backend e2e leaves 21/21 green.
+- Parked, cannot implement today: **billing/upgrade path** (no endpoint and no payment-provider decision — the plan-gate card is in place for when it exists) and **real-provider BYOK round-trip** (needs the user's real OpenRouter key; power path previously proven).
+
+Verification: backend build/lint green, 95/95 unit, **21/21 e2e**; frontend lint green, 100/100 unit, build green, **22/22 e2e** (journey + user + unblocked suites).
+
+Status: Done (2026-10-28)
+
 Status: Done (2026-10-27) — report-only items: mock fixture signature includes method names (client masks); backend user slice absent (documented above).
 
 ---

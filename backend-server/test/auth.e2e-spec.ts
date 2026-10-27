@@ -230,7 +230,18 @@ describe("Auth, ownership, account, plan, and dashboard (e2e)", () => {
     const otherGet = await request(server)
       .get(`/api/projects/${first.project.id}`)
       .set(auth(bob.accessToken));
-    expect(otherGet.status).toBe(403);
+    expect(otherGet.status).toBe(404);
+    expect((otherGet.body as Envelope<null>).error?.code).toBe(
+      "PROJECT_NOT_FOUND",
+    );
+
+    const unknownGet = await request(server)
+      .get("/api/projects/00000000-0000-4000-8000-000000000000")
+      .set(auth(bob.accessToken));
+    expect(unknownGet.status).toBe(otherGet.status);
+    expect((unknownGet.body as Envelope<null>).error?.code).toBe(
+      "PROJECT_NOT_FOUND",
+    );
 
     const anonymousNoKey = await request(server).get(
       `/api/projects/${anonymous.project.id}`,
@@ -268,6 +279,25 @@ describe("Auth, ownership, account, plan, and dashboard (e2e)", () => {
     const noAuth = await request(server).get("/api/projects");
     expect(noAuth.status).toBe(401);
     expect((noAuth.body as Envelope<null>).error?.code).toBe("AUTH_REQUIRED");
+
+    const runStart = await request(server)
+      .post(`/api/projects/${first.project.id}/requirements`)
+      .set(auth(alice.accessToken))
+      .send({});
+    expect(runStart.status).toBe(202);
+    const runId = (runStart.body as Envelope<{ runId: string }>).data.runId;
+    const otherRun = await request(server)
+      .get(`/api/runs/${runId}`)
+      .set(auth(bob.accessToken));
+    expect(otherRun.status).toBe(404);
+    expect((otherRun.body as Envelope<null>).error?.code).toBe("RUN_NOT_FOUND");
+    const unknownRun = await request(server)
+      .get("/api/runs/00000000-0000-4000-8000-000000000000")
+      .set(auth(bob.accessToken));
+    expect(unknownRun.status).toBe(otherRun.status);
+    expect((unknownRun.body as Envelope<null>).error?.code).toBe(
+      "RUN_NOT_FOUND",
+    );
   });
 
   it("saves provider config without keys and merges preferences", async () => {
@@ -280,7 +310,7 @@ describe("Auth, ownership, account, plan, and dashboard (e2e)", () => {
       "PROVIDER_CONFIG_NOT_FOUND",
     );
 
-    const saved = await request(server)
+    const leaked = await request(server)
       .put("/api/provider-config")
       .set(auth(user.accessToken))
       .send({
@@ -288,6 +318,19 @@ describe("Auth, ownership, account, plan, and dashboard (e2e)", () => {
         model: "z-ai/glm-5.3-flash",
         reasoningEffort: "low",
         apiKey: "must-not-be-stored",
+      });
+    expect(leaked.status).toBe(400);
+    const leakedBody = leaked.body as Envelope<null>;
+    expect(leakedBody.error?.code).toBe("VALIDATION_ERROR");
+    expect(JSON.stringify(leakedBody.error?.details ?? leakedBody.message)).toContain("apiKey");
+
+    const saved = await request(server)
+      .put("/api/provider-config")
+      .set(auth(user.accessToken))
+      .send({
+        provider: "openrouter",
+        model: "z-ai/glm-5.3-flash",
+        reasoningEffort: "low",
       });
     expect(saved.status).toBe(200);
     const config = (saved.body as Envelope<SavedProviderConfigResponse>).data
@@ -382,5 +425,104 @@ describe("Auth, ownership, account, plan, and dashboard (e2e)", () => {
 
     const noAuth = await request(server).get("/api/dashboard");
     expect(noAuth.status).toBe(401);
+  });
+
+  it("owner reopens a project with the Bearer token alone (no access key)", async () => {
+    const user = await register(server, "reopen@example.com");
+    const created = await createProject(server, user.accessToken, "Reopen project");
+
+    const project = await request(server)
+      .get(`/api/projects/${created.project.id}`)
+      .set(auth(user.accessToken))
+      .set("x-project-key", "");
+    expect(project.status).toBe(200);
+    expect((project.body as Envelope<CreateProjectResponse["project"]>).data.ownerId).toBe(user.user.id);
+
+    const requirements = await request(server)
+      .get(`/api/projects/${created.project.id}/requirements`)
+      .set(auth(user.accessToken));
+    expect(requirements.status).toBe(200);
+  });
+
+  it("returns 404 envelopes for malformed project and run ids", async () => {
+    const user = await register(server, "malformed@example.com");
+
+    const badProject = await request(server)
+      .get("/api/projects/not-a-uuid")
+      .set(auth(user.accessToken));
+    expect(badProject.status).toBe(404);
+    expect((badProject.body as Envelope<null>).error?.code).toBe("PROJECT_NOT_FOUND");
+
+    const badRun = await request(server)
+      .get("/api/runs/also-not-a-uuid")
+      .set(auth(user.accessToken));
+    expect(badRun.status).toBe(404);
+    expect((badRun.body as Envelope<null>).error?.code).toBe("RUN_NOT_FOUND");
+
+    // A well-formed-but-unknown id keeps the plain not-found mapping.
+    const unknownProject = await request(server)
+      .get(`/api/projects/${"00000000-0000-4000-8000-000000000000"}`)
+      .set(auth(user.accessToken));
+    expect(unknownProject.status).toBe(404);
+    expect((unknownProject.body as Envelope<null>).error?.code).toBe("PROJECT_NOT_FOUND");
+  });
+
+  it("returns 400 when requirement ids collide across projects", async () => {
+    const user = await register(server, "spec-ids@example.com");
+    const first = await createProject(server, user.accessToken, "Spec ids one");
+    const second = await createProject(server, user.accessToken, "Spec ids two");
+    const sharedSpec = {
+      functional: [
+        {
+          id: "fr_cross_project",
+          text: "Users can create an item.",
+          priority: "must",
+        },
+      ],
+      nonFunctional: [],
+      assumptions: [
+        { id: "asm_cross_project", text: "The item is owned by a user." },
+      ],
+      clarifications: [],
+      confirm: false,
+    };
+
+    const saved = await request(server)
+      .put(`/api/projects/${first.project.id}/requirements`)
+      .set(auth(user.accessToken))
+      .send(sharedSpec);
+    expect(saved.status).toBe(200);
+
+    const conflict = await request(server)
+      .put(`/api/projects/${second.project.id}/requirements`)
+      .set(auth(user.accessToken))
+      .send(sharedSpec);
+    expect(conflict.status).toBe(400);
+    expect((conflict.body as Envelope<null>).error).toMatchObject({
+      code: "VALIDATION_ERROR",
+      details: { reason: "duplicate_spec_id" },
+    });
+
+    const rolledBack = await request(server)
+      .get(`/api/projects/${second.project.id}/requirements`)
+      .set(auth(user.accessToken));
+    expect((rolledBack.body as Envelope<RequirementsResponse>).data.spec).toBeNull();
+  });
+
+  it("rejects an apiKey in the saved provider-config request", async () => {
+    const user = await register(server, "strict@example.com");
+
+    const rejected = await request(server)
+      .put("/api/users/me/provider-config")
+      .set(auth(user.accessToken))
+      .send({
+        provider: "openrouter",
+        model: "z-ai/glm-5.3-flash",
+        apiKey: "sk-or-leak-attempt",
+      });
+    expect(rejected.status).toBe(400);
+    const body = rejected.body as Envelope<null>;
+    expect(body.error?.code).toBe("VALIDATION_ERROR");
+    expect(JSON.stringify(body.error?.details ?? body.message)).toContain("apiKey");
   });
 });

@@ -6,6 +6,7 @@ import type {
 } from "@sda/contracts";
 import { RequirementsSpecSchema } from "@sda/contracts";
 import { AppError } from "../common/errors/app-error.js";
+import { isSpecIdConflict } from "../common/errors/database-error.js";
 import {
   PROJECT_REPOSITORY,
   type ProjectRepository,
@@ -43,7 +44,18 @@ export class RequirementsService {
     request: SaveRequirementsRequest,
   ): Promise<RequirementsResponse> {
     const spec = this.buildSpec(request);
-    await this.requirements.replace(projectId, spec);
+    try {
+      await this.requirements.replace(projectId, spec);
+    } catch (error) {
+      if (isSpecIdConflict(error)) {
+        throw new AppError(
+          "VALIDATION_ERROR",
+          "Requirement, assumption, and clarification ids must be unique across projects.",
+          { reason: "duplicate_spec_id" },
+        );
+      }
+      throw error;
+    }
 
     const confirmedAt = request.confirm ? new Date() : null;
     const updated = await this.projects.update(projectId, {

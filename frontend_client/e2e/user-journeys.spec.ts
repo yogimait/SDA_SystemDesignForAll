@@ -52,6 +52,10 @@ const oh = (data: unknown, code = 200) =>
 const ofail = (code: string, message: string, statusCode: number) =>
   (route: RouteLike) => route.fulfill({ status: statusCode, contentType: "application/json", body: JSON.stringify({ status: false, statusCode, message, error: { code } }) });
 
+/** The page's own alert, excluding Next's route announcer (same role). */
+const alertBox = (page: Page) =>
+  page.locator('[role="alert"]:not([id="__next-route-announcer__"])');
+
 const PROJECT = {
   id: "proj_1",
   idea: "Probe project one",
@@ -316,3 +320,110 @@ test.describe("dashboard", () => {
     await expect(page.getByText("Sign in again")).toBeVisible();
   });
 });
+
+test.describe("unblocked path journeys", () => {
+  test("library pagination loads the next cursor page", async ({ page }) => {
+    interceptUserEndpoints(page);
+    page.route("**/api/projects?*", (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("cursor") === null) {
+        return oh({ projects: [PROJECT], nextCursor: "cursor_1" })(route);
+      }
+      return oh({
+        projects: [{ ...PROJECT, id: "proj_2", idea: "Probe project two" }],
+        nextCursor: null,
+      })(route);
+    });
+    await page.addInitScript(AUTH_SAVE);
+    await page.goto("/library");
+
+    await expect(page.getByText("Probe project one")).toBeVisible();
+    const loadMore = page.getByRole("button", { name: "Load more" });
+    await expect(loadMore).toBeVisible();
+    await loadMore.click();
+    await expect(page.getByText("Probe project two")).toBeVisible();
+    await expect(loadMore).toBeHidden();
+  });
+
+  test("RUN_CONFLICT on run start maps to the wait message", async ({ page }) => {
+    interceptUserEndpoints(page);
+    page.route("**/api/projects/proj_1/requirements", (route) => {
+      if (route.request().method() === "POST") {
+        return ofail("RUN_CONFLICT", "running", 409)(route);
+      }
+      return oh({ spec: null, confirmedAt: null })(route);
+    });
+    page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
+    await page.addInitScript(AUTH_SAVE);
+    await page.goto("/projects/proj_1/requirements");
+
+    await page.getByRole("button", { name: "Generate requirements" }).click();
+    await expect(alertBox(page)).toContainText("already running");
+  });
+
+  test("QUOTA_EXCEEDED on run start maps to the limit message", async ({ page }) => {
+    interceptUserEndpoints(page);
+    page.route("**/api/projects/proj_1/requirements", (route) => {
+      if (route.request().method() === "POST") {
+        return ofail("QUOTA_EXCEEDED", "limited", 429)(route);
+      }
+      return oh({ spec: null, confirmedAt: null })(route);
+    });
+    page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
+    await page.addInitScript(AUTH_SAVE);
+    await page.goto("/projects/proj_1/requirements");
+
+    await page.getByRole("button", { name: "Generate requirements" }).click();
+    await expect(alertBox(page)).toContainText("Generation limit reached");
+  });
+
+  test("failed run renders the persisted error and a retry", async ({ page }) => {
+    const FAILED_RUN = {
+      id: "run_1",
+      projectId: "proj_1",
+      type: "requirements",
+      status: "failed",
+      provider: "mock",
+      model: "mock/model",
+      scope: null,
+      stages: [
+        {
+          name: "analyze_idea",
+          status: "failed",
+          attempt: 2,
+          startedAt: "t",
+          finishedAt: "t",
+          error: { code: "GENERATION_REPAIR_FAILED", message: "retries exhausted" },
+          usage: null,
+        },
+      ],
+      error: { code: "GENERATION_REPAIR_FAILED", message: "retries exhausted" },
+      usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
+      createdAt: "t",
+      startedAt: "t",
+      finishedAt: "t",
+    };
+    const startCalls: number[] = [];
+    interceptUserEndpoints(page);
+    page.route("**/api/projects/proj_1/requirements", (route) => {
+      if (route.request().method() === "POST") {
+        startCalls.push(1);
+        return oh({ runId: "run_1" }, 202)(route);
+      }
+      return oh({ spec: null, confirmedAt: null })(route);
+    });
+    page.route("**/api/runs/run_1", oh(FAILED_RUN));
+    page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
+    await page.addInitScript(AUTH_SAVE);
+    await page.goto("/projects/proj_1/requirements");
+
+    await page.getByRole("button", { name: "Generate requirements" }).click();
+    await expect(alertBox(page)).toContainText("GENERATION_REPAIR_FAILED");
+    await expect(alertBox(page)).toContainText("retries exhausted");
+
+    await page.getByRole("button", { name: "Retry generation" }).click();
+    await expect.poll(() => startCalls.length).toBe(2);
+    await expect(alertBox(page)).toContainText("GENERATION_REPAIR_FAILED");
+  });
+});
+

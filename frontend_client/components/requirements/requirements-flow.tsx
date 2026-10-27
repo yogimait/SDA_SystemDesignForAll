@@ -25,6 +25,7 @@ import {
   loadProjectAccessKey,
   loadProviderSetup,
 } from "@/lib/session/keys";
+import { loadSession } from "@/lib/session/auth";
 
 type Phase =
   | { kind: "loading" }
@@ -50,17 +51,19 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
     detail: string;
   } | null>(null);
 
-  // Initial load: access key → project → requirements. Single gate, single error path.
+  // Initial load: access key (creator's tab) OR owner Bearer → project →
+  // requirements. Single gate, single error path.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      const session = loadSession();
       const key = loadProjectAccessKey(projectId);
-      if (key === null) {
+      if (key === null && session === null) {
         setPhase({
           kind: "error",
           user: "The access key for this project is not in this browser tab.",
           detail:
-            "Project access keys live in sessionStorage and die with the tab. Start a new design session from the landing page.",
+            "Project access keys live in sessionStorage and die with the tab. Start a new design session from the landing page, or sign in with the owner account.",
         });
         return;
       }
@@ -68,13 +71,18 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
 
       try {
         const project = await apiFetch(`/api/projects/${projectId}`, {
-          projectKey: key,
+          projectKey: key ?? undefined,
+          auth: session !== null,
           dataSchema: ProjectSchema,
         });
         if (cancelled) return;
         const requirements = await apiFetch(
           `/api/projects/${projectId}/requirements`,
-          { projectKey: key, dataSchema: RequirementsResponseSchema },
+          {
+            projectKey: key ?? undefined,
+            auth: session !== null,
+            dataSchema: RequirementsResponseSchema,
+          },
         );
         if (cancelled) return;
 
@@ -110,7 +118,7 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   async function startRunOnce(context: "requirements" | "architecture"): Promise<string | null> {
-    if (projectKey === null) return null;
+    if (projectKey === null && loadSession() === null) return null;
     setStarting(true);
     setStartError(null);
     try {
@@ -127,7 +135,8 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
         {
           method: "POST",
           body: JSON.stringify(options),
-          projectKey,
+          projectKey: projectKey ?? undefined,
+          auth: loadSession() !== null,
           ...(setup === null || setup.apiKey.trim() === ""
             ? {}
             : { providerKey: setup.apiKey.trim() }),
@@ -169,7 +178,8 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
           const response = await apiFetch(
             `/api/projects/${projectId}/requirements`,
             {
-              projectKey: projectKey as string,
+              projectKey: projectKey ?? undefined,
+              auth: loadSession() !== null,
               dataSchema: RequirementsResponseSchema,
             },
           );
@@ -196,7 +206,8 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
             queryKey: queryKeys.project(projectId),
           });
           const project = await apiFetch(`/api/projects/${projectId}`, {
-            projectKey: projectKey as string,
+            projectKey: projectKey ?? undefined,
+            auth: loadSession() !== null,
             dataSchema: ProjectSchema,
           });
           setPhase({ kind: "ready", version: project.currentArchitectureVersion });

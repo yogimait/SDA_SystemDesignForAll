@@ -42,7 +42,9 @@ export const SavedProviderConfigSchema = ProviderSelectionSchema.extend({
 });
 export type SavedProviderConfig = z.infer<typeof SavedProviderConfigSchema>;
 
-export const SaveProviderConfigRequestSchema = ProviderSelectionSchema;
+/** Strict: unknown body keys (an `apiKey`, say) are a VALIDATION_ERROR — BYOK
+ * keys must never land in the saved-config endpoint. */
+export const SaveProviderConfigRequestSchema = ProviderSelectionSchema.strict();
 export type SaveProviderConfigRequest = z.infer<
   typeof SaveProviderConfigRequestSchema
 >;
