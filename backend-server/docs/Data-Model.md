@@ -6,6 +6,10 @@ One Drizzle schema drives both PGlite (local/test) and Postgres (production). En
 
 ```mermaid
 erDiagram
+  USERS ||--o{ AUTH_SESSIONS : "has sessions"
+  USERS ||--o{ PROVIDER_CONFIGS : "saves"
+  USERS ||--o{ USER_PREFERENCES : "has"
+  USERS ||--o{ PROJECTS : "owns"
   PROJECTS ||--|| PROJECT_ACCESS : "has key hash"
   PROJECTS ||--o{ REQUIREMENTS : "functional / nonfunctional"
   PROJECTS ||--o{ ASSUMPTIONS : "has"
@@ -17,12 +21,43 @@ erDiagram
 
   PROJECTS {
     uuid id PK
+    text owner_id FK
     text idea
     text status
     timestamptz requirements_confirmed_at
     jsonb requirements_snapshot
     int current_architecture_version
     timestamptz created_at
+    timestamptz updated_at
+  }
+  USERS {
+    text id PK
+    text email
+    text password_hash
+    text plan_tier
+    timestamptz created_at
+    timestamptz updated_at
+  }
+  AUTH_SESSIONS {
+    uuid id PK
+    text user_id FK
+    text token_hash
+    timestamptz expires_at
+    timestamptz created_at
+  }
+  PROVIDER_CONFIGS {
+    text user_id PK
+    text provider
+    text model
+    text reasoning_effort
+    timestamptz updated_at
+  }
+  USER_PREFERENCES {
+    text user_id PK
+    text theme
+    text default_provider
+    text default_model
+    text default_reasoning_effort
     timestamptz updated_at
   }
   PROJECT_ACCESS {
@@ -81,7 +116,11 @@ erDiagram
 
 | Table | Key constraints and indexes |
 | --- | --- |
-| `projects` | UUID primary key; status union; snapshot JSONB; index on `created_at`. |
+| `users` | Text primary key (`usr_`), unique normalized email, scrypt password hash, `free`/`pro` plan, timestamps. |
+| `auth_sessions` | UUID primary key, user FK cascade, unique SHA-256 token hash, expiry, created timestamp. Logout deletes the row. |
+| `provider_configs` | User primary key/FK, provider, model, optional reasoning effort, updated timestamp. There is no API-key column. |
+| `user_preferences` | User primary key/FK, optional theme/default provider/model/reasoning effort, updated timestamp. |
+| `projects` | UUID primary key; nullable `owner_id` FK set null on user delete; status union; snapshot JSONB; indexes on `created_at` and `(owner_id, created_at)`. |
 | `project_access` | `project_id` primary key and FK with cascade; stores only SHA-256 hex of the access key. |
 | `requirements` | Text id primary key (prefix `fr_` / `nfr_`), project FK cascade; `(project_id, position)` index. |
 | `assumptions` | Text id primary key (`asm_`), project FK cascade; `(project_id, position)` index. |
@@ -103,6 +142,7 @@ erDiagram
 
 | Prefix | Entity |
 | --- | --- |
+| `usr_` | User account |
 | `fr_`, `nfr_` | Functional / non-functional requirements |
 | `asm_` | Assumption |
 | `q_` | Clarification question |
@@ -117,7 +157,7 @@ Requirement ids are server-assigned on first generation and preserved by clients
 ## Migrations
 
 - Schema source: `src/database/schema.ts`.
-- Generated SQL: `drizzle/0000_first_lyja.sql` (initial tables) and `drizzle/0001_loving_nick_fury.sql` (active-run partial unique index), with metadata under `drizzle/meta/`.
+- Generated SQL: `drizzle/0000_first_lyja.sql` (initial tables), `drizzle/0001_loving_nick_fury.sql` (active-run partial unique index), and `drizzle/0002_faulty_the_captain.sql` (users, sessions, provider configs, preferences, nullable project owner), with metadata under `drizzle/meta/`.
 - Generate after schema edits: `npm run db:generate` (drizzle-kit, generate-only config).
 - Apply: `DatabaseService.onModuleInit()` runs the appropriate Drizzle migrator on boot. Migrations are idempotent and recorded in Drizzle's migrations table.
 - The migrations folder is resolved relative to the compiled/source database service, so both `src` and `dist` execution find `backend-server/drizzle`.

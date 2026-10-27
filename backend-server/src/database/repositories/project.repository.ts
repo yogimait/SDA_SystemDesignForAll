@@ -12,6 +12,24 @@ export interface CreateProjectInput {
   id: string;
   idea: string;
   accessKeyHash: string;
+  ownerId?: string | null;
+}
+
+export interface ProjectCursor {
+  createdAt: Date;
+  id: string;
+}
+
+export interface ListProjectsInput {
+  ownerId: string;
+  limit: number;
+  status?: ProjectStatus;
+  cursor?: ProjectCursor;
+}
+
+export interface ListProjectsResult {
+  projects: ProjectRow[];
+  nextCursor: ProjectCursor | null;
 }
 
 export interface ProjectPatch {
@@ -25,6 +43,8 @@ export interface ProjectRepository {
   create(input: CreateProjectInput): Promise<ProjectRow>;
   findById(id: string): Promise<ProjectRow | null>;
   findWithAccess(id: string): Promise<ProjectWithAccess | null>;
+  listForOwner(input: ListProjectsInput): Promise<ListProjectsResult>;
+  countForOwner(ownerId: string): Promise<number>;
   update(id: string, patch: ProjectPatch): Promise<ProjectRow | null>;
 }
 

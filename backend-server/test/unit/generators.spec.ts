@@ -1,4 +1,4 @@
-import type { HldModel } from "@sda/contracts";
+import type { HldModel, LldDsaOutput } from "@sda/contracts";
 import { describe, expect, it } from "vitest";
 import { AppError } from "../../src/common/errors/app-error.js";
 import { ArchitectureGenerator } from "../../src/generation/architecture.generator.js";
@@ -91,6 +91,21 @@ async function mockHld(): Promise<HldModel> {
   ).data as HldModel;
 }
 
+async function mockLldDsa(): Promise<LldDsaOutput> {
+  const mock = new MockProvider();
+  return (
+    await mock.generateStructured({
+      model: "test/model",
+      system: "",
+      messages: [],
+      schemaName: "lld_dsa_model",
+      jsonSchema: {},
+      maxOutputTokens: 100,
+      timeoutMs: 1000,
+    })
+  ).data as LldDsaOutput;
+}
+
 describe("RequirementsGenerator repair path", () => {
   it("fails with GENERATION_REPAIR_FAILED after two invalid JSON responses", async () => {
     const provider = new ScriptedProvider([invalidJson(), invalidJson()]);
@@ -144,6 +159,23 @@ describe("ArchitectureGenerator repair path", () => {
     expect(provider.calls).toHaveLength(3);
   });
 
+  it("drops invalid requirement refs instead of failing the HLD", async () => {
+    const hld = await mockHld();
+    const tampered = structuredClone(hld);
+    tampered.components[0].requirementRefs = ["fr_missing"];
+    const provider = new ScriptedProvider([tampered]);
+    const generator = new ArchitectureGenerator();
+
+    const result = await generator.generateHld(
+      provider,
+      "test/model",
+      "An idea.",
+      requirements,
+    );
+
+    expect(result.hld.components[0]?.requirementRefs).toEqual([]);
+  });
+
   it("succeeds after one invalid JSON response", async () => {
     const hld = await mockHld();
     const provider = new ScriptedProvider([invalidJson(), hld]);
@@ -158,6 +190,39 @@ describe("ArchitectureGenerator repair path", () => {
     expect(result.attempts).toBe(2);
     expect(result.hld).toEqual(hld);
     expect(result.usage.totalTokens).toBe(3);
+  });
+
+  it("normalizes deterministic relationship mistakes and drops invalid learning refs", async () => {
+    const hld = await mockHld();
+    const section = await mockLldDsa();
+    const composition = section.lld.relationships.find(
+      (relationship) => relationship.kind === "composition",
+    );
+    expect(composition).toBeDefined();
+    composition!.sourceMultiplicity = "1..*";
+    section.learningSteps[0].elementRefs = ["nfr_missing"];
+    section.learningSteps[1].elementRefs = ["cmp_client"];
+
+    const provider = new ScriptedProvider([section]);
+    const generator = new ArchitectureGenerator();
+    const result = await generator.generateLldDsa(
+      provider,
+      "test/model",
+      "An idea.",
+      requirements,
+      hld,
+    );
+
+    const fixed = result.section.lld.relationships.find(
+      (relationship) => relationship.id === composition!.id,
+    );
+    expect(fixed?.sourceMultiplicity).toBe("1");
+    expect(
+      result.section.learningSteps.some((step) =>
+        step.elementRefs.includes("nfr_missing"),
+      ),
+    ).toBe(false);
+    expect(result.section.learningSteps.length).toBeGreaterThan(0);
   });
 
   it("fails fast when the LLD/DSA output is truncated", async () => {

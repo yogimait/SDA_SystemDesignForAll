@@ -15,6 +15,8 @@ import {
   type ArchitectureRepository,
 } from "../database/repositories/architecture.repository.js";
 import type { ProjectRow } from "../database/repositories/project.repository.js";
+import type { UserRow } from "../database/repositories/user.repository.js";
+import { PlanService } from "../plans/plan.service.js";
 import {
   RUN_REPOSITORY,
   type RunRepository,
@@ -40,13 +42,16 @@ export class RunService {
     private readonly architectures: ArchitectureRepository,
     private readonly registry: ProviderRegistry,
     private readonly worker: GenerationWorker,
+    private readonly plans: PlanService,
   ) {}
 
   async startRequirements(
     project: ProjectRow,
     options: GenerationOptions,
     apiKey?: string,
+    actor?: UserRow,
   ): Promise<StartRunResponse> {
+    await this.plans.assertCanStartRun(actor, project);
     return this.startRun(project, "requirements", null, options, apiKey, [
       ...REQUIREMENTS_STAGES,
     ]);
@@ -56,6 +61,7 @@ export class RunService {
     project: ProjectRow,
     options: GenerationOptions,
     apiKey?: string,
+    actor?: UserRow,
   ): Promise<StartRunResponse> {
     if (!project.requirementsSnapshot) {
       throw new AppError(
@@ -64,6 +70,7 @@ export class RunService {
         { reason: "requirements_not_confirmed" },
       );
     }
+    await this.plans.assertCanStartRun(actor, project);
     return this.startRun(project, "architecture", null, options, apiKey, [
       ...ARCHITECTURE_STAGES,
     ]);
@@ -74,6 +81,7 @@ export class RunService {
     scope: RegenerateScope,
     options: GenerationOptions,
     apiKey?: string,
+    actor?: UserRow,
   ): Promise<StartRunResponse> {
     if (!project.requirementsSnapshot) {
       throw new AppError(
@@ -89,6 +97,8 @@ export class RunService {
         { reason: "architecture_not_generated" },
       );
     }
+    this.plans.assertCanRegenerate(actor, project);
+    await this.plans.assertCanStartRun(actor, project);
     const current = await this.architectures.findByProjectAndVersion(
       project.id,
       project.currentArchitectureVersion,

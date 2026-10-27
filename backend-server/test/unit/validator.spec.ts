@@ -109,6 +109,23 @@ describe("validateArchitectureModel", () => {
     );
   });
 
+  it("warns on an orphan HLD component", async () => {
+    const { model } = await fixture();
+    const orphan = structuredClone(model.hld.components[0]);
+    orphan.id = "cmp_orphan";
+    orphan.name = "Orphan component";
+    model.hld.components.push(orphan);
+
+    expect(validateArchitectureModel(model).warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rule: "orphan_component",
+          path: "hld.components(cmp_orphan)",
+        }),
+      ]),
+    );
+  });
+
   it("rejects unknown requirement and flow references", async () => {
     const { model } = await fixture();
     model.hld.components[0].requirementRefs = ["fr_missing"];
@@ -174,6 +191,52 @@ describe("validateArchitectureModel", () => {
     expect(
       validateArchitectureModel(model).errors.map((error) => error.rule),
     ).not.toContain("relationship_kind_mismatch");
+  });
+
+  it("warns on an orphan class but allows a standalone enum", async () => {
+    const { model } = await fixture();
+    const orphan = structuredClone(model.lld.classes[0]);
+    orphan.id = "cls_orphan";
+    orphan.name = "Orphan";
+    orphan.kind = "class";
+    orphan.attributes = [];
+    orphan.methods = [];
+    model.lld.classes.push(orphan);
+
+    const enumOrphan = {
+      ...structuredClone(orphan),
+      id: "cls_orphan_enum",
+      name: "OrphanEnum",
+      kind: "enum" as const,
+    };
+    model.lld.classes.push(enumOrphan);
+
+    const warnings = validateArchitectureModel(model).warnings;
+    expect(warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rule: "orphan_class",
+          path: "lld.classes(cls_orphan)",
+        }),
+      ]),
+    );
+    expect(
+      warnings.some(
+        (warning) => warning.path === "lld.classes(cls_orphan_enum)",
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts learning-step references to HLD technology decisions", async () => {
+    const { section, hld } = await fixture();
+    const techId = hld.technologyDecisions[0]?.id;
+    expect(techId).toBeTruthy();
+    section.learningSteps[0].elementRefs = [techId as string];
+
+    const result = validateLldDsaSection(section, hld, requirements);
+    expect(
+      result.errors.some((error) => error.rule === "unknown_learning_ref"),
+    ).toBe(false);
   });
 
   it("warns on duplicate names and missing DSA complexity", async () => {

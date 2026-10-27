@@ -87,3 +87,28 @@ export function saveProjectAccessKey(projectId: string, accessKey: string): void
   if (!storage) return;
   storage.setItem(projectAccessKeyEntry(projectId), accessKey);
 }
+
+/**
+ * Sign-in-and-continue: an idea typed on the landing page before signing in.
+ * Survives the login redirect (sessionStorage), consumed once — the value is
+ * plain text (the user's own input) so no JSON needed.
+ */
+const PENDING_IDEA_ENTRY = "sda:pending-idea";
+
+export function savePendingIdea(idea: string): void {
+  safeSession()?.setItem(PENDING_IDEA_ENTRY, idea);
+}
+
+export function peekPendingIdea(): string | null {
+  const idea = safeSession()?.getItem(PENDING_IDEA_ENTRY);
+  return idea && idea.length > 0 ? idea : null;
+}
+
+/** Returns the stashed idea and clears the slot (consume once). */
+export function consumePendingIdea(): string | null {
+  const storage = safeSession();
+  if (!storage) return null;
+  const idea = storage.getItem(PENDING_IDEA_ENTRY);
+  storage.removeItem(PENDING_IDEA_ENTRY);
+  return idea && idea.length > 0 ? idea : null;
+}

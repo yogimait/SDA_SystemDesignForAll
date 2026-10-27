@@ -15,6 +15,10 @@ import type {
   LldRelationship,
 } from "@sda/contracts";
 import { useMemo } from "react";
+import { PlayIcon } from "lucide-react";
+import {
+  Button,
+} from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -270,8 +274,7 @@ function PatternDetails({
   pattern: DesignPattern;
   names: Map<string, string>;
   className?: string;
-}) {
-  return (
+}) {  return (
     <div aria-label={`Details for pattern ${pattern.name}`} className={cn("text-sm", className)}>
       <PanelHeading
         title={pattern.name}
@@ -349,6 +352,7 @@ export function HldDetails({
   selection,
   focusedFlow,
   onFlowStepFocus,
+  onReplay,
   className,
 }: {
   model: HldModel;
@@ -356,6 +360,8 @@ export function HldDetails({
   /** currently focused flow step, if any */
   focusedFlow: { flowId: string; stepIndex: number } | null;
   onFlowStepFocus: (flowId: string, stepIndex: number | null) => void;
+  /** Flow-panel replay trigger (wired by the workspace header state). */
+  onReplay?: (flowId: string) => void;
   className?: string;
 }) {
   const names = useMemo(
@@ -451,6 +457,18 @@ export function HldDetails({
           title={flow.name}
           tag={<Badge className="bg-primary/10 text-primary font-mono">flow</Badge>}
         />
+        {onReplay !== undefined ? (
+          <div className="mt-2 flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onReplay(flow.id)}
+            >
+              <PlayIcon />
+              Replay
+            </Button>
+          </div>
+        ) : null}
         <Section title="Description">
           <p className="text-foreground/90">{flow.description}</p>
         </Section>

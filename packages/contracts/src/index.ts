@@ -5,7 +5,8 @@
  *
  * Scope note (keep contracts honest):
  * - Envelope schemas, error-code registry, and ok/fail helpers.
- * - Project, requirements, run, provider, and canonical ArchitectureModel DTOs.
+ * - Project, requirements, run, provider, canonical ArchitectureModel, user,
+ *   provider-preference, and dashboard DTOs.
  * - Zod is re-exported so both apps validate through this package only.
  */
 import { z } from "zod";
@@ -52,11 +53,13 @@ export type {
 } from "./envelope.js";
 
 // Domain contracts shared by backend and frontend.
+export * from "./users.js";
 export * from "./requirements.js";
 export * from "./projects.js";
 export * from "./runs.js";
 export * from "./providers.js";
 export * from "./architecture.js";
+export * from "./analytics.js";
 
 // Zod surface re-exported: contracts is the single validation surface for both
 // apps — consumers import `z` / types from here, never from "zod" directly.

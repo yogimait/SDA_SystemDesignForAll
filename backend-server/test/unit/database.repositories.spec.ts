@@ -16,6 +16,10 @@ import {
   DrizzleRequirementsRepository,
 } from "../../src/database/repositories/drizzle-project.repository.js";
 import { DrizzleRunRepository } from "../../src/database/repositories/drizzle-run.repository.js";
+import { DrizzleUserRepository } from "../../src/database/repositories/drizzle-user.repository.js";
+import { DrizzleSessionRepository } from "../../src/database/repositories/drizzle-session.repository.js";
+import { DrizzleAccountRepository } from "../../src/database/repositories/drizzle-account.repository.js";
+import { DrizzleAnalyticsRepository } from "../../src/database/repositories/drizzle-analytics.repository.js";
 
 const spec: RequirementsSpec = {
   functional: [
@@ -94,6 +98,10 @@ describe("Drizzle repositories on in-memory PGlite", () => {
   let requirements: DrizzleRequirementsRepository;
   let runs: DrizzleRunRepository;
   let architectures: DrizzleArchitectureRepository;
+  let users: DrizzleUserRepository;
+  let sessions: DrizzleSessionRepository;
+  let account: DrizzleAccountRepository;
+  let analytics: DrizzleAnalyticsRepository;
 
   beforeAll(async () => {
     database = new DatabaseService(
@@ -107,6 +115,10 @@ describe("Drizzle repositories on in-memory PGlite", () => {
     requirements = new DrizzleRequirementsRepository(database);
     runs = new DrizzleRunRepository(database);
     architectures = new DrizzleArchitectureRepository(database);
+    users = new DrizzleUserRepository(database);
+    sessions = new DrizzleSessionRepository(database);
+    account = new DrizzleAccountRepository(database);
+    analytics = new DrizzleAnalyticsRepository(database);
   });
 
   afterAll(async () => {
@@ -309,5 +321,116 @@ describe("Drizzle repositories on in-memory PGlite", () => {
       status: "architecture_ready",
       currentArchitectureVersion: 1,
     });
+  });
+
+  it("persists users, sessions, saved provider config, preferences, and owned projects", async () => {
+    const userId = `usr_${randomUUID().replaceAll("-", "")}`;
+    const email = `${userId}@example.com`;
+    const user = await users.create({
+      id: userId,
+      email,
+      passwordHash: "scrypt$test",
+      planTier: "free",
+    });
+    expect(user.id).toBe(userId);
+    expect(await users.findByEmail(email)).toMatchObject({ id: userId });
+    expect(await users.findById(userId)).toMatchObject({ planTier: "free" });
+
+    const sessionId = randomUUID();
+    const tokenHash = `hash_${sessionId}`;
+    await sessions.create({
+      id: sessionId,
+      userId,
+      tokenHash,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    expect(await sessions.findActiveByTokenHash(tokenHash, new Date())).toMatchObject({
+      userId,
+    });
+    await sessions.revokeByTokenHash(tokenHash);
+    expect(await sessions.findActiveByTokenHash(tokenHash, new Date())).toBeNull();
+
+    const saved = await account.saveProviderConfig(userId, {
+      provider: "openrouter",
+      model: "z-ai/glm-5.3-flash",
+      reasoningEffort: "low",
+    });
+    expect(saved).toMatchObject({
+      userId,
+      provider: "openrouter",
+      reasoningEffort: "low",
+    });
+    expect(await account.getProviderConfig(userId)).toMatchObject({
+      model: "z-ai/glm-5.3-flash",
+    });
+
+    const preferences = await account.savePreferences(userId, {
+      theme: "dark",
+      defaultProvider: "openrouter",
+      defaultModel: "z-ai/glm-5.3-flash",
+    });
+    expect(preferences).toMatchObject({
+      userId,
+      theme: "dark",
+      defaultProvider: "openrouter",
+    });
+
+    const projectIds: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      const projectId = randomUUID();
+      projectIds.push(projectId);
+      await projects.create({
+        id: projectId,
+        ownerId: userId,
+        idea: `Owned project ${index}`,
+        accessKeyHash: new AccessKeyService().hash(`key-${index}`),
+      });
+    }
+    expect(await projects.countForOwner(userId)).toBe(3);
+    const firstPage = await projects.listForOwner({
+      ownerId: userId,
+      limit: 2,
+    });
+    expect(firstPage.projects).toHaveLength(2);
+    expect(firstPage.nextCursor).not.toBeNull();
+    const secondPage = await projects.listForOwner({
+      ownerId: userId,
+      limit: 2,
+      cursor: firstPage.nextCursor ?? undefined,
+    });
+    expect(secondPage.projects).toHaveLength(1);
+    expect(secondPage.projects[0]?.ownerId).toBe(userId);
+
+    const runId = randomUUID();
+    await runs.create({
+      id: runId,
+      projectId: projectIds[0],
+      type: "requirements",
+      provider: "mock",
+      model: "test/model",
+      scope: null,
+      inputHash: "",
+      stages: ["analyze_idea", "persist"],
+    });
+    await runs.updateRun(runId, {
+      status: "succeeded",
+      usagePromptTokens: 11,
+      usageCompletionTokens: 7,
+      finishedAt: new Date(),
+    });
+    const analyticsRuns = await analytics.listRunsByOwner(
+      userId,
+      new Date(Date.now() - 60_000),
+    );
+    expect(analyticsRuns).toHaveLength(1);
+    expect(analyticsRuns[0]).toMatchObject({
+      id: runId,
+      usagePromptTokens: 11,
+      usageCompletionTokens: 7,
+    });
+
+    expect(
+      await users.updatePlanTier(userId, "pro"),
+    ).toMatchObject({ planTier: "pro" });
   });
 });

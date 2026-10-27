@@ -52,3 +52,21 @@ export function isDatabaseUnavailable(error: unknown): boolean {
     typeof message === "string" && DATABASE_MESSAGE_PATTERN.test(message)
   );
 }
+
+/** True when the users email unique index rejects a duplicate registration. */
+export function isEmailConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  if ((error as { code?: unknown }).code !== "23505") {
+    return false;
+  }
+  const constraint = (error as { constraint?: unknown }).constraint;
+  if (constraint === "users_email_unique") {
+    return true;
+  }
+  const message = (error as { message?: unknown }).message;
+  return (
+    typeof message === "string" && message.includes("users_email_unique")
+  );
+}

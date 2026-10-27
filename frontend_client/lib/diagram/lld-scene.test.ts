@@ -142,6 +142,16 @@ describe("member rendering", () => {
     );
   });
 
+  it("drops a method name duplicated at the front of the signature", () => {
+    // LLM + mock outputs repeat the name inside the contract signature field.
+    expect(methodText({ name: "takedown", signature: "takedown(postId: Uuid): void", visibility: "public", description: "" })).toBe(
+      "+takedown(postId: Uuid): void",
+    );
+    expect(methodText({ name: "handle", signature: "handle(event: PostPublishedEvent)", visibility: "public", description: "" })).toBe(
+      "+handle(event: PostPublishedEvent)",
+    );
+  });
+
   it("splits member lines into attributes and methods", () => {
     const base = fixture.classes[0];
     const fields = nodeMemberFields(base);
@@ -196,6 +206,45 @@ describe("buildLldScene", () => {
     expect(long.width).toBeLessThanOrEqual(460);
     const store = scene.nodes.find((node) => node.id === "cls_impl")!;
     expect(store.width).toBe(240);
+  });
+
+  it("clamps content with truncation instead of letting it overflow the box", () => {
+    const huge = cls({
+      id: "cls_huge",
+      name: "AccountDeletionRequestedServiceRegistry",
+      methods: [
+        meth(
+          "requestAccountDeletion",
+          "(userId: Uuid, reason: ModerationReason, requestedBy: Uuid): Promise<DeletionTicket> -> FeedPage[]".repeat(2),
+        ),
+      ],
+    });
+    const scene = buildLldScene({ classes: [huge], relationships: [], patterns: [] });
+    const node = scene.nodes.find((n) => n.id === "cls_huge")!;
+    expect(node.width).toBeLessThanOrEqual(560);
+    for (const line of node.memberLines) {
+      expect(line.length).toBeLessThanOrEqual(Math.floor((node.width - 28) / 6.3) + 1);
+      expect(line.endsWith("…") || line.length <= Math.floor((node.width - 28) / 6.3)).toBe(true);
+    }
+    expect(node.name.length).toBeLessThanOrEqual(75);
+  });
+
+  it("rows disconnected classes below the connected graph instead of floating them mid-diagram", () => {
+    const connectedPair = [rel("rel_x", "inheritance", "cls_impl", "cls_base")];
+    const isolated = [cls({ id: "cls_soloA", name: "Alpha" }), cls({ id: "cls_soloB", name: "Beta" })];
+    const scene = buildLldScene({
+      classes: [...fixture.classes, ...isolated],
+      relationships: connectedPair,
+      patterns: [],
+    });
+    // Anchored = classes that actually participate in a relationship.
+    const anchored = scene.nodes.filter((n) => ["cls_base", "cls_impl"].includes(n.id));
+    const soloA = scene.nodes.find((n) => n.id === "cls_soloA")!;
+    const soloB = scene.nodes.find((n) => n.id === "cls_soloB")!;
+    const connectedBottom = Math.max(...anchored.map((n) => n.y + n.height));
+    expect(soloA.y).toBeGreaterThanOrEqual(connectedBottom + 60);
+    // Same row, left-to-right; or wrapped to the next row below.
+    expect(soloB.y > soloA.y || soloB.x >= soloA.x + soloA.width).toBe(true);
   });
 
   it("routes every relationship with points and keeps labels/multiplicities", () => {

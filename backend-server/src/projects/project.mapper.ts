@@ -5,6 +5,7 @@ export function toProjectDto(project: ProjectRow): Project {
   return {
     id: project.id,
     idea: project.idea,
+    ownerId: project.ownerId,
     status: project.status,
     createdAt: project.createdAt.toISOString(),
     updatedAt: project.updatedAt.toISOString(),

@@ -26,10 +26,75 @@ import {
  * run the same generated SQL migrations.
  */
 
+export const users = pgTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    planTier: text("plan_tier").$type<"free" | "pro">().notNull().default("free"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [uniqueIndex("users_email_unique").on(table.email)],
+);
+
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("auth_sessions_token_unique").on(table.tokenHash),
+    index("auth_sessions_user_idx").on(table.userId),
+    index("auth_sessions_expiry_idx").on(table.expiresAt),
+  ],
+);
+
+export const providerConfigs = pgTable("provider_configs", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  reasoningEffort: text("reasoning_effort"),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const userPreferences = pgTable("user_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  theme: text("theme").$type<"system" | "light" | "dark">(),
+  defaultProvider: text("default_provider"),
+  defaultModel: text("default_model"),
+  defaultReasoningEffort: text("default_reasoning_effort"),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const projects = pgTable(
   "projects",
   {
     id: uuid("id").primaryKey(),
+    ownerId: text("owner_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     idea: text("idea").notNull(),
     status: text("status").$type<ProjectStatus>().notNull(),
     requirementsConfirmedAt: timestamp("requirements_confirmed_at", {
@@ -44,7 +109,10 @@ export const projects = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [index("projects_created_at_idx").on(table.createdAt)],
+  (table) => [
+    index("projects_created_at_idx").on(table.createdAt),
+    index("projects_owner_created_idx").on(table.ownerId, table.createdAt),
+  ],
 );
 
 export const projectAccess = pgTable("project_access", {
@@ -209,6 +277,10 @@ export const architectureVersions = pgTable(
 );
 
 export const schema = {
+  users,
+  authSessions,
+  providerConfigs,
+  userPreferences,
   projects,
   projectAccess,
   requirements,

@@ -8,14 +8,21 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   VALIDATION_ERROR: 400,
   PROJECT_NOT_FOUND: 404,
   PROJECT_ACCESS_DENIED: 403,
+  AUTH_REQUIRED: 401,
+  AUTH_INVALID_CREDENTIALS: 401,
+  AUTH_EMAIL_TAKEN: 409,
+  USER_NOT_FOUND: 404,
   RUN_NOT_FOUND: 404,
   RUN_CONFLICT: 409,
   PAYLOAD_TOO_LARGE: 413,
   QUOTA_EXCEEDED: 429,
+  PLAN_LIMIT_EXCEEDED: 402,
+  PLAN_UPGRADE_REQUIRED: 402,
   PROVIDER_AUTH_FAILED: 502,
   PROVIDER_RATE_LIMITED: 429,
   PROVIDER_TIMEOUT: 504,
   PROVIDER_UNAVAILABLE: 502,
+  PROVIDER_CONFIG_NOT_FOUND: 404,
   PROVIDER_UNSUPPORTED_CAPABILITY: 502,
   INVALID_MODEL_OUTPUT: 502,
   GENERATION_REPAIR_FAILED: 422,
@@ -29,11 +36,18 @@ export const ERROR_DEFAULT_MESSAGES: Record<ErrorCode, string> = {
   PROJECT_NOT_FOUND: "The requested project does not exist.",
   PROJECT_ACCESS_DENIED:
     "Access denied. Send the project key in the x-project-key header.",
+  AUTH_REQUIRED: "Authentication is required. Sign in and retry.",
+  AUTH_INVALID_CREDENTIALS:
+    "The email or password is incorrect.",
+  AUTH_EMAIL_TAKEN: "An account with that email already exists.",
+  USER_NOT_FOUND: "The requested user account does not exist.",
   RUN_NOT_FOUND: "The requested generation run does not exist.",
   RUN_CONFLICT:
     "A generation run is already active for this project. Wait for it to finish.",
   PAYLOAD_TOO_LARGE: "The request body is too large.",
   QUOTA_EXCEEDED: "Too many requests. Try again later.",
+  PLAN_LIMIT_EXCEEDED: "This action exceeds the current plan limit.",
+  PLAN_UPGRADE_REQUIRED: "This feature requires a higher plan.",
   PROVIDER_AUTH_FAILED:
     "The provider rejected the API key. Check the key and try again.",
   PROVIDER_RATE_LIMITED:
@@ -41,6 +55,8 @@ export const ERROR_DEFAULT_MESSAGES: Record<ErrorCode, string> = {
   PROVIDER_TIMEOUT: "The model provider did not respond in time.",
   PROVIDER_UNAVAILABLE:
     "The model provider is currently unavailable. Try again later.",
+  PROVIDER_CONFIG_NOT_FOUND:
+    "No saved provider configuration was found for this user.",
   PROVIDER_UNSUPPORTED_CAPABILITY:
     "The model provider does not support this generation request.",
   INVALID_MODEL_OUTPUT:

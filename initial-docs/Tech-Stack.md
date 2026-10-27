@@ -13,7 +13,7 @@ Focused stack for the MVP. Two rules govern every choice below: **SOLID with pra
 | Validation / contracts | Zod 4 in a shared `packages/contracts` package (root npm workspaces) | One source of truth for DTOs, the canonical architecture model, and the API envelope, consumed by both apps. |
 | Database | Drizzle ORM + drizzle-kit; **PGlite** locally, `pg` driver for production Postgres | PGlite is real Postgres (WASM) with zero infrastructure — meets the "Postgres now, no Docker" constraint. Drizzle supports both PGlite and `pg` on the same schema, keeping the Supabase/managed-Postgres path open behind repository interfaces. |
 | Diagrams | Custom SVG renderer + `@dagrejs/dagre` layout | Precise UML notation (hollow triangles, diamonds, dashed dependencies, multiplicities), full styling control, progressive reveal, replaceable later without touching the canonical model. No React Flow. |
-| Model provider | **OpenRouter**, model **GLM-5.3 Flash**, BYOK | Current focus. A `ModelProvider` interface keeps Groq/Gemini adapters addable later without touching orchestration. |
+| Model provider | **OpenRouter** + **Groq** (GPT-OSS 120B), BYOK | OpenRouter/GLM is the full-architecture default. Groq is implemented behind the same `ModelProvider` interface; its free GPT-OSS 120B plan is 8k TPM, so the 64k LLD/DSA stage needs an upgraded plan or a split. |
 | Async generation | Postgres-backed run/stage rows + in-process worker (concurrency 1), client polling | Survives refreshes, reports real stage state, no Redis for an MVP with one backend instance. |
 
 ## Frontend
@@ -70,12 +70,13 @@ interface ModelProvider {
 }
 ```
 
-- **OpenRouter adapter** (the only adapter in the MVP): base URL `https://openrouter.ai/api/v1/chat/completions`, key forwarded from the client header as `Authorization: Bearer …`.
+- **OpenRouter adapter** (default full-architecture path): base URL `https://openrouter.ai/api/v1/chat/completions`, key forwarded from the client header as `Authorization: Bearer …`.
+- **Groq adapter**: base URL `https://api.groq.com/openai/v1/chat/completions`, same BYOK header, `max_completion_tokens`, `reasoning_effort`, strict `json_schema` for GPT-OSS 120B. Free plan is 30 RPM / 1K RPD / 8K TPM / 200K TPD.
 - **Model**: GLM-5.3 Flash, verified against OpenRouter's model list: slug `z-ai/glm-5.3-flash`, context length 1,048,576, supports `response_format` and `structured_outputs`. The slug is a config value (`DEFAULT_MODEL`), never hardcoded in orchestration logic.
 - **Structured output strategy**, tried in order per model capability: (1) `response_format: { type: "json_schema", …, strict: true }` with provider `require_parameters` routing; (2) `json_object` mode with the JSON Schema inlined in the system prompt; (3) prompt-only JSON with tolerant extraction. Zod → JSON Schema conversion (with sanitization for provider quirks) lives in the adapters layer, not in orchestration.
 - **Generation config**: low temperature (≈0.2), per-stage `maxOutputTokens` budgets (LLD/DSA 64k), per-request timeout via `AbortController`, usage (prompt/completion tokens) captured per run for duration/cost tracking. `OPENROUTER_REASONING_EFFORT` defaults to `low` because reasoning tokens share `max_tokens`, but even low effort consumes a large share on GLM-5.3 Flash.
 - **Error normalization**: provider failures map to typed errors (`auth`, `rate_limit`, `timeout`, `invalid_output`, `context_length`, `unsupported`), then to registered envelope error codes. Bounded retry (max 2 repair attempts) applies to invalid structured output only; truncated output fails fast with its provider reason.
-- **Later adapters** (same interface, no orchestration changes): Groq, Gemini.
+- **Later adapters** (same interface, no orchestration changes): Gemini.
 
 **BYOK flow**
 

@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { NonFunctionalCategory, RequirementsSpec } from "@sda/contracts";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { DatabaseService } from "../database.service.js";
 import {
   assumptions,
@@ -11,6 +11,8 @@ import {
 } from "../schema.js";
 import type {
   CreateProjectInput,
+  ListProjectsInput,
+  ListProjectsResult,
   ProjectPatch,
   ProjectRepository,
   ProjectRow,
@@ -27,6 +29,7 @@ export class DrizzleProjectRepository implements ProjectRepository {
         .insert(projects)
         .values({
           id: input.id,
+          ownerId: input.ownerId ?? null,
           idea: input.idea,
           status: "requirements_pending",
         })
@@ -62,6 +65,50 @@ export class DrizzleProjectRepository implements ProjectRepository {
       return null;
     }
     return { ...row.project, accessKeyHash: row.keyHash };
+  }
+
+  async listForOwner(input: ListProjectsInput): Promise<ListProjectsResult> {
+    const conditions = [eq(projects.ownerId, input.ownerId)];
+    if (input.status) {
+      conditions.push(eq(projects.status, input.status));
+    }
+    if (input.cursor) {
+      conditions.push(
+        or(
+          lt(projects.createdAt, input.cursor.createdAt),
+          and(
+            eq(projects.createdAt, input.cursor.createdAt),
+            lt(projects.id, input.cursor.id),
+          ),
+        )!,
+      );
+    }
+
+    const rows = await this.database.db
+      .select()
+      .from(projects)
+      .where(and(...conditions))
+      .orderBy(desc(projects.createdAt), desc(projects.id))
+      .limit(input.limit + 1);
+
+    const hasMore = rows.length > input.limit;
+    const page = hasMore ? rows.slice(0, input.limit) : rows;
+    const last = page.at(-1);
+    return {
+      projects: page,
+      nextCursor:
+        hasMore && last
+          ? { createdAt: last.createdAt, id: last.id }
+          : null,
+    };
+  }
+
+  async countForOwner(ownerId: string): Promise<number> {
+    const [row] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(projects)
+      .where(eq(projects.ownerId, ownerId));
+    return Number(row?.count ?? 0);
   }
 
   async update(id: string, patch: ProjectPatch): Promise<ProjectRow | null> {

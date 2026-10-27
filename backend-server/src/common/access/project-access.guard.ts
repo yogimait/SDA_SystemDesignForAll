@@ -15,10 +15,19 @@ import {
   RUN_REPOSITORY,
   type RunRepository,
 } from "../../database/repositories/run.repository.js";
+import {
+  USER_REPOSITORY,
+  type UserRepository,
+} from "../../database/repositories/user.repository.js";
 import { AppError } from "../errors/app-error.js";
 import { AccessKeyService } from "./access-key.service.js";
+import {
+  AuthContextService,
+  type AuthRequest,
+} from "./auth-context.service.js";
+import { readBearerToken } from "./token.js";
 
-export interface ProjectRequest extends Request {
+export interface ProjectRequest extends AuthRequest {
   project?: ProjectRow;
 }
 
@@ -35,8 +44,8 @@ function readHeader(request: Request, name: string): string | undefined {
 }
 
 /**
- * Every project-scoped route requires `x-project-key`. A run id resolves to its
- * project first so run polling is protected by the same key.
+ * Project-scoped routes accept either the project capability key or a Bearer
+ * session for the owner. Anonymous legacy projects still require their key.
  */
 @Injectable()
 export class ProjectAccessGuard implements CanActivate {
@@ -44,17 +53,25 @@ export class ProjectAccessGuard implements CanActivate {
     @Inject(PROJECT_REPOSITORY)
     private readonly projects: ProjectRepository,
     @Inject(RUN_REPOSITORY) private readonly runs: RunRepository,
+    @Inject(USER_REPOSITORY) private readonly users: UserRepository,
     private readonly accessKeys: AccessKeyService,
+    private readonly auth: AuthContextService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<ProjectRequest>();
     const key = readHeader(request, "x-project-key");
-    if (!key) {
+    const hasBearer = readBearerToken(request) !== undefined;
+    const user = await this.auth.resolveOptional(request);
+
+    if (!key && !hasBearer) {
       throw new AppError(
         "PROJECT_ACCESS_DENIED",
         "Project access key is required in the x-project-key header.",
       );
+    }
+    if (hasBearer && !user && !key) {
+      throw new AppError("AUTH_REQUIRED");
     }
 
     const projectId = await this.resolveProjectId(request);
@@ -62,10 +79,29 @@ export class ProjectAccessGuard implements CanActivate {
     if (!project) {
       throw new AppError("PROJECT_NOT_FOUND");
     }
-    if (!this.accessKeys.verify(key, project.accessKeyHash)) {
+
+    if (key) {
+      if (!this.accessKeys.verify(key, project.accessKeyHash)) {
+        throw new AppError("PROJECT_ACCESS_DENIED");
+      }
+      request.user = project.ownerId
+        ? (await this.users.findById(project.ownerId)) ?? undefined
+        : user ?? undefined;
+      request.project = stripAccessHash(project);
+      return true;
+    }
+
+    if (!user) {
+      throw new AppError(
+        "PROJECT_ACCESS_DENIED",
+        "Project access key is required in the x-project-key header.",
+      );
+    }
+    if (project.ownerId !== user.id) {
       throw new AppError("PROJECT_ACCESS_DENIED");
     }
 
+    request.user = user;
     request.project = stripAccessHash(project);
     return true;
   }

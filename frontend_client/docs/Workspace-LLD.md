@@ -96,6 +96,26 @@ is in the aria-label and the details panel). Multiplicity labels render at
 both edge endpoints and edge labels mid-way, all with `paint-order: stroke`
 background plates.
 
+- Scene mapping (lld-scene): `methodText` drops a method name duplicated at
+  the front of the contract `signature` (LLM + mock outputs repeat it —
+  otherwise UML renders `takedowntakedown(...)`). Node member lines and names
+  truncate to the character budget of their clamped width (max 560px LLD /
+  320px HLD) with an ellipsis — full text stays in the details panel and
+  aria-labels. Classes without any relationship re-row into compact rows
+  below the connected graph (dagre otherwise scatters them mid-canvas).
+- Edge labels on both canvases wrap via `lib/diagram/label-wrap.ts`
+  (greedy, ≤2 lines, ellipsis on cut) instead of painting one long string
+  across the node gap; HLD labels anchor at the polyline's true midpoint
+  (average of the endpoints — dagre's first point sits on the source
+  border) and shift below the endpoint nodes' band with a dashed leader
+  tick, since the ~30px node gap can't host any label width. LLD pattern
+  chips moved inside the class header (right-anchored, first name truncated
+  + count) — floating above the box collided with edge labels; the scene
+  reserves that name room via `buildLldScene(model.lld, {
+  patternNamesByClassId })`.
+- Scene mapping (hld-scene): HLD name/technology truncate to their width
+  budget the same way.
+
 ## Selection and panels
 
 Selection is one shared state `{ type: "class" | "relationship" | "pattern",
@@ -146,6 +166,35 @@ path — `flowHighlight` collects every step's `elementRefs` in step order
 (deduped on first occurrence; unknown ref shapes tolerated) — dims non-path
 elements, and renders step-order number badges on path elements. Clicking a
 step in the flow panel focuses only that step's segment.
+
+**Flow path replay (2026-10-27)**: the flow details panel gains a Replay
+button; it drives the same per-step focus mechanism as guided exploration.
+A `ReplayLayer` (inside the HLD canvas transform group, rAF-driven, subtree-
+local so the scene never repaints per frame) travels a 6px primary dot along
+the current step's connection polyline (~0.8s travel + ~0.4s pause, 1×/2×),
+with a primary trailing stroke as the dot's wake; `onStepDone` advances the
+replay. Controls live in `ReplayBar` (bottom-center overlay): play/pause,
+reset, prev/next scrubbing, speed toggle, `step n/total`, and the step
+description as a pinned caption (`aria-live="polite"`, never over the
+nodes). Reduced-motion users get no dot — captions auto-advance on a timer.
+Guided mode and replay are mutually exclusive (guided wins); step buttons
+still jump freely, and switching selection/tab stops the replay.
+
+**Narrative annotations (2026-10-27, bug-fixed 2026-10-27)**: header `Annotate` toggle
+(`sda:annotate:<projectId>` persisted). When on, at most 8 inline SVG chips
+(`components/diagram/annotation-chips.tsx`, ≤2 wrapped lines from
+`label-wrap`) render anchored to the currently highlighted elements:
+HLD — component `responsibility` (top-right of the box) and connection
+`rationale` (midpoint above the line), from the focused flow/step or the
+guided step; LLD — class `responsibility` + relationship
+`sourceMultiplicity — label/rationale` during guided. Chips are
+`aria-hidden` decorative duplicates (screen readers use the real labels),
+and clicking one selects the element — the existing details popover remains
+the single source of truth. Focus+context: highlight dimming is unchanged
+(no extra dimming for annotate). Bugfix during verification: the chip
+anchors computed against `hldScene` for both scenes, so LLD guided chips
+never rendered — `buildChips` now takes the scene as its first argument
+(`hldScene` for HLD, `lldScene` for LLD).
 
 Panel contents per selection: component (responsibility, technology,
 in/out connections with kind + label, scaling notes, refs), connection

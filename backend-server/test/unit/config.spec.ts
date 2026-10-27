@@ -13,7 +13,10 @@ describe("loadConfig", () => {
       MOCK_PROVIDER: false,
       DEFAULT_PROVIDER: "openrouter",
       DEFAULT_MODEL: "z-ai/glm-5.3-flash",
+      OPENROUTER_MODEL: "z-ai/glm-5.3-flash",
+      GROQ_MODEL: "openai/gpt-oss-120b",
       OPENROUTER_REASONING_EFFORT: "low",
+      GROQ_REASONING_EFFORT: "low",
     });
   });
 

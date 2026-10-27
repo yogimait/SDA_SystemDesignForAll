@@ -6,6 +6,7 @@ import {
   OPENROUTER_FETCH,
   OpenRouterProvider,
 } from "./openrouter/openrouter.provider.js";
+import { GROQ_FETCH, GroqProvider } from "./groq/groq.provider.js";
 
 @Controller("providers")
 export class ProvidersController {
@@ -26,9 +27,11 @@ export class ProvidersController {
   controllers: [ProvidersController],
   providers: [
     OpenRouterProvider,
+    GroqProvider,
     MockProvider,
     ProviderRegistry,
     { provide: OPENROUTER_FETCH, useValue: globalThis.fetch },
+    { provide: GROQ_FETCH, useValue: globalThis.fetch },
   ],
   exports: [ProviderRegistry],
 })

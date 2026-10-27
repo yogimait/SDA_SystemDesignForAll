@@ -25,3 +25,31 @@ export const ProvidersResponseSchema = z.object({
   mock: z.boolean(),
 });
 export type ProvidersResponse = z.infer<typeof ProvidersResponseSchema>;
+
+/**
+ * A user-saved provider/model preference. API keys are never stored here:
+ * BYOK remains request-scoped through `x-provider-api-key`.
+ */
+export const ProviderSelectionSchema = z.object({
+  provider: z.string().trim().min(1).max(50),
+  model: z.string().trim().min(1).max(200),
+  reasoningEffort: z.string().trim().min(1).max(50).optional(),
+});
+export type ProviderSelection = z.infer<typeof ProviderSelectionSchema>;
+
+export const SavedProviderConfigSchema = ProviderSelectionSchema.extend({
+  updatedAt: z.string().min(1),
+});
+export type SavedProviderConfig = z.infer<typeof SavedProviderConfigSchema>;
+
+export const SaveProviderConfigRequestSchema = ProviderSelectionSchema;
+export type SaveProviderConfigRequest = z.infer<
+  typeof SaveProviderConfigRequestSchema
+>;
+
+export const SavedProviderConfigResponseSchema = z.object({
+  config: SavedProviderConfigSchema,
+});
+export type SavedProviderConfigResponse = z.infer<
+  typeof SavedProviderConfigResponseSchema
+>;

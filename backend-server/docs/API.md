@@ -27,8 +27,9 @@ Failure:
 
 | Header | Required | Meaning |
 | --- | --- | --- |
-| `x-project-key` | Every project-scoped route and `GET /api/runs/:runId` | Access key returned once by `POST /api/projects`. |
-| `x-provider-api-key` | Real provider runs | BYOK OpenRouter key; held in memory for the run only. Not required with `MOCK_PROVIDER=1`. |
+| `Authorization` | Auth, account, dashboard, project list, and owner access | `Bearer <accessToken>` from register/login. |
+| `x-project-key` | Anonymous or shared project routes; optional for an owned project with Bearer | Access key returned once by `POST /api/projects`. |
+| `x-provider-api-key` | Real provider runs | BYOK provider key; held in memory for the run only. Not required with `MOCK_PROVIDER=1`. |
 
 The provider key must never be put in URLs, query strings, logs, or persisted data.
 
@@ -38,8 +39,18 @@ The provider key must never be put in URLs, query strings, logs, or persisted da
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | 200 | Liveness + active database driver. |
 | `GET` | `/api/providers` | 200 | Provider metadata, default provider/model, mock flag. |
-| `POST` | `/api/projects` | 201 | Create a project from an idea; returns the access key once. |
-| `GET` | `/api/projects/:id` | 200 | Project state, confirmation time, current architecture version. |
+| `POST` | `/api/auth/register` | 201 | Create an account and return a Bearer session. |
+| `POST` | `/api/auth/login` | 200 | Authenticate and return a Bearer session. |
+| `GET` | `/api/auth/me` | 200 | Current user. |
+| `POST` | `/api/auth/logout` | 200 | Revoke the current Bearer session. |
+| `POST` | `/api/projects` | 201 | Create a project; owner set when Bearer is present. Returns the access key once. |
+| `GET` | `/api/projects` | 200 | List the authenticated user's projects; cursor, limit, status. |
+| `GET` | `/api/projects/:id` | 200 | Project state; owner Bearer or project key. |
+| `GET` | `/api/provider-config` | 200 | Saved provider/model selection (non-secret). |
+| `PUT` | `/api/provider-config` | 200 | Save provider/model/reasoning selection; rejects API keys. |
+| `GET` | `/api/preferences` | 200 | Theme and default provider/model preferences. |
+| `PUT` | `/api/preferences` | 200 | Merge user preferences. |
+| `GET` | `/api/dashboard` | 200 | Usage totals, daily buckets, top models, recent runs. |
 | `POST` | `/api/projects/:id/requirements` | 202 | Start a requirements generation run. |
 | `GET` | `/api/projects/:id/requirements` | 200 | Current editable spec + confirmation timestamp. |
 | `PUT` | `/api/projects/:id/requirements` | 200 | Save edits; optionally confirm and snapshot. |
@@ -67,6 +78,7 @@ Content-Type: application/json
     "project": {
       "id": "uuid",
       "idea": "A collaborative workspace for small teams.",
+      "ownerId": null,
       "status": "requirements_pending",
       "createdAt": "2026-10-23T00:00:00.000Z",
       "updatedAt": "2026-10-23T00:00:00.000Z",
@@ -79,6 +91,63 @@ Content-Type: application/json
 ```
 
 The idea is trimmed and limited to 8000 characters. Store the access key client-side; it cannot be retrieved again.
+
+## Authentication
+
+```http
+POST /api/auth/register
+Content-Type: application/json
+
+{ "email": "user@example.com", "password": "password123" }
+```
+
+Returns:
+
+```json
+{
+  "user": {
+    "id": "usr_...",
+    "email": "user@example.com",
+    "planTier": "free",
+    "createdAt": "2026-10-27T00:00:00.000Z",
+    "updatedAt": "2026-10-27T00:00:00.000Z"
+  },
+  "accessToken": "opaque-session-token",
+  "tokenType": "Bearer",
+  "expiresAt": "2026-11-26T00:00:00.000Z"
+}
+```
+
+Send `Authorization: Bearer <accessToken>` to `GET /api/auth/me`, `POST /api/auth/logout`, project list/owner access, provider config, preferences, and dashboard. Passwords are stored as scrypt hashes with per-password salt; session tokens are stored only as SHA-256 hashes.
+
+`POST /api/projects` with a Bearer token sets `ownerId`; without one it stays anonymous and `ownerId` is null. Anonymous projects remain accessible with their `x-project-key`. An owner can use a Bearer token without the project key.
+
+`GET /api/projects?limit=20&status=architecture_ready&cursor=...` returns owned projects only. Cursor values are opaque; malformed cursors are `VALIDATION_ERROR`.
+
+## Provider config and preferences
+
+```http
+PUT /api/provider-config
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "provider": "openrouter", "model": "z-ai/glm-5.3-flash", "reasoningEffort": "low" }
+```
+
+No API key is accepted or persisted here. BYOK remains per-run through `x-provider-api-key`. `GET` without a saved config returns `PROVIDER_CONFIG_NOT_FOUND`. The same routes are also available under `/api/users/me/provider-config` and `/api/users/me/preferences`.
+
+`PUT /api/preferences` accepts optional `theme`, `defaultProvider`, `defaultModel`, and `defaultReasoningEffort`; omitted fields keep their current values. `GET /api/preferences` returns `{ "preferences": {} }` before the first save.
+
+## Dashboard and plans
+
+`GET /api/dashboard?range=last_7_days|last_30_days|last_90_days` aggregates only projects owned by the authenticated user. It returns usage totals, daily buckets, top models, and recent runs.
+
+Plan limits use existing error codes:
+
+- Free: 3 projects, 50 runs per 30 days, 500k tokens per 30 days.
+- Pro: 100 projects, 1,000 runs per 30 days, 10M tokens per 30 days.
+- Scoped regeneration requires Pro for owned projects (`PLAN_UPGRADE_REQUIRED`).
+- Anonymous projects and project-key access are not charged to an account limit.
 
 ## Start a run
 
@@ -226,11 +295,18 @@ Terminal statuses are `succeeded`, `failed`, and `interrupted`. A failed run car
 | --- | --- | --- |
 | `VALIDATION_ERROR` | 400 | Request or domain input failed validation. |
 | `PROJECT_NOT_FOUND` | 404 | Project does not exist. |
-| `PROJECT_ACCESS_DENIED` | 403 | Missing or wrong `x-project-key`. |
+| `PROJECT_ACCESS_DENIED` | 403 | Missing/wrong project key or non-owner Bearer access. |
+| `AUTH_REQUIRED` | 401 | Missing, invalid, expired, or revoked Bearer session. |
+| `AUTH_INVALID_CREDENTIALS` | 401 | Login email/password mismatch. |
+| `AUTH_EMAIL_TAKEN` | 409 | Registration email already exists. |
+| `USER_NOT_FOUND` | 404 | Requested user does not exist. |
 | `RUN_NOT_FOUND` | 404 | Run does not exist. |
 | `RUN_CONFLICT` | 409 | A run is already queued or running for the project. |
 | `PAYLOAD_TOO_LARGE` | 413 | JSON body exceeds `MAX_REQUEST_BYTES`. |
 | `QUOTA_EXCEEDED` | 429 | Per-IP run-start throttle hit. |
+| `PLAN_LIMIT_EXCEEDED` | 402 | Project/run/token allowance exceeded. |
+| `PLAN_UPGRADE_REQUIRED` | 402 | Feature requires Pro. |
+| `PROVIDER_CONFIG_NOT_FOUND` | 404 | No saved provider configuration. |
 | `PROVIDER_AUTH_FAILED` | 502 | Provider rejected the key. |
 | `PROVIDER_RATE_LIMITED` | 429 | Provider rate limit; may carry `retryAfterSeconds`. |
 | `PROVIDER_TIMEOUT` | 504 | Provider did not answer in time. |

@@ -54,7 +54,8 @@ export function hldNodeHeight(technology: string): number {
 /**
  * Per-node width: wide enough for the name (12.5px semibold) and technology
  * (10px mono) on one line each, clamped to a sane band. Approximate glyph
- * advances; keeps long labels from spilling over neighbouring nodes.
+ * advances; content beyond the band's budget is truncated in `fitLabels`
+ * because overflowing text would paint across neighbouring nodes.
  */
 export function hldNodeWidth(name: string, technology: string): number {
   const longest = Math.max(
@@ -62,6 +63,27 @@ export function hldNodeWidth(name: string, technology: string): number {
     technology.length * 6.1,
   );
   return Math.min(320, Math.max(HLD_NODE_WIDTH, Math.ceil(longest) + 30));
+}
+
+function truncateTo(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+/** Name + technology truncated to the character budget the width allows. */
+function fitLabels(name: string, technology: string, width: number): {
+  name: string;
+  technology: string;
+} {
+  return {
+    name: truncateTo(
+      name,
+      Math.max(8, Math.floor((width - 28) / 7.2)),
+    ),
+    technology: truncateTo(
+      technology,
+      Math.max(8, Math.floor((width - 28) / 6.1)),
+    ),
+  };
 }
 
 /** Stable marker ids referenced by the HLD canvas <defs>. */
@@ -197,11 +219,12 @@ export function buildHldScene(hld: HldModel): HldScene {
   for (const component of components) {
     const laid = graph.node(component.id) as { x?: number; y?: number };
     const width = hldNodeWidth(component.name, component.technology);
+    const fitted = fitLabels(component.name, component.technology, width);
     nodes.push({
       id: component.id,
-      name: component.name,
+      name: fitted.name,
       type: component.type,
-      technology: component.technology,
+      technology: fitted.technology,
       // dagre reports node centers; convert to top-left.
       x: (laid.x ?? 0) - width / 2,
       y: (laid.y ?? 0) - hldNodeHeight(component.technology) / 2,

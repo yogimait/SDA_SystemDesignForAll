@@ -24,12 +24,30 @@ export const EnvSchema = z
     MOCK_PROVIDER: BooleanFlagSchema,
     DEFAULT_PROVIDER: z.string().trim().min(1).default("openrouter"),
     DEFAULT_MODEL: z.string().trim().min(1).default("z-ai/glm-5.3-flash"),
+    OPENROUTER_MODEL: z
+      .string()
+      .trim()
+      .min(1)
+      .default("z-ai/glm-5.3-flash"),
+    GROQ_MODEL: z
+      .string()
+      .trim()
+      .min(1)
+      .default("openai/gpt-oss-120b"),
     OPENROUTER_REASONING_EFFORT: z
       .enum(["off", "low", "medium", "high", "max"])
       .default("low"),
+    GROQ_REASONING_EFFORT: z
+      .enum(["off", "low", "medium", "high"])
+      .default("low"),
     // Local development fallback only. The request header wins; production
-    // ignores this value. Blank values are treated as unset.
+    // ignores these values. Blank values are treated as unset.
     OPENROUTER_API_KEY: z
+      .string()
+      .trim()
+      .optional()
+      .transform((value) => (value ? value : undefined)),
+    GROQ_API_KEY: z
       .string()
       .trim()
       .optional()

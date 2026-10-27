@@ -22,6 +22,7 @@ export function configureApp(app: INestApplication): void {
     methods: ["GET", "POST", "PUT", "OPTIONS"],
     allowedHeaders: [
       "content-type",
+      "authorization",
       "x-provider-api-key",
       "x-project-key",
     ],

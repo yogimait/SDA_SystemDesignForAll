@@ -49,25 +49,52 @@ export type LldScene = {
 };
 
 const NODE_WIDTH = 240;
-const NODE_MAX_WIDTH = 460;
+const NODE_MAX_WIDTH = 560;
 const HEADER_HEIGHT = 40;
 const MEMBER_LINE_HEIGHT = 18;
 const COMPARTMENT_PADDING = 10;
 
+/** Approximate glyph advances for the mono member line / semibold name. */
+const CHAR_W_MEMBER = 6.3;
+const CHAR_W_NAME = 7.2;
+
+function truncateTo(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
 /**
  * Per-class width: fits the longest member line (10.5px mono) and the name
- * (12.5px semibold) on one line each, clamped to a sane band. Approximate
- * glyph advances; keeps long signatures from spilling over other nodes.
+ * (12.5px semibold) on one line each, clamped to a sane band; content longer
+ * than the band's character budget is truncated in `fitLabels` because
+ * overflowing text would paint across neighbouring nodes.
  */
 function nodeWidth(cls: LldClass): number {
-  const fields = nodeMemberFields(cls);
   const longest = Math.max(
-    cls.name.length * 7.2,
+    cls.name.length * CHAR_W_NAME,
     0,
-    ...fields.attributes.map((line) => line.length * 6.3),
-    ...fields.methods.map((line) => line.length * 6.3),
+    ...cls.attributes.map((attr) => attributeText(attr).length * CHAR_W_MEMBER),
+    ...cls.methods.map((method) => methodText(method).length * CHAR_W_MEMBER),
   );
   return Math.min(NODE_MAX_WIDTH, Math.max(NODE_WIDTH, Math.ceil(longest) + 28));
+}
+
+/** Truncate name + member lines to the character budget the width allows. */
+function fitLabels(cls: LldClass, width: number, reserveRight = 0): {
+  name: string;
+  lines: string[];
+} {
+  const charLimit = Math.max(8, Math.floor((width - 28) / CHAR_W_MEMBER));
+  const fields = nodeMemberFields(cls);
+  return {
+    name: truncateTo(
+      cls.name,
+      Math.max(8, Math.floor((width - 16 - reserveRight) / CHAR_W_NAME)),
+    ),
+    lines: [
+      ...fields.attributes,
+      ...fields.methods,
+    ].map((line) => truncateTo(line, charLimit)),
+  };
 }
 
 export const VISIBILITY_GLYPH: Record<string, string> = {
@@ -99,9 +126,18 @@ export function attributeText(attr: LldClass["attributes"][number]): string {
   return `${VISIBILITY_GLYPH[attr.visibility] ?? "+"}${attr.static ? "static " : ""}${attr.name}: ${attr.type}`;
 }
 
-/** The contract defines `signature` as the full signature string (mock agrees: `addItem(ownerId: UserId, item: Item): void`). */
+/**
+ * The contract defines `signature` as the full signature string — and both
+ * the mock provider and real LLM output include the method name again in
+ * that string. Rendering `${name}${signature}` would show it twice
+ * (`takedowntakedown(...)`), so a leading duplicate is dropped at render.
+ */
 export function methodText(method: LldClass["methods"][number]): string {
-  return `${VISIBILITY_GLYPH[method.visibility] ?? "+"}${method.name}${method.signature}`;
+  let signature = method.signature;
+  if (signature.startsWith(`${method.name}(`)) {
+    signature = signature.slice(method.name.length);
+  }
+  return `${VISIBILITY_GLYPH[method.visibility] ?? "+"}${method.name}${signature}`;
 }
 
 function nodeHeight(cls: LldClass): number {
@@ -125,7 +161,10 @@ export function nodeMemberFields(cls: LldClass): {
  * inheritance triangle points up, per convention. Edges keep dagre's
  * border-to-border polylines.
  */
-export function buildLldScene(model: LldModel): LldScene {
+export function buildLldScene(
+  model: LldModel,
+  options?: { patternNamesByClassId?: Map<string, string[]> },
+): LldScene {
   const graph = new dagre.graphlib.Graph({ multigraph: true, compound: false })
     .setGraph({ rankdir: "BT", nodesep: 36, ranksep: 70, marginx: 24, marginy: 24 })
     .setDefaultEdgeLabel(() => ({}));
@@ -149,14 +188,17 @@ export function buildLldScene(model: LldModel): LldScene {
 
   const nodes: SceneNode[] = classes.map((cls) => {
     const laid = graph.node(cls.id);
-    const fields = nodeMemberFields(cls);
     const height = nodeHeight(cls);
     const width = nodeWidth(cls);
+    // Classes in a design pattern share their header row with the pattern
+    // chip the canvas paints on the right, so their name gets less room.
+    const reserve = options?.patternNamesByClassId?.has(cls.id) ? 104 : 0;
+    const fitted = fitLabels(cls, width, reserve);
     return {
       id: cls.id,
-      name: cls.name,
+      name: fitted.name,
       kind: cls.kind,
-      memberLines: [...fields.attributes, ...fields.methods],
+      memberLines: fitted.lines,
       attributeCount: cls.attributes.length,
       hasMethods: cls.methods.length > 0,
     // dagre reports node centers; convert to top-left.
@@ -166,6 +208,41 @@ export function buildLldScene(model: LldModel): LldScene {
       height,
     };
   });
+
+  // dagre scatters classes without any relationship across the whole canvas;
+  // re-row them compactly below the connected graph so they read as their own
+  // group instead of floating mid-diagram. Deterministic (classes pre-sorted).
+  const isolatedIds = (() => {
+    const set = new Set(classes.map((cls) => cls.id));
+    for (const rel of relationships) {
+      set.delete(rel.sourceId);
+      set.delete(rel.targetId);
+    }
+    return set;
+  })();
+  if (isolatedIds.size > 0) {
+    const anchored = nodes.filter((node) => !isolatedIds.has(node.id));
+    if (anchored.length > 0) {
+      const connectedBottom = Math.max(...anchored.map((node) => node.y + node.height));
+      const connectedWidth = Math.max(...anchored.map((node) => node.x + node.width));
+      const gap = 24;
+      let cursorX = 24;
+      let cursorY = connectedBottom + 70;
+      let rowMax = 0;
+      for (const node of nodes) {
+        if (!isolatedIds.has(node.id)) continue;
+        if (cursorX > 24 && cursorX + node.width > connectedWidth) {
+          cursorX = 24;
+          cursorY += rowMax + 24;
+          rowMax = 0;
+        }
+        node.x = cursorX;
+        node.y = cursorY;
+        rowMax = Math.max(rowMax, node.height);
+        cursorX += node.width + gap;
+      }
+    }
+  }
 
   const edges: SceneEdge[] = [];
   for (const rel of relationships) {

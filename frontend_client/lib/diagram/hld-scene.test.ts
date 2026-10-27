@@ -153,6 +153,27 @@ describe("buildHldScene", () => {
     expect(proxy.width).toBe(width);
   });
 
+  it("clamps labels with ellipsis instead of letting them paint outside the box", () => {
+    const name = "Extremely verbose queueing transcoding orchestration component";
+    const tech = "Kubernetes deploy with aggressive autoscaling configuration attached";
+    const scene = buildHldScene({
+      components: [component({ id: "cmp_big", name, type: "worker", technology: tech })],
+      connections: [],
+      flows: [{ id: "flow_x", name: "f", description: "d", steps: [{ order: 1, description: "s", elementRefs: ["cmp_big"] }], requirementRefs: [] }],
+      technologyDecisions: [],
+      scalabilityNotes: [],
+      failureScenarios: [],
+    });
+    const node = scene.nodes.find((n) => n.id === "cmp_big")!;
+    const width = hldNodeWidth(name, tech);
+    expect(node.width).toBe(width);
+    expect(width).toBeLessThanOrEqual(320);
+    expect(node.name.length).toBeLessThanOrEqual(Math.floor((width - 28) / 7.2) + 1);
+    expect(node.name.endsWith("…")).toBe(true);
+    expect(node.technology.length).toBeLessThanOrEqual(Math.floor((width - 28) / 6.1) + 1);
+    expect(node.technology.endsWith("…")).toBe(true);
+  });
+
   it("is deterministic: two runs produce identical scenes", () => {
     expect(buildHldScene(fixture)).toEqual(buildHldScene(fixture));
   });

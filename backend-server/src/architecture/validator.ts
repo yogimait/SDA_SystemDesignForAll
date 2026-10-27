@@ -218,6 +218,25 @@ function validateLld(
     }
   });
 
+  const connectedClassIds = new Set<string>();
+  for (const relationship of lld.relationships) {
+    connectedClassIds.add(relationship.sourceId);
+    connectedClassIds.add(relationship.targetId);
+  }
+  for (const item of lld.classes) {
+    if (
+      !connectedClassIds.has(item.id) &&
+      item.kind !== "enum" &&
+      item.kind !== "value_object"
+    ) {
+      collector.warn(
+        "orphan_class",
+        `Class "${item.name}" has no relationship. Connect it to the classes it collaborates with, or remove it if it is not needed.`,
+        `lld.classes(${item.id})`,
+      );
+    }
+  }
+
   lld.patterns.forEach((pattern) => {
     for (const classId of pattern.participantClassIds) {
       if (!classes.has(classId)) {
@@ -337,6 +356,21 @@ function validateHld(
       );
     }
   });
+
+  const connectedComponentIds = new Set<string>();
+  for (const connection of hld.connections) {
+    connectedComponentIds.add(connection.fromComponentId);
+    connectedComponentIds.add(connection.toComponentId);
+  }
+  for (const component of hld.components) {
+    if (!connectedComponentIds.has(component.id)) {
+      collector.warn(
+        "orphan_component",
+        `Component "${component.name}" has no connection. Connect it to the components it talks to, or remove it if it is not needed.`,
+        `hld.components(${component.id})`,
+      );
+    }
+  }
 
   hld.flows.forEach((flow) => {
     checkRequirementRefs(
@@ -552,6 +586,9 @@ export function validateLldDsaSection(
     ...hld.components.map((item) => item.id),
     ...hld.connections.map((item) => item.id),
     ...hld.flows.map((item) => item.id),
+    ...hld.technologyDecisions.map((item) => item.id),
+    ...hld.scalabilityNotes.map((item) => item.id),
+    ...hld.failureScenarios.map((item) => item.id),
     ...section.dsa.recommendations.map((item) => item.id),
     ...section.dsa.algorithmicPatterns.map((item) => item.id),
   ]);

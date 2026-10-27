@@ -93,13 +93,38 @@ flowchart LR
   FV -->|warnings only| V[Persist architecture version]
 ```
 
-- Phase A (`hld_model`) generates components, connections, flows, technology decisions, scalability notes, and failure scenarios. Budget: 12k output tokens, 360s.
-- Phase B (`lld_dsa_model`) generates classes, relationships, patterns, DSA recommendations, learning steps, and model metadata, with the HLD pinned as context. Budget: 64k output tokens, 900s. Reasoning effort defaults to `low` on OpenRouter, but reasoning tokens still share the output budget; GLM-5.3 Flash uses a large share even at low. A truncated response fails fast instead of repeating the same over-budget repair.
+- Phase A (`hld_model`) generates components, connections, flows, technology decisions, scalability notes, and failure scenarios. Budget: 32k output tokens, 600s. The prompt targets 6-12 components, 8-16 connections, and 1-2 flows; every component must appear in a connection.
+- Phase B (`lld_dsa_model`) generates classes, relationships, patterns, DSA recommendations, learning steps, and model metadata, with the HLD pinned as context. Budget: 64k output tokens, 900s. The prompt targets 8-14 classes, 10-20 relationships, 2-5 patterns, 3-5 DSA recommendations, and 4-8 learning steps. Reasoning effort defaults to `low` on OpenRouter, but reasoning tokens still share the output budget; GLM-5.3 Flash uses a large share even at low. A truncated response fails fast instead of repeating the same over-budget repair.
 - Each phase gets at most 3 attempts: initial + 2 repairs. Repairs include the exact validation issue list and the previous output.
 - A failed Phase B leaves the successful Phase A stage row intact.
 - `findReusableHld()` can reuse a validated HLD from an earlier failed/interrupted full run with the same requirements hash and valid structure. This avoids paying for Phase A twice.
 - `validate` runs the full structural + semantic validator on the merged model, including relationship type and multiplicity compatibility. Structural errors fail the run; warnings are stored in the version report.
+- **LLD connectivity:** every class, abstract class, and interface should have at least one relationship. `enum` and `value_object` may stand alone only as member types. Orphan classes are reported as `orphan_class` warnings; the prompt asks the model to connect them, but a valid diagram is still persisted for flexibility.
+- **HLD connectivity:** every component should appear in at least one connection. Orphan components are reported as `orphan_component` warnings; the prompt asks the model to connect them.
+- **Design-pattern catalog:** the LLD prompt carries a candidate catalog (creational, structural, behavioral, plus the Null Object special idiom). It is not a checklist: 2-5 justified patterns are preferred, and pattern participants must be connected by relationships that express the pattern. Method signatures must start with `(` and must not repeat the method name.
 - `persist` allocates `max(version)+1`, writes `architecture_versions`, points the project at it, and sets `architecture_ready`.
+
+### Provider calls per run
+
+Only requirements, HLD, and LLD/DSA call the model. Validation and persistence are local.
+
+| Phase | Provider calls | Notes |
+| --- | --- | --- |
+| Project creation | 0 | Local DB write. |
+| Requirements analysis | 1 + up to 1 repair = 1–2 | `analyze_idea` stage. |
+| HLD | 1 + up to 2 repairs = 1–3 | `hld_model` stage. Skipped when a compatible HLD is reused. |
+| LLD + DSA + learning | 1 + up to 2 repairs = 1–3 | One combined `lld_dsa_model` stage. |
+| Validation + persistence | 0 | Local code. |
+
+A full architecture from an idea is therefore **3–8 model calls** including requirements. A retry with HLD reuse is **2–5 calls**. Each repair is another full model request with the previous output and the failing issues; calls run sequentially, never in parallel. In a local sample of successful runs, requirements used 1 call, HLD used 3 (when newly generated), and LLD/DSA used 3; the latest run reused HLD and used 3 LLD/DSA calls, totaling 64,230 tokens.
+
+### Token optimizations
+
+- **Previous output is sent once per repair.** The repair user message contains it; the generator no longer also adds it as an assistant message.
+- **Prompt context is compacted.** LLD/DSA prompts receive ids, names, types, relationships, and short intent instead of the full HLD/LLD rationale/trade-off prose. This cuts the HLD JSON about 40% and the LLD JSON about 53% on the live sample. A scoped LLD regeneration after these changes used **2 attempts, 10,208 prompt + 11,987 completion = 22,195 tokens**, versus the previous full LLD stage at **3 attempts, 45,283 + 18,947 = 64,230 tokens**.
+- **Deterministic validation mistakes are normalized before parsing.** Composition/aggregation source multiplicity becomes `"1"`; inheritance/realization becomes `"1"` on both ends. Learning refs that are not architecture element ids are dropped; steps with no valid refs are removed. Invalid requirement refs are filtered.
+- **HLD reuse** skips the HLD call on retry when the requirements hash and a valid HLD match.
+- **Concise targets**: HLD 6–12 components / 8–16 connections / 1–2 flows; LLD 8–14 classes / 10–20 relationships / 2–5 patterns / 3–5 DSA recommendations / 4–8 learning steps. `max_tokens` is a cap, not a reservation; actual output is billed.
 
 ## Scoped regeneration
 

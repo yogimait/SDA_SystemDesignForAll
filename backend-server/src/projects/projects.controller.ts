@@ -4,22 +4,32 @@ import {
   Get,
   HttpCode,
   Post,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
 import type {
   CreateProjectRequest,
   CreateProjectResponse,
+  ListProjectsResponse,
   Project,
 } from "@sda/contracts";
 import { CreateProjectRequestSchema } from "@sda/contracts";
+import {
+  AuthGuard,
+  OptionalAuthGuard,
+} from "../common/access/auth.guard.js";
+import {
+  requireUser,
+  type AuthRequest,
+} from "../common/access/auth-context.service.js";
+import { ZodValidationPipe } from "../common/validation/zod-validation.pipe.js";
+import { ProjectsService } from "./projects.service.js";
 import {
   ProjectAccessGuard,
   requireProject,
   type ProjectRequest,
 } from "../common/access/project-access.guard.js";
-import { ZodValidationPipe } from "../common/validation/zod-validation.pipe.js";
-import { ProjectsService } from "./projects.service.js";
 
 @Controller("projects")
 export class ProjectsController {
@@ -27,11 +37,25 @@ export class ProjectsController {
 
   @Post()
   @HttpCode(201)
+  @UseGuards(OptionalAuthGuard)
   create(
+    @Req() request: AuthRequest,
     @Body(new ZodValidationPipe(CreateProjectRequestSchema))
     body: CreateProjectRequest,
   ): Promise<CreateProjectResponse> {
-    return this.projects.create(body.idea);
+    return this.projects.create(body.idea, request.user);
+  }
+
+  @Get()
+  @UseGuards(AuthGuard)
+  list(
+    @Req() request: AuthRequest,
+    @Query() query: Record<string, unknown>,
+  ): Promise<ListProjectsResponse> {
+    return this.projects.list(
+      requireUser(request),
+      this.projects.parseListQuery(query),
+    );
   }
 
   @Get(":id")

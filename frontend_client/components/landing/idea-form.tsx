@@ -5,9 +5,14 @@ import {
   CreateProjectResponseSchema,
 } from "@sda/contracts";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { apiFetch, ApiError } from "@/lib/api/client";
-import { saveProjectAccessKey } from "@/lib/session/keys";
+import {
+  consumePendingIdea,
+  savePendingIdea,
+  saveProjectAccessKey,
+} from "@/lib/session/keys";
+import { useHydrated } from "@/hooks/use-session";
 
 const EXAMPLE_IDEAS = [
   "Build Spotify",
@@ -27,6 +32,18 @@ export function IdeaForm() {
   const [failed, setFailed] = useState<{ user: string; detail: string } | null>(
     null,
   );
+
+  // Sign-in-and-continue: after the login redirect, restore the idea the user
+  // typed before being asked to sign in (deferred off the effect body).
+  const hydrated = useHydrated();
+  useEffect(() => {
+    if (!hydrated) return;
+    const timer = window.setTimeout(() => {
+      const pending = consumePendingIdea();
+      if (pending !== null) setIdea(pending);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [hydrated]);
 
   const trimmed = idea.trim();
   const tooLong = trimmed.length > MAX_IDEA_LENGTH;
@@ -48,6 +65,13 @@ export function IdeaForm() {
       router.push(`/projects/${created.project.id}/requirements`);
     } catch (error) {
       if (error instanceof ApiError) {
+        if (error.code === "AUTH_REQUIRED") {
+          // Backend enforces signed-in design sessions: keep the idea and
+          // ask for sign-in; the form pre-fills after the login redirect.
+          savePendingIdea(trimmed);
+          router.push("/login?next=/");
+          return;
+        }
         setFailed({ user: error.userMessage, detail: error.message });
       } else {
         setFailed({

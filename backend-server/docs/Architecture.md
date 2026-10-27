@@ -8,9 +8,12 @@ The backend is one NestJS process with an in-process generation worker. Persiste
 flowchart TB
   subgraph API
     HC[Health]
+    AC[Auth]
+    ACC[Account]
+    DASH[Dashboard]
     PC[Projects]
     RC[Requirements]
-    AC[Architecture]
+    ARC[Architecture]
     RNC[Run polling]
     PRC[Providers]
   end
@@ -58,6 +61,11 @@ flowchart TB
 | `src/providers/` | `ModelProvider` boundary, registry, OpenRouter adapter, mock provider, schema sanitizer, prompts. |
 | `src/generation/` | Run service, DB-backed worker, requirements and architecture generators, run DTO mapping. |
 | `src/projects/`, `src/requirements/`, `src/architecture/` | HTTP controllers and domain services. |
+| `src/auth/` | Register/login/logout, scrypt password hashing, opaque session issuance. |
+| `src/account/` | Saved provider config and user preferences. |
+| `src/analytics/` | Dashboard range aggregation. |
+| `src/plans/` | Free/Pro limits and scoped-regeneration gate. |
+| `src/common/access/auth-context.service.ts` + `auth.guard.ts` | Bearer resolution, required/optional auth guards, request user context. |
 | `src/architecture/validator.ts` | Structural and semantic validation of the merged canonical model. |
 | `packages/contracts/` | Zod schemas, DTO types, error-code registry, envelope helpers. |
 
@@ -67,14 +75,17 @@ flowchart TB
 sequenceDiagram
   participant C as Client
   participant E as Express body parser
+  participant A as AuthGuard / OptionalAuthGuard
   participant G as ProjectAccessGuard
   participant T as ThrottlerGuard
   participant Z as ZodValidationPipe
   participant S as Service
   participant I as Success interceptor
   C->>E: request + JSON body
-  E->>G: parsed body
-  G->>G: resolve project/run, verify x-project-key
+  E->>A: parse body
+  A->>A: resolve Bearer token (required/optional)
+  A->>G: request.user
+  G->>G: project key, or owner Bearer
   G->>T: (run-start routes only)
   T->>Z: limit passed
   Z->>S: typed DTO

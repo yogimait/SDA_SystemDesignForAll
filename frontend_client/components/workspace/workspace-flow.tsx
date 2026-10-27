@@ -15,13 +15,14 @@ import {
   type RegenerateScope,
   type ValidationReport,
 } from "@sda/contracts";
-import { ChevronLeftIcon, ChevronRightIcon, GraduationCapIcon, ListChecksIcon, PanelRightCloseIcon, PanelRightOpenIcon, RefreshCcwIcon, XIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, GraduationCapIcon, ListChecksIcon, PanelRightCloseIcon, PanelRightOpenIcon, RefreshCcwIcon, TagsIcon, XIcon } from "lucide-react";
 import { JourneyShell, type JourneyStage } from "@/components/journey-shell";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DiagramCanvas, type DiagramSelection } from "@/components/diagram/diagram-canvas";
 import { HldCanvas } from "@/components/diagram/hld-canvas";
+import { ReplayBar } from "@/components/diagram/replay-bar";
 import { ProviderDialog } from "@/components/landing/provider-dialog";
 import { RunProgress } from "@/components/requirements/run-progress";
 import { WorkspaceDsa } from "@/components/workspace/workspace-dsa";
@@ -62,8 +63,17 @@ import {
   type HldStepFocus,
   type LldStepFocus,
 } from "@/lib/diagram/guided";
-import { buildHldScene, flowHighlight, hldAdjacency } from "@/lib/diagram/hld-scene";
-import { buildLldScene, relatedElements } from "@/lib/diagram/lld-scene";
+import {
+  buildLldScene,
+  relatedElements,
+  type LldScene,
+} from "@/lib/diagram/lld-scene";
+import {
+  buildHldScene,
+  flowHighlight,
+  hldAdjacency,
+  type HldScene,
+} from "@/lib/diagram/hld-scene";
 import { queryKeys } from "@/lib/query-keys";
 import {
   loadProjectAccessKey,
@@ -123,8 +133,56 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
   const [regenRunId, setRegenRunId] = useState<string | null>(null);
   const [regenScope, setRegenScope] = useState<RegenerateScope>("lld");
   const [regenError, setRegenError] = useState<{ user: string; detail: string } | null>(null);
+  /** Annotate toggle: narrative chips anchored to highlighted elements. */
+  const [annotateOn, setAnnotateOn] = useState(false);
+  /** Flow path replay (HLD): step index inside the selected flow. */
+  const [replay, setReplay] = useState<{
+    flowId: string;
+    stepIndex: number;
+    playing: boolean;
+    speed: number;
+  } | null>(null);
+  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   const closeRegen = useCallback(() => setRegenRunId(null), []);
+
+  // Annotate toggle: persisted per project so it survives tab switches and
+  // refreshes (restore inside the access gate, like guided-mode resume).
+  useEffect(() => {
+    void (async () => {
+      const raw = window.sessionStorage.getItem(`sda:annotate:${projectId}`);
+      if (raw === "1") setAnnotateOn(true);
+    })();
+  }, [projectId]);
+  useEffect(() => {
+    window.sessionStorage.setItem(`sda:annotate:${projectId}`, annotateOn ? "1" : "0");
+  }, [annotateOn, projectId]);
+
+  // Replay validity is derived at render: any change of selection or guided
+  // mode stops the replay without effect juggling. While replaying, the
+  // flow-step focus comes from the replay itself (the manual focus state
+  // stays untouched and returns when replay ends).
+  const replayValid =
+    replay !== null &&
+    !guided &&
+    hldSelection !== null &&
+    hldSelection.type === "flow" &&
+    hldSelection.id === replay.flowId;
+  const effectiveFlowFocus = useMemo(
+    () =>
+      replayValid && replay !== null
+        ? { flowId: replay.flowId, stepIndex: replay.stepIndex }
+        : flowFocus,
+    [replayValid, replay, flowFocus],
+  );
+
+  /** Chips → the existing details popover (selection is the single source). */
+  const selectAnnotation = useCallback((id: string) => {
+    if (id.startsWith("cmp_")) setHldSelection({ type: "component", id });
+    else if (id.startsWith("conn_")) setHldSelection({ type: "connection", id });
+    else if (id.startsWith("cls_")) setLldSelection({ type: "class", id });
+    else if (id.startsWith("rel_")) setLldSelection({ type: "relationship", id });
+  }, []);
 
   // Desktop details pane: floats over the canvas while an element is
   // selected (LLD/HLD only); closing it clears the selection — one source
@@ -190,9 +248,6 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
   const version = architecture.data?.version ?? null;
   const model: ArchitectureModel | null = version?.model ?? null;
 
-  const lldScene = useMemo(() => (model === null ? null : buildLldScene(model.lld)), [model]);
-  const hldScene = useMemo(() => (model === null ? null : buildHldScene(model.hld)), [model]);
-
   /** Canvas pattern chips: class id → participating pattern names (deduped). */
   const patternNamesByClassId = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -206,6 +261,15 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
     }
     return map;
   }, [model]);
+
+  const lldScene = useMemo(
+    () =>
+      model === null
+        ? null
+        : buildLldScene(model.lld, { patternNamesByClassId }),
+    [model, patternNamesByClassId],
+  );
+  const hldScene = useMemo(() => (model === null ? null : buildHldScene(model.hld)), [model]);
 
   // Guided sequences per view (F6): learningSteps filtered to the refs each
   // view can highlight; DSA derives a per-recommendation walkthrough when the
@@ -228,6 +292,128 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
   const lldGuidedStep = guidedAt(lldSeq, guidedCursors.lld);
   const hldGuidedStep = guidedAt(hldSeq, guidedCursors.hld);
   const dsaGuidedStep = guidedAt(dsaSeq, guidedCursors.dsa);
+
+  // Replay-derived objects (flow step / connection / polyline) — placed after
+  // the queries + scenes so every referenced declaration exists first.
+  const totalReplaySteps =
+    replay !== null
+      ? (model?.hld.flows.find((f) => f.id === replay.flowId)?.steps.length ?? 0)
+      : 0;
+  const replayFlow = replay !== null ? (model?.hld.flows.find((f) => f.id === replay.flowId) ?? null) : null;
+  const replayStep =
+    replayFlow !== null && replay !== null
+      ? ([...replayFlow.steps].sort((a, b) => a.order - b.order)[replay.stepIndex] ?? null)
+      : null;
+  const replayConnId =
+    replayStep !== null ? (replayStep.elementRefs.find((ref) => ref.startsWith("conn_")) ?? null) : null;
+  const replayConnPoints =
+    replayConnId !== null && hldScene !== null
+      ? (hldScene.edges.find((edge) => edge.id === replayConnId)?.points ?? null)
+      : null;
+
+  const startReplay = useCallback(
+    (flowId: string) => {
+      if (guided) return;
+      const flow = model?.hld.flows.find((f) => f.id === flowId);
+      if (flow === undefined || flow.steps.length === 0) return;
+      setHldSelection({ type: "flow", id: flowId });
+      setFlowFocus(null);
+      setReplay((r) => ({ flowId, stepIndex: 0, playing: true, speed: r?.speed ?? 1 }));
+    },
+    [guided, model],
+  );
+
+  const replayAdvance = useCallback(() => {
+    setReplay((r) => {
+      if (r === null) return r;
+      const total = model?.hld.flows.find((f) => f.id === r.flowId)?.steps.length ?? 0;
+      if (r.stepIndex + 1 >= total) return { ...r, playing: false };
+      return { ...r, stepIndex: r.stepIndex + 1 };
+    });
+  }, [model]);
+
+  // Reduced-motion fallback: no traveling dot; captions auto-advance.
+  useEffect(() => {
+    if (replay === null || !replay.playing || !reducedMotion) return;
+    const ms = Math.round(2200 / replay.speed);
+    const timer = setTimeout(() => replayAdvance(), ms);
+    return () => clearTimeout(timer);
+  }, [replay, reducedMotion, replayAdvance]);
+
+  const buildChips = useCallback(
+    (
+      scene: LldScene | HldScene,
+      componentIds: string[],
+      connectionIds: string[],
+      componentText: (id: string) => string,
+      connectionText: (id: string) => string,
+    ): { id: string; text: string; anchor: { x: number; y: number } }[] => {
+      const truncate = (text: string) => (text.length > 56 ? `${text.slice(0, 55)}…` : text);
+      const chips: { id: string; text: string; anchor: { x: number; y: number } }[] = [];
+      for (const id of componentIds.slice(0, 4)) {
+        const node = scene.nodes.find((n) => n.id === id);
+        const text = truncate(componentText(id));
+        if (node === undefined || text === "") continue;
+        chips.push({ id, text, anchor: { x: node.x + node.width, y: node.y } });
+      }
+      for (const id of connectionIds.slice(0, 4)) {
+        const edge = scene.edges.find((e) => e.id === id);
+        const text = truncate(connectionText(id));
+        if (edge === undefined || text === "" || edge.points.length === 0) continue;
+        const first = edge.points[0];
+        const last = edge.points[edge.points.length - 1];
+        chips.push({
+          id,
+          text,
+          anchor: { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 },
+        });
+      }
+      return chips.slice(0, 8);
+    },
+    [],
+  );
+
+  const hldAnnotationChips = useMemo(() => {
+    if (!annotateOn || model === null || hldScene === null || activeView !== "hld") return [];
+    const componentText = (id: string) =>
+      model.hld.components.find((c) => c.id === id)?.responsibility ?? "";
+    const connectionText = (id: string) =>
+      model.hld.connections.find((c) => c.id === id)?.rationale ?? "";
+    if (hldGuidedStep !== null) {
+      return buildChips(hldScene, hldGuidedStep.componentIds, hldGuidedStep.connectionIds, componentText, connectionText);
+    }
+    if (hldSelection !== null && hldSelection.type === "flow") {
+      const { componentIds, connectionIds } = flowHighlight(
+        model.hld,
+        hldSelection.id,
+        effectiveFlowFocus?.flowId === hldSelection.id ? effectiveFlowFocus.stepIndex : undefined,
+      );
+      return buildChips(hldScene, componentIds, connectionIds, componentText, connectionText);
+    }
+    return [];
+  }, [
+    annotateOn,
+    model,
+    hldScene,
+    hldGuidedStep,
+    hldSelection,
+    effectiveFlowFocus,
+    activeView,
+    buildChips,
+  ]);
+
+  const lldAnnotationChips = useMemo(() => {
+    if (!annotateOn || model === null || lldScene === null || activeView !== "lld") return [];
+    if (lldGuidedStep === null) return [];
+    const classText = (id: string) =>
+      model.lld.classes.find((c) => c.id === id)?.responsibility ?? "";
+    const relationshipText = (id: string) => {
+      const rel = model.lld.relationships.find((r) => r.id === id);
+      if (rel === undefined) return "";
+      return `${rel.sourceMultiplicity} — ${rel.label !== "" ? rel.label : rel.rationale}`;
+    };
+    return buildChips(lldScene, lldGuidedStep.classIds, lldGuidedStep.relationshipIds, classText, relationshipText);
+  }, [annotateOn, model, lldScene, lldGuidedStep, activeView, buildChips]);
 
   // Persist the active view's guided cursor so a refresh resumes at it.
   useEffect(() => {
@@ -282,7 +468,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
       const { componentIds, connectionIds } = flowHighlight(
         model.hld,
         hldSelection.id,
-        flowFocus?.flowId === hldSelection.id ? flowFocus.stepIndex : undefined,
+        effectiveFlowFocus?.flowId === hldSelection.id ? effectiveFlowFocus.stepIndex : undefined,
       );
       return { componentIds: new Set(componentIds), connectionIds: new Set(connectionIds) };
     }
@@ -293,7 +479,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
       return hldAdjacency(model.hld, hldSelection);
     }
     return empty;
-  }, [model, hldSelection, flowFocus]);
+  }, [model, hldSelection, effectiveFlowFocus]);
 
   /** Selection the HLD canvas may highlight: only components/connections. */
   const hldCanvasSelection = useMemo(() => {
@@ -563,6 +749,8 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
               : lldHighlights.relationshipIds
           }
           guidedStep={lldGuidedStep}
+          annotationChips={lldAnnotationChips}
+          onAnnotationSelect={selectAnnotation}
           className="h-full"
         />
         {lldGuidedStep !== null ? guidedBar(lldGuidedStep, "lld", lldSeq.length) : null}
@@ -585,9 +773,47 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
           }
           stepOrder={hldGuidedStep !== null ? undefined : stepOrder}
           guidedStep={hldGuidedStep}
+          replay={
+            replayValid &&
+            replay !== null &&
+            replayConnId !== null &&
+            replayConnPoints !== null &&
+            replayConnPoints.length > 1
+              ? {
+                  pointKey: `${replay.flowId}:${replay.stepIndex}:${replayConnId}`,
+                  points: replayConnPoints,
+                  speed: replay.speed,
+                  playing: replay.playing,
+                  reducedMotion,
+                  onStepDone: replayAdvance,
+                }
+              : null
+          }
+          annotationChips={hldAnnotationChips}
+          onAnnotationSelect={selectAnnotation}
           className="h-full"
         />
         {hldGuidedStep !== null ? guidedBar(hldGuidedStep, "hld", hldSeq.length) : null}
+        {replayValid && replay !== null && replayFlow !== null && replayStep !== null ? (
+          <ReplayBar
+            caption={replayStep.description}
+            index={replay.stepIndex}
+            total={replayFlow.steps.length}
+            playing={replay.playing}
+            speed={replay.speed}
+            onTogglePlay={() =>
+              setReplay((r) => (r === null ? r : { ...r, playing: !r.playing }))
+            }
+            onPrev={() => setReplay((r) => (r === null ? r : { ...r, playing: false, stepIndex: Math.max(0, r.stepIndex - 1) }))}
+            onNext={() => setReplay((r) => (r === null ? r : { ...r, playing: false, stepIndex: Math.min(totalReplaySteps - 1, r.stepIndex + 1) }))}
+            onReset={() => setReplay((r) => (r === null ? r : { ...r, playing: true, stepIndex: 0 }))}
+            onSpeed={() => setReplay((r) => (r === null ? r : { ...r, speed: r.speed === 1 ? 2 : 1, playing: true }))}
+            onClose={() => {
+              setReplay(null);
+              setFlowFocus(null);
+            }}
+          />
+        ) : null}
       </div>
     ) : null;
 
@@ -635,10 +861,11 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
       <HldDetails
         model={model.hld}
         selection={hldSelection}
-        focusedFlow={flowFocus}
+        focusedFlow={effectiveFlowFocus}
         onFlowStepFocus={(flowId, stepIndex) =>
           setFlowFocus(stepIndex === null ? null : { flowId, stepIndex })
         }
+        onReplay={guided ? undefined : startReplay}
         className="px-3 pb-4"
       />
     );
@@ -679,6 +906,16 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
             >
               <GraduationCapIcon />
               Guided
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-pressed={annotateOn}
+              disabled={model === null}
+              onClick={() => setAnnotateOn((value) => !value)}
+            >
+              <TagsIcon />
+              Annotate
             </Button>
             {isDesktop && activeView !== "dsa" ? (
               <Button
@@ -1157,6 +1394,7 @@ function RegenRunPhase({
             run={run}
             error={error}
             isLoading={isLoading}
+            context="architecture"
             onRetry={onRetry}
           />
           <div className="mt-4 flex justify-end">

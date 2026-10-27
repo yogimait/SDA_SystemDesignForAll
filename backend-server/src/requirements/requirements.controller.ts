@@ -49,6 +49,7 @@ export class RequirementsController {
       requireProject(request),
       options,
       readProviderKey(request),
+      request.user,
     );
   }
 

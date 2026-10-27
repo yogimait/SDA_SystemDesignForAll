@@ -58,12 +58,13 @@ Status: Done — 2026-10-23.
 
 **Goal**: reliable, normalized structured generation through BYOK, isolated behind one interface.
 
-- [x] `ModelProvider` interface + `ProviderRegistry` (openrouter registered only for now; Groq/Gemini adapters are later additions by construction).
+- [x] `ModelProvider` interface + `ProviderRegistry` (OpenRouter and Groq registered; Gemini remains a later adapter by construction).
 - [x] OpenRouter adapter: `chat/completions`, `Authorization: Bearer <key>` from the request header, optional OpenRouter attribution headers, model string from request (default `DEFAULT_MODEL`, e.g. `z-ai/glm-5.3-flash` — **verify exact slug and capabilities via `GET https://openrouter.ai/api/v1/models` during this phase and record it**).
 - [x] Structured-output strategy ladder per model capability: (1) `response_format: { type: "json_schema", strict: true }` + provider routing `require_parameters: true`; (2) `json_object` + JSON Schema inlined in the system prompt; (3) prompt-only JSON + tolerant extraction (code-fence/body-slice).
 - [x] Zod → JSON Schema converter + sanitization utilities (strip provider-unsupported keywords); unit-tested.
 - [x] Error normalization: HTTP 401/403 → `PROVIDER_AUTH_FAILED`; 429 with `Retry-After` → `PROVIDER_RATE_LIMITED`; timeout (AbortController) → `PROVIDER_TIMEOUT`; 4xx capability errors → `PROVIDER_UNSUPPORTED_CAPABILITY`; parse failure → `INVALID_MODEL_OUTPUT`; unknown → generic mapped.
-- [x] Per-stage generation params: system prompts under `src/providers/prompts/`, temperature ≈ 0.2, per-stage `maxOutputTokens`, timeouts (requirements 90s, HLD 360s, LLD/DSA 900s).
+- [x] Groq adapter: OpenAI-compatible `chat/completions`, GPT-OSS 120B, strict JSON Schema, `max_completion_tokens`, `reasoning_effort`, BYOK key, shared error ladder. Free-plan limits recorded: 30 RPM, 1K RPD, 8K TPM, 200K TPD.
+- [x] Per-stage generation params: system prompts under `src/providers/prompts/`, temperature ≈ 0.2, per-stage `maxOutputTokens`, timeouts (requirements 90s, HLD 600s, LLD/DSA 900s).
 - [x] Token usage capture (prompt/completion) from responses.
 - [x] `MOCK_PROVIDER=1` deterministic fake provider for e2e/demo (fixtures live in `src/providers/mock` because local demos need them, not only tests).
 
@@ -73,11 +74,11 @@ Status: Done — 2026-10-23.
 - [x] Structured-output ladder with capability fallback and balanced-brace extraction; truncation (`finish_reason: length` or incomplete JSON) is detected, surfaced with its provider reason, and fails fast instead of repeating the same over-budget repair.
 - [x] Reasoning-budget guard: `OPENROUTER_REASONING_EFFORT` defaults to `low` (reasoning tokens share `max_tokens`); LLD/DSA budget raised to 64k with a 900s timeout after the 32k live run truncated.
 - [x] Local development convenience: `backend-server/.env` can set `OPENROUTER_API_KEY`; the request header wins, production ignores the fallback, and `.env` is gitignored.
-- [ ] Live smoke test (manual, real key): model slug/capabilities verified via OpenRouter's model list (`z-ai/glm-5.3-flash`, context 1,048,576, `response_format` + `structured_outputs`); live requirements and HLD generation succeeded, but the full architecture smoke is still pending one paid LLD/DSA retry after the truncation fix.
+- [x] Live smoke test (manual, real key): model slug/capabilities verified via OpenRouter's model list (`z-ai/glm-5.3-flash`, context 1,048,576, `response_format` + `structured_outputs`); full architecture smoke succeeded on a URL-shortener project with HLD reuse, 14 classes / 19 relationships / 3 patterns, 10 components / 12 connections, 0 warnings. LLD stage used 3 attempts and 64,230 tokens.
 - [x] Redaction integration test: the API key string appears nowhere in captured logs.
 - [x] No orchestration code imports an adapter directly (registry only), verified by an architecture test/lint boundary rule if cheap, else reviewed.
 
-Status: Implemented — live requirements + HLD verified; full architecture smoke pending one paid LLD/DSA retry after the truncation fix.
+Status: Implemented — live requirements + full architecture smoke passed (HLD reused; LLD/DSA 3 attempts, 64,230 tokens, 0 warnings).
 
 ---
 
@@ -117,6 +118,7 @@ Status: Done — 2026-10-23.
 - [x] **Structural validator**: schema/types; unique IDs (per collection, prefix-validated e.g. `cls_`, `rel_`, `cmp_`, `conn_`, `flow_`, `dsa_`, `step_`); valid relationship endpoints + type/multiplicity compatibility matrix (e.g., realization → interface only; inheritance source/target class-or-abstract); no self-connections in HLD; flow step refs and connection refs valid; learning refs valid; required fields; complexity string presence.
 - [x] **Semantic checks (warnings)**: every `Must` FR referenced by ≥1 element or flagged; NFR measurable-target presence; class-name duplicates; minimal sanity (≥1 class, ≥1 component, ≥1 connection); empty pattern lists allowed (patterns only when justified).
 - [x] **Bounded repair**: max 2 attempts, prompt contains only the failing rule list + failing subtree context; blocking validation failure after repairs → `GENERATION_REPAIR_FAILED` with per-rule messages; warnings never block (returned with version, surfaced to frontend).
+- [x] **LLD connectivity + pattern catalog**: orphan classes/components are reported as warnings (flexible success); the prompt lists the candidate GoF catalog (creational, structural, behavioral, Null Object) and asks the model to connect pattern participants. Method signatures must not repeat the method name.
 - [x] **Versioning + scoped regeneration**: every success writes an `architecture_versions` row; project points at current; `POST /api/projects/:id/architecture/regenerate` accepts `scope: lld|hld|dsa` and regenerates only that section against pinned untouched sections, with validation guaranteeing preserved IDs where safe.
 - [x] Requirement-history awareness: when confirmed specs change, regeneration gets the previous version + spec diff summary; full correctness is re-established by validation, not assumed.
 
@@ -126,9 +128,9 @@ Status: Done — 2026-10-23.
 - [x] Fake-provider e2e: confirm spec → two-phase run → version persisted → architecture fetched → warnings surfaced.
 - [x] Scoped-regeneration drift test: regenerate `dsa` only → LLD/HLD sections byte-identical to previous version.
 - [x] Cross-layer traceability spot-check: each Must FR maps to ≥1 element or a warning explanation (fixture-driven).
-- [ ] Live smoke (manual, GLM-5.3 Flash): one small system generates a fully valid end-to-end model; record token usage + duration in run rows. Requirements and HLD succeeded live; LLD/DSA retry pending after the reasoning/truncation fix.
+- [x] Live smoke (manual, GLM-5.3 Flash): one small system generates a fully valid end-to-end model; HLD reused from the failed run, LLD/DSA succeeded after 3 attempts, 64,230 tokens, 0 warnings. Recorded in `.data/real-arch-retry2.json`.
 
-Status: Implemented — exhaustive per-rule tests and live end-to-end smoke pending.
+Status: Implemented - live end-to-end smoke passed; exhaustive per-rule coverage remains open.
 
 ---
 
@@ -156,14 +158,33 @@ Status: Backend complete — full frontend README remains with the frontend trac
 
 ---
 
+## Post-MVP accounts, ownership, and analytics (2026-10-27)
+
+- [x] Users, auth sessions, saved provider configs, user preferences, nullable project ownership.
+- [x] `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `POST /auth/logout`; scrypt passwords; opaque hashed Bearer sessions.
+- [x] Optional auth on project creation, Bearer owner or project-key access, owned-project listing with cursor/limit/status.
+- [x] Saved provider config and preference merge; no provider keys stored.
+- [x] Free/Pro project/run/token limits and Pro-only scoped regeneration.
+- [x] Dashboard totals, daily buckets, top models, recent runs.
+
+---
+
 ## Interfaces the frontend can rely on
 
 | Method + path | Purpose |
 | --- | --- |
 | `GET /api/health` | Liveness, enveloped. |
 | `GET /api/providers` | Provider metadata + current model info. |
-| `POST /api/projects` | Create project from idea (+ access key once). |
+| `POST /api/auth/register` | Create account + Bearer session. |
+| `POST /api/auth/login` | Login + Bearer session. |
+| `GET /api/auth/me` | Current user. |
+| `POST /api/auth/logout` | Revoke session. |
+| `POST /api/projects` | Create project; owner when authenticated (+ access key once). |
+| `GET /api/projects` | List owned projects (cursor/limit/status). |
 | `GET /api/projects/:id` | Project state. |
+| `GET /api/provider-config` / `PUT /api/provider-config` | Saved non-secret provider selection. |
+| `GET /api/preferences` / `PUT /api/preferences` | User preferences. |
+| `GET /api/dashboard` | Usage aggregation. |
 | `POST /api/projects/:id/requirements` | Start requirements generation run. |
 | `GET /api/projects/:id/requirements` | Current editable spec + assumptions/questions. |
 | `PUT /api/projects/:id/requirements` | Save/confirm edited spec. |
@@ -172,10 +193,10 @@ Status: Backend complete — full frontend README remains with the frontend trac
 | `POST /api/projects/:id/architecture/regenerate` | Scoped LLD/HLD/DSA regeneration. |
 | `GET /api/runs/:runId` | Run status, real stages, usage, errors. |
 
-All responses enveloped; provider key via `x-provider-api-key`; project access via `x-project-key`.
+All responses enveloped; provider key via `x-provider-api-key`; project access via `x-project-key` or owner Bearer session; account routes via Bearer.
 
 ## Deliberately out of backend scope (MVP)
 
-Groq/Gemini adapters (interface ready, not built), Redis/BullMQ, multi-instance workers, hosted-key vault, full user auth, streaming/SSE (polling suffices at MVP scale), Supabase migration, section-diff auto-repair beyond scoped regeneration. Real-Postgres integration run is an optional flag, required before-public-beta.
+Gemini adapter, Redis/BullMQ, multi-instance workers, hosted-key vault, streaming/SSE (polling suffices at MVP scale), Supabase migration, section-diff auto-repair beyond scoped regeneration. Real-Postgres integration run is an optional flag, required before-public-beta. Groq free-plan full LLD/DSA (8K TPM) needs an upgraded plan or a split generation path.
 
 Related: [[Home]] · [[Project-Overview]] · [[Tech-Stack]] · [[Roadmap-Planner-Frontend]]

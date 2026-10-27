@@ -11,8 +11,10 @@ import { useEffect, useMemo } from "react";
 import { MinusIcon, PlusIcon, MaximizeIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "cn";
+import { AnnotationChips, type AnnotationChip } from "@/components/diagram/annotation-chips";
 import type { RelationshipKind } from "@sda/contracts";
 import { useDiagramViewport } from "@/hooks/use-diagram-viewport";
+import { wrapLabel } from "@/lib/diagram/label-wrap";
 import {
   KIND_STEREOTYPE,
   MARKER_BY_KIND,
@@ -84,6 +86,8 @@ export function DiagramCanvas({
   highlightRelationshipIds,
   guidedStep,
   patternNamesByClassId,
+  annotationChips,
+  onAnnotationSelect,
   className,
 }: {
   scene: LldScene;
@@ -95,6 +99,9 @@ export function DiagramCanvas({
   guidedStep?: { id: string; classIds: string[]; relationshipIds: string[] } | null;
   /** class id → names of design patterns the class participates in */
   patternNamesByClassId?: Map<string, string[]>;
+  /** narrative annotation chips (Annotate toggle) */
+  annotationChips?: AnnotationChip[];
+  onAnnotationSelect?: (id: string) => void;
   className?: string;
 }) {
   const viewport = useDiagramViewport(scene, () => onSelect(null));
@@ -224,7 +231,14 @@ export function DiagramCanvas({
               const dimmed = dimming && !highlighted && !selected;
               const marker = MARKER_BY_KIND[edge.kind];
               const dash = EDGE_DASH[edge.kind];
-              const labelPoint = edge.points[Math.max(0, Math.floor(edge.points.length / 2) - 1)] ?? edge.points[0];
+              // Label anchored at the true midpoint (dagre's first point is on
+              // the source border; an index-based mid sits against a node).
+              const firstPoint = edge.points[0];
+              const lastPoint = edge.points[edge.points.length - 1];
+              const labelPoint =
+                firstPoint !== undefined && lastPoint !== undefined
+                  ? { x: (firstPoint.x + lastPoint.x) / 2, y: (firstPoint.y + lastPoint.y) / 2 }
+                  : firstPoint;
               const fromPoint = edge.points[0];
               const toPoint = edge.points[edge.points.length - 1];
 
@@ -284,20 +298,31 @@ export function DiagramCanvas({
                     </text>
                   ) : null}
                   {edge.label !== "" && labelPoint !== undefined ? (
-                    <text
-                      x={labelPoint.x}
-                      y={labelPoint.y + 14}
-                      textAnchor="middle"
-                      className={cn(
-                        "pointer-events-none font-mono text-[10px]",
-                        selected ? "fill-primary" : "fill-muted-foreground",
-                      )}
-                      stroke="var(--card)"
-                      paintOrder="stroke"
-                      strokeWidth={3.5}
-                    >
-                      {edge.label}
-                    </text>
+                    (() => {
+                      // Long labels painted straight bled across neighbouring
+                      // nodes — wrap into tspans under the line.
+                      const lines = wrapLabel(edge.label, 26, 2);
+                      return (
+                        <text
+                          x={labelPoint.x}
+                          y={labelPoint.y + 10}
+                          textAnchor="middle"
+                          className={cn(
+                            "pointer-events-none font-mono text-[10px]",
+                            selected ? "fill-primary" : "fill-muted-foreground",
+                          )}
+                          stroke="var(--card)"
+                          paintOrder="stroke"
+                          strokeWidth={3.5}
+                        >
+                          {lines.map((line, index) => (
+                            <tspan key={index} x={labelPoint.x} dy={index === 0 ? 0 : 11}>
+                              {line}
+                            </tspan>
+                          ))}
+                        </text>
+                      );
+                    })()
                   ) : null}
                 </g>
               );
@@ -359,14 +384,29 @@ export function DiagramCanvas({
                     )}
                   />
                   {patternNames.length > 0 ? (
-                    <text
-                      x={node.width}
-                      y={-6}
-                      textAnchor="end"
-                      className="fill-primary pointer-events-none font-mono text-[9px]"
-                    >
-                      {`◈ ${patternNames.slice(0, 3).join(" · ")}${patternNames.length > 3 ? " …" : ""}`}
-                    </text>
+                    (() => {
+                      // Inside the header (right-anchored): floating above the
+              // box collided with edge labels that sit in the same gap.
+                      const count = patternNames.length;
+                      const first = patternNames[0];
+                      // ~96px budget (the scene reserves that name room);
+                      // full names stay in the node's aria-label.
+                      const shown =
+                        first.length > 15 ? `${first.slice(0, 14)}…` : first;
+                      const text =
+                        count === 1
+                          ? `◈ ${shown}`
+                          : `◈ ${shown} +${count - 1}`;                      return (
+                        <text
+                          x={node.width - 8}
+                          y={14}
+                          textAnchor="end"
+                          className="fill-primary pointer-events-none font-mono text-[9px]"
+                        >
+                          {text}
+                        </text>
+                      );
+                    })()
                   ) : null}
                   {stereotype !== "" ? (
                     <text
@@ -424,6 +464,12 @@ export function DiagramCanvas({
                 </g>
               );
             })}
+            {annotationChips !== undefined && annotationChips.length > 0 ? (
+              <AnnotationChips
+                chips={annotationChips}
+                onSelect={(id) => onAnnotationSelect?.(id)}
+              />
+            ) : null}
           </g>
         </svg>
 

@@ -27,7 +27,7 @@ All four checks must pass before backend work is done. Tests use in-memory PGlit
 - **Contracts**: include request/response schemas in `@sda/contracts`. Do not redefine DTOs or the architecture model in this app.
 - **Canonical model only**: persist and return the validated model. No sample architectures, static images, or simulated stage progress in production paths.
 - **No hardcoded model**: provider and model come from the request or env (`DEFAULT_PROVIDER`, `DEFAULT_MODEL`). Orchestration never imports an adapter directly; go through `ProviderRegistry`.
-- **Secrets**: `x-provider-api-key` stays in memory for one run. Production path is header-only; for local development only, `OPENROUTER_API_KEY` in the gitignored `.env` is a fallback (header wins, `NODE_ENV=production` ignores it). Never persist, log, or echo a key. `x-project-key` is the project boundary; only its SHA-256 hash is stored.
+- **Secrets**: `x-provider-api-key` stays in memory for one run. Production path is header-only; for local development only, `OPENROUTER_API_KEY` or `GROQ_API_KEY` in the gitignored `.env` is a fallback (header wins, `NODE_ENV=production` ignores it). Never persist, log, or echo a key. `x-project-key` is the project boundary; only its SHA-256 hash is stored.
 - **Real stages**: stage state comes from persisted `generation_stages` rows. Do not add fake delays or optimistic stage transitions.
 - **Persistence**: access the database only through repository interfaces. Keep PGlite and Postgres interchangeable; no SQL in controllers or generators.
 - **Validation**: validate external data with Zod at the HTTP boundary and model output with contracts. No `any` without a documented reason.
@@ -43,6 +43,10 @@ All four checks must pass before backend work is done. Tests use in-memory PGlit
 | `src/providers/` | `ModelProvider`, registry, OpenRouter adapter, mock, prompts, schema sanitizer. |
 | `src/generation/` | Run service, DB-backed single worker, requirements/architecture generators. |
 | `src/projects/`, `src/requirements/`, `src/architecture/` | Controllers and domain services. |
+| `src/auth/` | Register/login/logout, scrypt password hashing, opaque sessions. |
+| `src/account/` | Saved provider config and user preferences. |
+| `src/analytics/` | Dashboard usage aggregation. |
+| `src/plans/` | Free/Pro limits and upgrade gates. |
 | `src/architecture/validator.ts` | Structural + semantic validation of the merged model. |
 
 ## Database changes

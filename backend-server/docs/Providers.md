@@ -24,10 +24,10 @@ interface ModelProvider {
 ## Registry rules
 
 - `MOCK_PROVIDER=1` takes precedence and always returns the deterministic mock, regardless of the requested provider.
-- Otherwise, `provider` from the request (or `DEFAULT_PROVIDER`, default `openrouter`) must be `openrouter`; anything else is `VALIDATION_ERROR` with the available provider list.
-- A real run without `x-provider-api-key` fails immediately with `PROVIDER_AUTH_FAILED`.
+- Otherwise, `provider` from the request (or `DEFAULT_PROVIDER`, default `openrouter`) must be `openrouter` or `groq`; anything else is `VALIDATION_ERROR` with the available provider list.
+- A real run without `x-provider-api-key` fails immediately with `PROVIDER_AUTH_FAILED`, unless the matching local `.env` key is set (development only).
 - `GET /api/providers` returns the registered provider metadata, the env defaults, and the mock flag. It never returns a key.
-- `DEFAULT_MODEL` is the only default model source. No generation module hardcodes a model slug.
+- `DEFAULT_MODEL` is the active default model. `OPENROUTER_MODEL` and `GROQ_MODEL` are the per-provider model names shown by `GET /api/providers`. No generation module hardcodes a model slug.
 
 ## BYOK flow
 
@@ -56,7 +56,7 @@ sequenceDiagram
 
 ### Local development fallback
 
-`backend-server/.env` may set `OPENROUTER_API_KEY` so manual testing does not require the provider dialog on every run. `main.ts` loads `.env` when present; shell and process-manager variables win. `ProviderRegistry` uses the fallback only when:
+`backend-server/.env` may set `OPENROUTER_API_KEY` and/or `GROQ_API_KEY` so manual testing does not require the provider dialog on every run. `main.ts` loads `.env` when present; shell and process-manager variables win. `ProviderRegistry` uses the matching fallback only when:
 
 - `x-provider-api-key` is absent or blank,
 - `NODE_ENV` is not `production`.
@@ -109,13 +109,19 @@ Zod still validates the real payload. Provider-side schema hints are best-effort
 | Stage | Schema name | Max output tokens | Timeout |
 | --- | --- | --- | --- |
 | Requirements | `requirements_analysis` | 4,000 | 90 s |
-| HLD | `hld_model` | 12,000 | 360 s |
+| HLD | `hld_model` | 32,000 | 600 s |
 | LLD + DSA + learning | `lld_dsa_model` | 64,000 | 900 s |
-| Scoped HLD/LLD/DSA | `hld_model` / `lld_model` / `dsa_model` | 12,000 / 64,000 / 64,000 | 900 s |
+| Scoped HLD/LLD/DSA | `hld_model` / `lld_model` / `dsa_model` | 32,000 / 64,000 / 64,000 | 900 s |
 
 System prompts and repair prompts live in `src/providers/prompts/index.ts`. Temperature is fixed at 0.2 in the adapter.
 
-GLM-5.3 Flash mandates reasoning. OpenRouter maps `effort: "low"` to roughly 20% of `max_tokens`, so the 64k LLD/DSA budget leaves about 51k tokens for visible JSON. A 32k budget left only about 26k visible and still truncated on a real run. Truncation errors now record the completion and reasoning token counts.
+GLM-5.3 Flash mandates reasoning. OpenRouter maps `effort: "low"` to roughly 20% of `max_tokens`, so the 32k HLD budget leaves about 26k visible and the 64k LLD/DSA budget about 51k. A 12k HLD budget truncated on a real run; the concise HLD prompt now targets 6-12 components, 8-16 connections, and 1-2 flows. Truncation errors record completion and reasoning token counts.
+
+## Groq adapter
+
+Request: `POST https://api.groq.com/openai/v1/chat/completions` with `Authorization: Bearer <key>`, `max_completion_tokens` from the stage budget, and `reasoning_effort` from `GROQ_REASONING_EFFORT` (default `low`). No OpenRouter `provider` routing or `X-Title` header is sent. GPT-OSS 120B supports strict `json_schema`; the shared ladder falls back to `json_object` then prompt-only if needed.
+
+The current free-plan key is limited to **30 RPM, 1,000 RPD, 8,000 TPM, 200,000 TPD** for `openai/gpt-oss-120b`. A 64k LLD/DSA request cannot fit the 8k TPM budget. Use OpenRouter for the full 64k generation, upgrade the Groq plan, or split LLD/DSA into multiple Groq calls (not implemented yet). The adapter maps Groq `429` responses to `PROVIDER_RATE_LIMITED` with `retryAfterSeconds`.
 
 ## Verified model
 
@@ -126,7 +132,16 @@ GLM-5.3 Flash mandates reasoning. OpenRouter maps `effort: "low"` to roughly 20%
 | `response_format` | Supported |
 | `structured_outputs` | Supported |
 
-The slug was verified against OpenRouter's model list. It is a default only: clients may request another model, and deployments may set `DEFAULT_MODEL`. A full live architecture smoke (all phases, recorded usage) is still pending; the adapter and model metadata are verified.
+The slug was verified against OpenRouter's model list. It is a default only: clients may request another model, and deployments may set `DEFAULT_MODEL`.
+
+| Groq field | Value |
+| --- | --- |
+| Groq model | `openai/gpt-oss-120b` |
+| Context length | 131,072 tokens |
+| Strict `json_schema` | Supported (live probe) |
+| Free-plan limits | 30 RPM, 1,000 RPD, 8,000 TPM, 200,000 TPD |
+
+The Groq model and strict schema path were verified with a live probe. Free-plan TPM is the blocker for the 64k LLD/DSA stage. A full live architecture smoke passed on OpenRouter: HLD reused, LLD/DSA succeeded on attempt 3 with 64,230 tokens, 14 classes, 19 relationships, 3 patterns, 10 components, 12 connections, and 0 warnings.
 
 ## Mock provider
 

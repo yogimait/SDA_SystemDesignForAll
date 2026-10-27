@@ -6,6 +6,20 @@ architecture that satisfies the stated requirements. Never invent tested
 reliability claims. Output must be one JSON object only, with no Markdown.
 Keep every free-text field concise: at most 450 characters each.`;
 
+const DESIGN_PATTERN_CATALOG = `Candidate design-pattern catalog (not a checklist):
+- Creational: Singleton; Simple Factory; Factory Method; Abstract Factory;
+  Classic Builder; Step Builder; Builder with Director; Prototype.
+- Structural: Object Adapter; Class Adapter; Bridge; Composite; Decorator;
+  Facade; Flyweight; Virtual Proxy; Protection Proxy; Remote Proxy.
+- Behavioral: Chain of Responsibility; Command; Iterator; Mediator; Memento;
+  Observer; State; Strategy; Template Method; Visitor.
+- Special idiom: Null Object (use category "behavioral").
+Choose only patterns that solve a real problem in this design. Prefer 2-5
+justified patterns; never add a pattern just to cover the catalog. Pattern
+participants must be connected by relationships that express the pattern
+(for example realization to an interface, or association/aggregation to a
+collaborator).`;
+
 export function requirementsSystemPrompt(): string {
   return `${CORE_RULES}
 
@@ -29,6 +43,11 @@ export function hldSystemPrompt(): string {
 
 Task: produce the high-level design (HLD) for the confirmed requirements.
 Rules:
+- Aim for 6-12 components, 8-16 connections, and 1-2 end-to-end flows.
+  Completeness and readability matter more than exhaustive detail.
+- Every component must appear in at least one connection. Do not leave
+  disconnected components.
+- At most 3 technology decisions, 3 scalability notes, and 3 failure scenarios.
 - Components use ids like cmp_<name>; connections conn_<name>; flows flow_<name>;
   technology decisions tech_<name>; scalability notes scale_<name>; failure
   scenarios fail_<name>.
@@ -58,6 +77,9 @@ export function lldDsaSystemPrompt(): string {
 Task: produce the low-level design (LLD), DSA analysis, learning steps, and model
 metadata for an architecture whose HLD is already fixed.
 Rules:
+- Aim for 8-14 classes, 10-20 relationships, 2-5 justified design patterns,
+  3-5 DSA recommendations, and 4-8 learning steps. Prefer one connected class
+  graph. Completeness and readability matter more than exhaustive detail.
 - Classes use ids like cls_<name>; relationships rel_<name>; patterns pat_<name>;
   DSA recommendations dsa_<name>; algorithmic patterns alg_<name>; learning
   steps step_<name>.
@@ -71,6 +93,16 @@ Rules:
   "1" or "0..1".
 - Design patterns only when justified. Each includes participants (class ids),
   benefits, drawbacks, a simpler alternative, and when it is unnecessary.
+- Every class, abstract class, and interface must have at least one
+  relationship. enum and value_object classes may stand alone only when they
+  are used as member types. Do not leave disconnected classes.
+- Before returning, check multiplicities: composition/aggregation source is
+  "1" or "0..1"; inheritance/realization use "1" on both ends.
+- learningSteps[].elementRefs may contain only HLD/LLD/DSA element ids
+  (cls_, rel_, pat_, cmp_, conn_, flow_, tech_, scale_, fail_, dsa_, alg_).
+  Never use requirement ids (fr_/nfr_) or invented ids.
+- Method signature must start with "(" and must not repeat the method name.
+- ${DESIGN_PATTERN_CATALOG}
 - DSA recommendations are operation-scoped and state average and worst case in
   words, plus the layer they belong to (lld, hld, shared). Include assumptions,
   alternatives, and limitations.

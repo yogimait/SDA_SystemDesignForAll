@@ -49,14 +49,18 @@ Each e2e file builds its own Nest app with `configureApp()` and `app.init()`, so
 | `generators.spec.ts` | Repair exhaustion for requirements and HLD, success after one repair. |
 | `all-exceptions.filter.spec.ts` | Envelope mapping, details, redaction, hidden 500 details, database/payload translation. |
 | `api-response.interceptor.spec.ts` | Success wrapping and no double-wrap. |
-| `database.repositories.spec.ts` | PGlite migrations, project/access, requirements replace, run claim/update/reconcile/HLD reuse, architecture versioning and uniqueness, JSONB round-trip. |
+| `database.repositories.spec.ts` | PGlite migrations, project/access, requirements replace, run claim/update/reconcile/HLD reuse, architecture versioning and uniqueness, JSONB round-trip, users/sessions/provider config/preferences/owned-project listing/dashboard source rows. |
+| `auth.service.spec.ts` | Register/login/logout, normalized email, opaque hashed sessions, duplicate email, invalid credentials. |
+| `password.service.spec.ts` | scrypt hash/verify, fresh salt, plaintext absence. |
+| `plan.service.spec.ts` | Free project/run/token limits, Pro scoped-regeneration gate, anonymous no-op. |
+| `dashboard.service.spec.ts` | Totals, daily buckets, top models, recent-run ordering. |
 | `database.reopen.spec.ts` | File-backed PGlite reopen, idempotent migration re-run, and boot-time reconciliation of an interrupted run. |
 
 The repository suite uses a real Drizzle + PGlite database, not mocks. It exercises the generated SQL migrations.
 
 ## E2e coverage
 
-`test/app.e2e-spec.ts` runs the public HTTP surface with supertest:
+`test/app.e2e-spec.ts` runs the public HTTP surface with supertest. `test/auth.e2e-spec.ts` covers register/login/me/logout, normalized email, duplicate/invalid credentials, project ownership and listing cursor/status, anonymous legacy access, provider config without keys, preference merge, plan limits/upgrade-required, and dashboard aggregation/validation. Manual mock-mode verification uses `MOCK_PROVIDER=1` and the same HTTP surface.
 
 - health and provider metadata envelopes;
 - project creation, validation error, payload limit, missing/wrong access key;

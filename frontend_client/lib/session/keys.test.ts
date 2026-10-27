@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearProviderSetup,
+  consumePendingIdea,
   loadProjectAccessKey,
   loadProviderSetup,
+  peekPendingIdea,
+  savePendingIdea,
   saveProjectAccessKey,
   saveProviderSetup,
 } from "./keys";
@@ -53,5 +56,24 @@ describe("project access key storage", () => {
     saveProjectAccessKey("p_1", "pk_abc");
     expect(loadProjectAccessKey("p_1")).toBe("pk_abc");
     expect(loadProjectAccessKey("p_2")).toBeNull();
+  });
+});
+
+describe("pending idea storage (sign-in-and-continue)", () => {
+  it("peek sees the idea without consuming it; consume clears the slot once", () => {
+    savePendingIdea("Design a rate limiter");
+    expect(peekPendingIdea()).toBe("Design a rate limiter");
+    // peek is non-destructive
+    expect(peekPendingIdea()).toBe("Design a rate limiter");
+
+    expect(consumePendingIdea()).toBe("Design a rate limiter");
+    expect(consumePendingIdea()).toBeNull();
+    expect(peekPendingIdea()).toBeNull();
+  });
+
+  it("treats an empty slot as null", () => {
+    savePendingIdea("");
+    expect(peekPendingIdea()).toBeNull();
+    expect(consumePendingIdea()).toBeNull();
   });
 });

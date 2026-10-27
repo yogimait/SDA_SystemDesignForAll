@@ -37,6 +37,11 @@ import {
   lldRegenerateUserPrompt,
 } from "../providers/prompts/index.js";
 import {
+  compactHld,
+  compactLld,
+  compactRequirements,
+} from "../providers/prompts/compact-context.js";
+import {
   collectElementIds,
   pruneLearningSteps,
   toValidationReport,
@@ -49,9 +54,9 @@ import { addUsage } from "./requirements.generator.js";
 const MAX_ATTEMPTS = 3; // initial call + 2 bounded repairs
 // Large structured generations can legitimately take several minutes; the
 // timeout must cover body streaming, not just response headers.
-const HLD_TIMEOUT_MS = 360_000;
+const HLD_TIMEOUT_MS = 600_000;
 const LLD_DSA_TIMEOUT_MS = 900_000;
-const HLD_MAX_TOKENS = 12_000;
+const HLD_MAX_TOKENS = 32_000;
 const LLD_DSA_MAX_TOKENS = 64_000;
 
 const HLD_SCHEMA = zodToJsonSchema(HldModelSchema);
@@ -112,7 +117,11 @@ export class ArchitectureGenerator {
           timeoutMs: HLD_TIMEOUT_MS,
         });
         addUsage(usage, result.usage);
-        const parsed = HldModelSchema.safeParse(result.data);
+        const parsed = HldModelSchema.safeParse(
+          normalizeRelationshipMultiplicities(
+            sanitizeRequirementRefs(result.data, requirements),
+          ),
+        );
         if (!parsed.success) {
           issues = schemaIssues(parsed.error.issues);
         } else {
@@ -124,13 +133,10 @@ export class ArchitectureGenerator {
         }
 
         if (attempt < MAX_ATTEMPTS) {
-          messages.push(
-            { role: "assistant", content: JSON.stringify(result.data) },
-            {
-              role: "user",
-              content: buildRepairMessage(result.data, issues),
-            },
-          );
+          messages.push({
+            role: "user",
+            content: buildRepairMessage(result.data, issues),
+          });
         }
       } catch (error) {
         if (
@@ -171,8 +177,8 @@ export class ArchitectureGenerator {
         role: "user",
         content: lldDsaUserPrompt(
           idea,
-          JSON.stringify(requirements.spec),
-          JSON.stringify(hld),
+          JSON.stringify(compactRequirements(requirements.spec)),
+          JSON.stringify(compactHld(hld)),
         ),
       },
     ];
@@ -192,7 +198,14 @@ export class ArchitectureGenerator {
           timeoutMs: LLD_DSA_TIMEOUT_MS,
         });
         addUsage(usage, result.usage);
-        const parsed = LldDsaOutputSchema.safeParse(result.data);
+        const parsed = LldDsaOutputSchema.safeParse(
+          sanitizeLearningRefs(
+            normalizeRelationshipMultiplicities(
+              sanitizeRequirementRefs(result.data, requirements),
+            ),
+            hld,
+          ),
+        );
         if (!parsed.success) {
           issues = schemaIssues(parsed.error.issues);
         } else {
@@ -208,13 +221,10 @@ export class ArchitectureGenerator {
         }
 
         if (attempt < MAX_ATTEMPTS) {
-          messages.push(
-            { role: "assistant", content: JSON.stringify(result.data) },
-            {
-              role: "user",
-              content: buildRepairMessage(result.data, issues),
-            },
-          );
+          messages.push({
+            role: "user",
+            content: buildRepairMessage(result.data, issues),
+          });
         }
       } catch (error) {
         if (
@@ -316,7 +326,11 @@ export class ArchitectureGenerator {
         throw error;
       }
 
-      const parsed = configuration.parse(sectionData);
+      const parsed = configuration.parse(
+        normalizeRelationshipMultiplicities(
+          sanitizeRequirementRefs(sectionData, requirements),
+        ),
+      );
       if (!parsed.success) {
         issues = schemaIssues(parsed.error.issues);
       } else {
@@ -352,16 +366,10 @@ export class ArchitectureGenerator {
       }
 
       if (attempt < MAX_ATTEMPTS) {
-        messages.push(
-          {
-            role: "assistant",
-            content: JSON.stringify(sectionData) ?? "null",
-          },
-          {
-            role: "user",
-            content: buildRepairMessage(sectionData, issues),
-          },
-        );
+        messages.push({
+          role: "user",
+          content: buildRepairMessage(sectionData, issues),
+        });
       }
     }
 
@@ -421,8 +429,8 @@ function scopedConfiguration(
       system: lldDsaSystemPrompt(),
       userPrompt: lldRegenerateUserPrompt(
         idea,
-        JSON.stringify(requirements.spec),
-        JSON.stringify(current.hld),
+        JSON.stringify(compactRequirements(requirements.spec)),
+        JSON.stringify(compactHld(current.hld)),
         requirementsDiff,
       ),
       schemaName: "lld_model",
@@ -441,9 +449,9 @@ function scopedConfiguration(
     system: lldDsaSystemPrompt(),
     userPrompt: dsaRegenerateUserPrompt(
       idea,
-      JSON.stringify(requirements.spec),
-      JSON.stringify(current.hld),
-      JSON.stringify(current.lld),
+      JSON.stringify(compactRequirements(requirements.spec)),
+      JSON.stringify(compactHld(current.hld)),
+      JSON.stringify(compactLld(current.lld)),
       requirementsDiff,
     ),
     schemaName: "dsa_model",
@@ -466,6 +474,146 @@ function parseWith<T>(
   return parsed.success
     ? { success: true, data: parsed.data }
     : { success: false, error: parsed.error };
+}
+
+/**
+ * Drops hallucinated requirement references before schema parsing. A stray
+ * `fr_...` must not fail a complete diagram after two repairs; known ids are
+ * preserved, unknown/invalid ones are removed and surface as semantic
+ * warnings later.
+ */
+function sanitizeRequirementRefs<T>(
+  value: T,
+  requirements: ConfirmedRequirements,
+): T {
+  const known = new Set([
+    ...requirements.spec.functional.map((item) => item.id),
+    ...requirements.spec.nonFunctional.map((item) => item.id),
+  ]);
+
+  const visit = (node: unknown): unknown => {
+    if (Array.isArray(node)) {
+      return node.map(visit);
+    }
+    if (node === null || typeof node !== "object") {
+      return node;
+    }
+    const record = { ...(node as Record<string, unknown>) };
+    if (Array.isArray(record.requirementRefs)) {
+      record.requirementRefs = record.requirementRefs.filter(
+        (ref): ref is string =>
+          typeof ref === "string" && known.has(ref),
+      );
+    }
+    for (const [key, child] of Object.entries(record)) {
+      if (key !== "requirementRefs") {
+        record[key] = visit(child);
+      }
+    }
+    return record;
+  };
+
+  return visit(value) as T;
+}
+
+/**
+ * Normalizes relationship multiplicity mistakes that have one correct UML
+ * answer: the whole side of aggregation/composition is "1"/"0..1", and
+ * inheritance/realization use "1" on both ends. This avoids paying for a
+ * repair request for a deterministic mistake.
+ */
+function normalizeRelationshipMultiplicities<T>(value: T): T {
+  const visit = (node: unknown): unknown => {
+    if (Array.isArray(node)) {
+      return node.map(visit);
+    }
+    if (node === null || typeof node !== "object") {
+      return node;
+    }
+    const record = { ...(node as Record<string, unknown>) };
+    if (
+      typeof record.kind === "string" &&
+      typeof record.sourceMultiplicity === "string" &&
+      typeof record.targetMultiplicity === "string"
+    ) {
+      if (
+        ["aggregation", "composition"].includes(record.kind) &&
+        !["1", "0..1"].includes(record.sourceMultiplicity)
+      ) {
+        record.sourceMultiplicity = "1";
+      }
+      if (
+        ["inheritance", "realization"].includes(record.kind) &&
+        (record.sourceMultiplicity !== "1" ||
+          record.targetMultiplicity !== "1")
+      ) {
+        record.sourceMultiplicity = "1";
+        record.targetMultiplicity = "1";
+      }
+    }
+    for (const [key, child] of Object.entries(record)) {
+      record[key] = visit(child);
+    }
+    return record;
+  };
+  return visit(value) as T;
+}
+
+/**
+ * Drops learning-step references that do not point at an architecture element
+ * (models sometimes use requirement ids such as `nfr_...`). Steps left with no
+ * valid references are removed; the schema still requires at least one step.
+ */
+function sanitizeLearningRefs<T>(value: T, hld: HldModel): T {
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  if (!Array.isArray(record.learningSteps)) {
+    return value;
+  }
+  const known = new Set<string>();
+  const addIds = (items: unknown): void => {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      if (
+        item !== null &&
+        typeof item === "object" &&
+        typeof (item as { id?: unknown }).id === "string"
+      ) {
+        known.add((item as { id: string }).id);
+      }
+    }
+  };
+  const lld = record.lld as Record<string, unknown> | undefined;
+  const dsa = record.dsa as Record<string, unknown> | undefined;
+  addIds(lld?.classes);
+  addIds(lld?.relationships);
+  addIds(lld?.patterns);
+  addIds(dsa?.recommendations);
+  addIds(dsa?.algorithmicPatterns);
+  addIds(hld.components);
+  addIds(hld.connections);
+  addIds(hld.flows);
+  addIds(hld.technologyDecisions);
+  addIds(hld.scalabilityNotes);
+  addIds(hld.failureScenarios);
+
+  const learningSteps = record.learningSteps
+    .filter(
+      (step): step is Record<string, unknown> =>
+        step !== null &&
+        typeof step === "object" &&
+        Array.isArray((step as { elementRefs?: unknown }).elementRefs),
+    )
+    .map((step) => ({
+      ...step,
+      elementRefs: (step.elementRefs as unknown[]).filter(
+        (ref): ref is string => typeof ref === "string" && known.has(ref),
+      ),
+    }))
+    .filter((step) => step.elementRefs.length > 0);
+  return { ...record, learningSteps } as T;
 }
 
 function mergeWithPrunedLearning(

@@ -96,13 +96,10 @@ export class RequirementsGenerator {
         message: `${issue.path.join(".") || "body"}: ${issue.message}`,
       }));
       if (attempt < MAX_ATTEMPTS) {
-        messages.push(
-          { role: "assistant", content: JSON.stringify(result.data) },
-          {
-            role: "user",
-            content: buildRepairMessage(result.data, lastIssues),
-          },
-        );
+        messages.push({
+          role: "user",
+          content: buildRepairMessage(result.data, lastIssues),
+        });
       }
     }
 

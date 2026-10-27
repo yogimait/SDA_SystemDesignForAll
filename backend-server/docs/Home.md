@@ -15,7 +15,7 @@ Living documentation for `backend-server/` and the backend side of `packages/con
 
 ## Current state
 
-- Phases B0–B5 of the [backend roadmap](../../initial-docs/Roadmap-Planner-Backend.md) are implemented for the MVP, except the documented live full-architecture smoke and real-Postgres run.
+- Phases B0-B5 of the [backend roadmap](../../initial-docs/Roadmap-Planner-Backend.md) are implemented for the MVP, plus user accounts/Bearer auth, project ownership, saved provider config/preferences, plans, and dashboard analytics.
 - Build, lint, unit tests, and e2e tests pass locally.
 - Local persistence uses PGlite; production uses Postgres through the same repositories and migrations.
 - The frontend consumes the same contracts from `@sda/contracts`.

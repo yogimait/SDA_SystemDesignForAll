@@ -205,6 +205,55 @@ Status: Done (2026-10-26)
 
 ---
 
+## Post-F6 diagram-legibility round (2026-10-26, real-model defects)
+
+User screenshots from a real LLM generation showed: edge labels painting straight across node gaps (labels wider than the 30px gaps), duplicated method names (`+takedowntakedown(...)`), member lines overflowing their clamped node width, relationship-less classes scattered mid-canvas by dagre, and pattern chips colliding with edge labels. Fixes:
+
+- [x] **`lib/diagram/label-wrap.ts`** (+5 tests): greedy wrap, ≤2 lines, ellipsis when cut; used by both canvases.
+- [x] **HLD edge labels**: anchor at the polyline's true midpoint (endpoint average — dagre's first point is on the source border) and shift BELOW the endpoint nodes' band (`max(height)/2 + 5`) with a dashed leader tick binding them to the line; node gaps (~30px) can't host any label width, the inter-rank band can.
+- [x] **LLD edge labels**: same wrap; label anchor = endpoint average (multiplicities stay border-anchored per UML).
+- [x] **Duplicate method names** (`methodText`): drop a leading `${name}` from the contract signature at render; +1 test. Backend still owns the fixture fix (reported).
+- [x] **Content clamps**: member lines + class/component names truncate to the width budget (LLD max 560, HLD max 320) instead of painting across neighbours; +2 truncation tests across scenes.
+- [x] **Isolated classes** re-row rum below the connected graph in compact wrapped rows (dagre otherwise floats them mid-diagram); +1 test.
+- [x] **Pattern chips** moved inside the class header (right-anchored, first name truncated + `+N` count); scene reserves that name room via `buildLldScene(model.lld, { patternNamesByClassId })` (workspace-flow passes the map; TDZ ordering fixed along the way).
+- [x] Verified: 77/77 unit tests, lint/build/e2e green, screenshots (`lld-after.png`, `hld-after.png`) show `+addItem(...)` single name and below-band labels with leader ticks.
+
+Status: Done (2026-10-26)
+
+---
+
+## Post-F6 narrative round (2026-10-27, flow replay + annotate)
+
+Researched patterns (Appcues / Amplitude / ProductFruits / PaneFlow / react-tourlight / Segel–Heer narrative-visualization genres): short stepwise guides complete most often; overlay on the live UI + per-step highlight beats text; replay/pause/skip are must-haves; keyboard + reduced-motion are baseline tour features; captions synced to stages ("annotated chart"); chip callouts with numbered-badge fallback. Applied:
+
+- [x] **`lib/diagram/replay.ts` (+6 tests)** — pure point-along-polyline interpolation, traversed stroke path, step budget (800ms + 400ms ÷ speed).
+- [x] **Flow replay (HLD)** — Replay button on the flow details panel; `ReplayLayer` (canvas-local rAF, subtree-only repaints) animates the dot + trailing wake per connection; `ReplayBar` under the canvas: play/pause, reset, prev/next, 1×/2×, counter, pinned caption (≤2 lines, aria-live polite). Highlight = existing per-step focus; reduced-motion = timer auto-advance, no dot; guided mutually exclusive.
+- [x] **Annotate (LLD + HLD)** — header toggle persisted per project (`sda:annotate:<projectId>`); ≤8 chips (component responsibility / connection or relationship rationale, 56-char truncate, ≤2 lines) anchored top-right of nodes / midpoint-above-line of edges; `aria-hidden` decorative, click → opens the details popover (selection single source of truth).
+- [x] Verified: 83/83 unit tests, lint, production build. e2e skipped this round per the standing decision (backend `:3001` was running the backend agent's openrouter-only server — mock-dependent journeys were not runnable without disturbing it).
+- [x] **Annotate bugfix (2026-10-27, live-verified):** LLD guided chips never rendered — chip anchors were computed against `hldScene` for both scenes; `buildChips(scene, ...)` now takes the scene. Verified on a real-generated model (openrouter server): HLD flow selection renders 7 chips (4 component + 3 connection), LLD guided renders 3 chips (2 classes + 1 relationship) — screenshots `annotate-repro-hld.png` / `annotate-repro-lld.png`.
+- [x] **Replay bugfix (2026-10-27, live-verified):** the replay dot + trailing wake rendered OUTSIDE the canvas transform group (scene coords → raw SVG coords, dot detached from the lines); moved inside the `<g>`. Verified network-mocked: replay bar opens, caption advances per step (aria-live text asserted), pause mid-travel shows the dot on the connection line, stop closes. `react-hooks/set-state-in-effect` violations resolved by render-time derivation (`replayValid` + memoized `effectiveFlowFocus` replace three effect-driven state syncs).
+
+Status: Done (2026-10-27) — skipped: numbered-badge fallback for colliding chips (spec's third-level fallback, not reachable without real-model data in mock), e2e pass + real-LLM visual capture deferred until the mock backend settles on :3001.
+
+---
+
+## User/account round (2026-10-27, register/login/library/settings/dashboard)
+
+Contracts landed in `packages/contracts` (users, analytics, projects list, providers saved-config) — frontend implements the full user surface on top. Built:
+
+- [x] **Session store** (`lib/session/auth.ts` + tests): access token in sessionStorage only (`sda:auth:session`), module snapshot kept referentially stable for `useSyncExternalStore`, expired sessions dropped on read, `sda:auth-changed` + `storage` events keep tabs coherent; Bearer header attaches through `apiFetch({ auth: true })`. No refresh/me endpoint exists in the contracts — expiry is sign-out.
+- [x] **React binding** (`hooks/use-session.ts`): `useSession` + `useHydrated` (uSES false→true). The hydration commit reports the server snapshot (null session); a naive `useEffect` guard fired on that first commit and signed every authenticated user out on first paint — deterministic repro in the network-intercepted e2e, fixed by holding redirects until hydrated.
+- [x] **Portal chrome** (`components/portal/portal-header.tsx`, `components/landing/site-header.tsx`): identity chip + plan tier badge, nav across Library/Dashboard/Settings, sign-out → `/login`.
+- [x] **Pages**: `/login` (sign-in + register tabs, contract-mapped error copy), `/library` (status filter, cursor pagination, workspace links), `/dashboard` (7/30/90 ranges, usage totals, token buckets, top models, recent runs, empty + plan-gate cards), `/settings` (saved provider defaults + theme/default provider/model preferences; BYOK stays request-scoped in the landing provider dialog — saved config stores no API key).
+- [x] **Verified: lint clean · 98/98 unit tests · production build (new routes prerender OK) · Playwright 16/16 · Impeccable detector exit 0** on all six touched files.
+- Backend coupling (live-verified): the backend serves the user slice on :3001 — register/login, owned project list, `/api/users/me/provider-config` + `/preferences`, and analytics at **`/api/dashboard`** (this page originally pointed at `/api/users/me/dashboard` and 404'd against the real server; fixed to the backend mount). Journeys intercept endpoints with contract-shaped envelopes for determinism; a one-off unintercepted live journey (register → library → save config/preferences → dashboard → sign out) passed against `MOCK_PROVIDER=1`.
+- Decisions kept: token lives in sessionStorage per contract shape "Bearer token, no refresh"; `AUTH_REQUIRED` surfaces mapped copy + a "Sign in again" link instead of silently clearing the store; the timeout-deferred load effects satisfy the `react-hooks/set-state-in-effect` ban.
+- [x] **Sign-in-and-continue hand-off (2026-10-27, policy set with the user: require auth, keep key access)** — when the backend enforces signed-in project creation (`AUTH_REQUIRED` on `POST /api/projects`), the landing form stashes the typed idea (`sda:pending-idea`) and rides to `/login?next=/` with a "your idea is saved" notice; after sign-in the landing pre-fills the textarea (consume-once helpers + tests). Dormant until the backend adds the guard; covered by 2 new e2e journeys (16 in the user file, 18 total).
+
+Status: Done (2026-10-27) — report-only items: mock fixture signature includes method names (client masks); backend user slice absent (documented above).
+
+---
+
 ## Deliberately out of frontend scope (MVP)
 
 Export to image/PDF, PDF report generation, multi-account UI, hosted-key flows, i18n, storybook, visual regression snapshots. Each becomes a small follow-up when the core learning loop is validated.

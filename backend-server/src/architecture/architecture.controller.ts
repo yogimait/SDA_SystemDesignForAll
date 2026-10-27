@@ -48,6 +48,7 @@ export class ArchitectureController {
       requireProject(request),
       options,
       readProviderKey(request),
+      request.user,
     );
   }
 
@@ -64,6 +65,7 @@ export class ArchitectureController {
       body.scope,
       { provider: body.provider, model: body.model },
       readProviderKey(request),
+      request.user,
     );
   }
 

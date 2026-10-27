@@ -6,7 +6,7 @@
  * step-order badges, and a legend so no-meaning-is-color-only. Pan/zoom and
  * selection mechanics are shared with the LLD canvas (use-diagram-viewport).
  */
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeftRightIcon,
   BoxIcon,
@@ -31,6 +31,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "cn";
 import type { ComponentType, ConnectionKind } from "@sda/contracts";
 import { useDiagramViewport } from "@/hooks/use-diagram-viewport";
+import { AnnotationChips, type AnnotationChip } from "@/components/diagram/annotation-chips";
+import { PAUSE_MS, TRAVEL_MS, pointAt, traversedPath, type PathPoint } from "@/lib/diagram/replay";
+import { wrapLabel } from "@/lib/diagram/label-wrap";
 import {
   HLD_EDGE_DASH,
   HLD_MARKER_BY_KIND,
@@ -85,6 +88,85 @@ function polyline(points: Array<{ x: number; y: number }>): string {
   return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
 }
 
+/**
+ * The replay dot: travels one connection's polyline per step, with a
+ * primary trailing stroke. Owns an rAF loop that only re-renders this
+ * subtree; progress lives in state (refs are mirrored in effects only).
+ * The parent remounts the layer via key={pointKey} to reset each step and
+ * receives exactly one stepDone per step completion.
+ */
+function ReplayLayer({
+  points,
+  speed,
+  playing,
+  onStepDone,
+}: {
+  points: PathPoint[];
+  speed: number;
+  playing: boolean;
+  onStepDone: () => void;
+}) {
+  const [progress, setProgress] = useState(0);
+  const playingRef = useRef(playing);
+  const speedRef = useRef(speed);
+  const doneRef = useRef(onStepDone);
+
+  useEffect(() => {
+    playingRef.current = playing;
+  }, [playing]);
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
+  useEffect(() => {
+    doneRef.current = onStepDone;
+  }, [onStepDone]);
+
+  const running = playing && progress < TRAVEL_MS + PAUSE_MS;
+  useEffect(() => {
+    if (!running) return;
+    let raf = 0;
+    let last = performance.now();
+    const loop = (now: number) => {
+      const dt = Math.min(120, now - last);
+      last = now;
+      setProgress((prev) =>
+        Math.min(TRAVEL_MS + PAUSE_MS, prev + dt * speedRef.current),
+      );
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [running]);
+
+  const done = progress >= TRAVEL_MS + PAUSE_MS;
+  useEffect(() => {
+    if (done) doneRef.current();
+  }, [done]);
+
+  if (points.length < 2) return null;
+  const base = progress < TRAVEL_MS ? progress / TRAVEL_MS : 1;
+  const position = pointAt(points, base);
+
+  return (
+    <g aria-hidden="true" className="pointer-events-none">
+      <path
+        d={traversedPath(points, base)}
+        className="stroke-primary/40 fill-none"
+        strokeWidth={3}
+        strokeLinecap="round"
+      />
+      <circle
+        cx={position.x}
+        cy={position.y}
+        r={6}
+        className={cn("fill-primary", playing ? "" : "opacity-80")}
+        stroke="var(--card)"
+        strokeWidth={1.5}
+      />
+    </g>
+  );
+}
+
 export function HldCanvas({
   scene,
   selection,
@@ -94,6 +176,10 @@ export function HldCanvas({
   /** element id → step order number, rendered as a badge while a flow is active */
   stepOrder,
   guidedStep,
+  /** flow replay overlay: the traveling dot follows one connection per step */
+  replay,
+  annotationChips,
+  onAnnotationSelect,
   className,
 }: {
   scene: HldScene;
@@ -104,6 +190,17 @@ export function HldCanvas({
   stepOrder?: Map<string, number>;
   /** current guided-learning step; the canvas fits focus to its bbox */
   guidedStep?: { id: string; componentIds: string[]; connectionIds: string[] } | null;
+  replay?: {
+    /** unique key per replayed step (resets the layer's internal timer) */
+    pointKey: string;
+    points: PathPoint[];
+    speed: number;
+    playing: boolean;
+    reducedMotion: boolean;
+    onStepDone: () => void;
+  } | null;
+  annotationChips?: AnnotationChip[];
+  onAnnotationSelect?: (id: string) => void;
   className?: string;
 }) {
   const viewport = useDiagramViewport(scene, () => onSelect(null));
@@ -126,6 +223,12 @@ export function HldCanvas({
   const elementLabel = useMemo(
     () => `${scene.nodes.length} components, ${scene.edges.length} connections`,
     [scene.nodes.length, scene.edges.length],
+  );
+
+  /** Height-aware label/badge placement needs node lookups per edge. */
+  const nodeById = useMemo(
+    () => new Map(scene.nodes.map((node) => [node.id, node])),
+    [scene.nodes],
   );
 
   return (
@@ -307,28 +410,54 @@ export function HldCanvas({
             })}
 
             {/* Edge labels paint after the nodes: long labels otherwise vanish
-                behind the opaque node cards (label halo included). */}
+                behind the opaque node cards (label halo included). Label
+                anchor = true midpoint of the whole polyline (dagre's first
+                point sits ON the source border), shifted below the endpoint
+                nodes' band — node gaps are ~30px and no label fits inside,
+                but the inter-rank band below the line is empty. */}
             {scene.edges.map((edge) => {
               const selected =
                 selection !== null && selection.type === "connection" && selection.id === edge.id;
               const highlighted = highlightConnectionIds?.has(edge.id) === true;
               const dimmed = dimming && !highlighted && !selected;
-              const mid =
-                edge.points[Math.max(0, Math.floor(edge.points.length / 2) - 1)] ??
-                edge.points[0];
-              if (mid === undefined) return null;
+              if (edge.points.length === 0) return null;
+              const first = edge.points[0];
+              const last = edge.points[edge.points.length - 1];
+              const mid = {
+                x: (first.x + last.x) / 2,
+                y: (first.y + last.y) / 2,
+              };
+              const fromNode = nodeById.get(edge.from);
+              const toNode = nodeById.get(edge.to);
+              const labelOffset =
+                fromNode !== undefined && toNode !== undefined
+                  ? Math.max(fromNode.height, toNode.height) / 2 + 5
+                  : 16;
               const step = stepOrder?.get(edge.id);
               const labelText =
                 edge.protocol === "" ? edge.label : `${edge.label} · ${edge.protocol}`;
+              // SVG <text> never wraps: a long painted label bled across the
+              // neighbouring nodes, so wrap into tspans under the line.
+              const labelLines = wrapLabel(labelText, 26, 2);
               return (
                 <g
                   key={`${edge.id}-label`}
                   opacity={dimmed ? 0.3 : undefined}
                   className="pointer-events-none"
                 >
+                  {/* Leader tick: binds the below-band label to its edge. */}
+                  <line
+                    x1={mid.x}
+                    y1={mid.y + 3}
+                    x2={mid.x}
+                    y2={mid.y + labelOffset - 7}
+                    className={cn(selected ? "stroke-primary" : "stroke-muted-foreground/45")}
+                    strokeWidth={1}
+                    strokeDasharray="2 2"
+                  />
                   <text
                     x={mid.x}
-                    y={mid.y + 13}
+                    y={mid.y + labelOffset}
                     textAnchor="middle"
                     className={cn(
                       "font-mono text-[10px]",
@@ -338,7 +467,11 @@ export function HldCanvas({
                     paintOrder="stroke"
                     strokeWidth={3.5}
                   >
-                    {labelText}
+                    {labelLines.map((line, index) => (
+                      <tspan key={index} x={mid.x} dy={index === 0 ? 0 : 11}>
+                        {line}
+                      </tspan>
+                    ))}
                   </text>
                   {step !== undefined ? (
                     <g>
@@ -356,6 +489,21 @@ export function HldCanvas({
                 </g>
               );
             })}
+            {annotationChips !== undefined && annotationChips.length > 0 ? (
+              <AnnotationChips
+                chips={annotationChips}
+                onSelect={(id) => onAnnotationSelect?.(id)}
+              />
+            ) : null}
+            {replay != null && replay.points.length > 1 && replay.reducedMotion !== true ? (
+              <ReplayLayer
+                key={replay.pointKey}
+                points={replay.points}
+                speed={replay.speed}
+                playing={replay.playing}
+                onStepDone={replay.onStepDone}
+              />
+            ) : null}
           </g>
         </svg>
 

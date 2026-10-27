@@ -6,12 +6,14 @@ import { AppError } from "../common/errors/app-error.js";
 import type { ModelProvider } from "./model-provider.js";
 import { MockProvider } from "./mock/mock.provider.js";
 import { OpenRouterProvider } from "./openrouter/openrouter.provider.js";
+import { GroqProvider } from "./groq/groq.provider.js";
 
 @Injectable()
 export class ProviderRegistry {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     private readonly openrouter: OpenRouterProvider,
+    private readonly groq: GroqProvider,
     private readonly mock: MockProvider,
   ) {}
 
@@ -34,32 +36,43 @@ export class ProviderRegistry {
     }
 
     const id = providerId ?? this.config.DEFAULT_PROVIDER;
-    if (id !== "openrouter") {
+    const configuredKey =
+      id === "openrouter"
+        ? this.config.OPENROUTER_API_KEY
+        : id === "groq"
+          ? this.config.GROQ_API_KEY
+          : undefined;
+    if (id !== "openrouter" && id !== "groq") {
       throw new AppError(
         "VALIDATION_ERROR",
         `Unknown model provider "${id}".`,
-        { provider: id, available: ["openrouter"] },
+        { provider: id, available: ["openrouter", "groq"] },
       );
     }
     const key =
       apiKey?.trim() ||
-      (this.config.NODE_ENV === "production"
-        ? undefined
-        : this.config.OPENROUTER_API_KEY);
+      (this.config.NODE_ENV === "production" ? undefined : configuredKey);
     if (!key) {
       throw new AppError(
         "PROVIDER_AUTH_FAILED",
         "A provider API key is required in the x-provider-api-key header.",
       );
     }
-    return this.openrouter.bind(key);
+    return id === "groq"
+      ? this.groq.bind(key)
+      : this.openrouter.bind(key);
   }
 
   list(): ProviderInfo[] {
     return [
       {
         id: "openrouter",
-        models: [this.config.DEFAULT_MODEL],
+        models: [this.config.OPENROUTER_MODEL],
+        supportsStructuredOutput: true,
+      },
+      {
+        id: "groq",
+        models: [this.config.GROQ_MODEL],
         supportsStructuredOutput: true,
       },
     ];

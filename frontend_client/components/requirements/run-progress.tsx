@@ -72,12 +72,15 @@ export function RunProgress({
   run,
   error,
   isLoading,
+  context,
   onRetry,
 }: {
   /** Latest polled run dto; null while the first fetch is in flight. */
   run: GenerationRun | null;
   error: Error | null;
   isLoading: boolean;
+  /** Drives the friendly running description ("session quote"). */
+  context: "requirements" | "architecture";
   onRetry: () => void;
 }) {
   const terminal = run !== null && run.status !== "queued" && run.status !== "running";
@@ -87,27 +90,27 @@ export function RunProgress({
       ? run.error.details.retryAfterSeconds
       : null;
 
+  const quote =
+    context === "requirements"
+      ? "Drafting functional and non-functional requirements from your idea."
+      : "Composing the HLD, the class model, the DSA picks, and the learning steps.";
+  const technical = run !== null ? `run ${run.id.slice(0, 8)} · ${run.provider} · ${run.model}` : undefined;
+
   return (
     <div aria-busy={run === null || (!terminal && error === null)} aria-live="polite">
       <div className="flex items-center justify-between gap-3 border-b border-solid border-border/60 pb-3">
-        <div>
-          <p className="text-foreground/85 font-mono text-xs">
-            {run !== null ? (
-              <>
-                run {run.id.slice(0, 8)} · {run.provider} · {run.model}
-              </>
-            ) : (
-              "connecting…"
-            )}
+        <div className="min-w-0">
+          <p className="text-foreground/85 text-sm" title={technical}>
+            {quote}
           </p>
-          {run !== null ? (
-            <div className="mt-1.5 flex items-center gap-3">
-              <StatusChip status={run.status} />
-              <span className="text-muted-foreground font-mono text-[11px]">
+          <div className="mt-1.5 flex items-center gap-3">
+            {run !== null ? <StatusChip status={run.status} /> : null}
+            {run !== null ? (
+              <span className="text-muted-foreground font-mono text-[11px]" title={technical}>
                 {formatTokens(run.usage.totalTokens)} tokens used
               </span>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
         {terminal && run.status !== "succeeded" ? (
           <Button

@@ -404,6 +404,7 @@ function RunPhase({
         run={run}
         error={error}
         isLoading={isLoading}
+        context={context}
         onRetry={onRetry}
       />
     </div>

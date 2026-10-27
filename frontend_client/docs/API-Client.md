@@ -13,6 +13,15 @@
   - `INVALID_RESPONSE` — non-JSON body, non-envelope body, envelope with unregistered code, or schema-validated payload mismatch. Always carries the HTTP `statusCode`.
 - Envelope `statusCode` ≠ HTTP status is recorded into `details` (`envelopeStatusCode` / `httpStatus`) — contract bug surfacing, never a crash.
 
+## Authenticated sessions
+
+- The access token lives in **sessionStorage only** (`sda:auth:session`) — it dies with the browser tab; there is no refresh token or `/me` endpoint in the contracts. Expired sessions are dropped on read (`lib/session/auth.ts`).
+- `apiFetch(..., { auth: true })` attaches `Authorization: Bearer <token>` from the session store (header only — never in URLs or logs).
+- React reads the session through `useSession()` (`hooks/use-session.ts`, `useSyncExternalStore`); `useHydrated()` exists because the hydration commit reports the server snapshot (null) and route guards must not redirect authenticated users before hydration settles.
+- Login/register store `AuthResponse` via `saveSession` and ride to `?next=` (default `/library`); sign-out is `clearSession` plus the auth-changed event.
+- Guarded routes render a skeleton during hydration and ride unauthenticated visitors to `/login?next=…`.
+- `AUTH_REQUIRED`, `AUTH_INVALID_CREDENTIALS`, `AUTH_EMAIL_TAKEN`, plan codes (`PLAN_LIMIT_EXCEEDED`, `PLAN_UPGRADE_REQUIRED`), and `PROVIDER_CONFIG_NOT_FOUND` all map to user copy in `USER_MESSAGES`.
+
 ## Rules
 
 - **Secrets**: `providerKey` → `x-provider-api-key`, `projectKey` → `x-project-key`. Header-only; never in URLs, never logged. The client deliberately has no console logging.
@@ -25,4 +34,4 @@
 
 ## Tests
 
-`lib/api/client.test.ts` — success unwrap, schema mismatch, registered error mapping, statusCode mismatch surfacing, network failure, non-JSON body, unregistered code, header forwarding, full message-map coverage.
+`lib/api/client.test.ts` — success unwrap, schema mismatch, registered error mapping, statusCode mismatch surfacing, network failure, non-JSON body, unregistered code, header forwarding, authenticated-session Bearer attach, full message-map coverage.

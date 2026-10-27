@@ -138,6 +138,13 @@ describe("apiFetch — failure paths", () => {
     expect(err.cause).toBeInstanceOf(Error);
   });
 
+  it("lists every registered code in the user-message map", async () => {
+    const contracts = await import("@sda/contracts");
+    for (const code of contracts.ErrorCodeSchema.options) {
+      expect(USER_MESSAGES[code]).toBeTruthy();
+    }
+  });
+
   it("maps non-JSON bodies to INVALID_RESPONSE with the HTTP status", async () => {
     stubFetch({
       status: 502,
@@ -195,5 +202,38 @@ describe("message mapping table", () => {
       ApiEnvelopeSchema.safeParse({ status: true, statusCode: 99999, data: null })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("apiFetch — authenticated sessions", () => {
+  const AUTH: import("@sda/contracts").AuthResponse = {
+    user: { id: "usr_probe001", email: "probe@example.com", planTier: "free", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+    accessToken: "token_test_001",
+    tokenType: "Bearer",
+    expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+  };
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  it("attaches the Bearer header from the stored session", async () => {
+    const { saveSession } = await import("../session/auth");
+    saveSession(AUTH);
+    const stub = stubFetch(jsonResponse(200, successEnvelope(200, {})));
+
+    await apiFetch("/api/users/me/dashboard", { auth: true });
+
+    const headers = stub.calls[0].init?.headers as Record<string, string>;
+    expect(headers.authorization).toBe("Bearer token_test_001");
+  });
+
+  it("sends no Authorization header without a session", async () => {
+    const stub = stubFetch(jsonResponse(200, successEnvelope(200, {})));
+
+    await apiFetch("/api/users/me/dashboard", { auth: true });
+
+    const headers = stub.calls[0].init?.headers as Record<string, string>;
+    expect(headers.authorization).toBeUndefined();
   });
 });
