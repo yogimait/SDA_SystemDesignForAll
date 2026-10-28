@@ -15,7 +15,7 @@ import {
   type RegenerateScope,
   type ValidationReport,
 } from "@sda/contracts";
-import { ChevronLeftIcon, ChevronRightIcon, GraduationCapIcon, ListChecksIcon, PanelRightCloseIcon, PanelRightOpenIcon, RefreshCcwIcon, TagsIcon, XIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon, GraduationCapIcon, ListChecksIcon, PanelRightCloseIcon, PanelRightOpenIcon, RefreshCcwIcon, TagsIcon, XIcon } from "lucide-react";
 import { JourneyShell, type JourneyStage } from "@/components/journey-shell";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
@@ -975,6 +975,19 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+            {model !== null ? (
+              <Link href={`/projects/${projectId}/export`} passHref>
+                <Button variant="outline" size="sm">
+                  <DownloadIcon />
+                  Export
+                </Button>
+              </Link>
+            ) : (
+              <Button variant="outline" size="sm" disabled aria-disabled="true">
+                <DownloadIcon />
+                Export
+              </Button>
+            )}
             <ProviderDialog />
           </div>
         </div>

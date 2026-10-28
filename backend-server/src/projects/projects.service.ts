@@ -31,7 +31,7 @@ export class ProjectsService {
 
   async create(
     idea: string,
-    user?: UserRow,
+    user: UserRow,
   ): Promise<CreateProjectResponse> {
     await this.plans.assertCanCreateProject(user);
     const { key, hash } = this.accessKeys.generate();
@@ -39,7 +39,7 @@ export class ProjectsService {
       id: randomUUID(),
       idea,
       accessKeyHash: hash,
-      ownerId: user?.id ?? null,
+      ownerId: user.id,
     });
     return { project: toProjectDto(project), accessKey: key };
   }

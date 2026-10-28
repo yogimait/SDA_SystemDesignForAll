@@ -11,6 +11,10 @@ import type {
   User,
   UserPreferencesResponse,
 } from "@sda/contracts";
+import {
+  GetArchitectureResponseSchema,
+  ProjectSchema,
+} from "@sda/contracts";
 import request from "supertest";
 import type { App } from "supertest/types";
 import { AppModule } from "../src/app.module.js";
@@ -217,10 +221,16 @@ describe("Auth, ownership, account, plan, and dashboard (e2e)", () => {
     const first = await createProject(server, alice.accessToken, "Alice one");
     await createProject(server, alice.accessToken, "Alice two");
     await createProject(server, alice.accessToken, "Alice three");
-    const anonymous = await createProject(server, undefined, "Anonymous idea");
+
+    const anonymousAttempt = await request(server)
+      .post("/api/projects")
+      .send({ idea: "Anonymous idea" });
+    expect(anonymousAttempt.status).toBe(401);
+    expect((anonymousAttempt.body as Envelope<null>).error?.code).toBe(
+      "AUTH_REQUIRED",
+    );
 
     expect(first.project.ownerId).toBe(alice.user.id);
-    expect(anonymous.project.ownerId).toBeNull();
 
     const ownGet = await request(server)
       .get(`/api/projects/${first.project.id}`)
@@ -243,14 +253,16 @@ describe("Auth, ownership, account, plan, and dashboard (e2e)", () => {
       "PROJECT_NOT_FOUND",
     );
 
-    const anonymousNoKey = await request(server).get(
-      `/api/projects/${anonymous.project.id}`,
+    const keyOnlyNoKey = await request(server).get(
+      `/api/projects/${first.project.id}`,
     );
-    expect(anonymousNoKey.status).toBe(403);
-    const anonymousWithKey = await request(server)
-      .get(`/api/projects/${anonymous.project.id}`)
-      .set("x-project-key", anonymous.accessKey);
-    expect(anonymousWithKey.status).toBe(200);
+    expect(keyOnlyNoKey.status).toBe(403);
+    // "Keep key access": the creation-time capability key still opens the
+    // project without a Bearer token (legacy clients, creator's tab).
+    const keyOnlyWithKey = await request(server)
+      .get(`/api/projects/${first.project.id}`)
+      .set("x-project-key", first.accessKey);
+    expect(keyOnlyWithKey.status).toBe(200);
 
     const page1 = await request(server)
       .get("/api/projects?limit=1&status=requirements_pending")
@@ -442,6 +454,77 @@ describe("Auth, ownership, account, plan, and dashboard (e2e)", () => {
       .get(`/api/projects/${created.project.id}/requirements`)
       .set(auth(user.accessToken));
     expect(requirements.status).toBe(200);
+  });
+
+  it("exposes a complete export payload with owner and key access", async () => {
+    const user = await register(server, "export@example.com");
+    const created = await createProject(server, user.accessToken, "Export project");
+    await generateArchitecture(server, user.accessToken, created.project.id);
+
+    const projectResponse = await request(server)
+      .get(`/api/projects/${created.project.id}`)
+      .set(auth(user.accessToken));
+    expect(projectResponse.status).toBe(200);
+    const exportedProject = ProjectSchema.parse(
+      (projectResponse.body as Envelope<unknown>).data,
+    );
+    expect(exportedProject).toMatchObject({
+      id: created.project.id,
+      idea: "Export project",
+      ownerId: user.user.id,
+      status: "architecture_ready",
+      currentArchitectureVersion: 1,
+    });
+    expect(exportedProject.createdAt).toEqual(expect.any(String));
+    expect(exportedProject.updatedAt).toEqual(expect.any(String));
+    expect(exportedProject.confirmedAt).toEqual(expect.any(String));
+
+    const ownerArchitecture = await request(server)
+      .get(`/api/projects/${created.project.id}/architecture`)
+      .set(auth(user.accessToken));
+    expect(ownerArchitecture.status).toBe(200);
+    const exportedArchitecture = GetArchitectureResponseSchema.parse(
+      (ownerArchitecture.body as Envelope<unknown>).data,
+    );
+    const version = exportedArchitecture.version;
+    if (!version) {
+      throw new Error("Expected an architecture version for export.");
+    }
+    expect(version).toMatchObject({
+      projectId: created.project.id,
+      version: 1,
+    });
+    expect(version.createdAt).toEqual(expect.any(String));
+    expect(version.validation.valid).toBe(true);
+    expect(version.validation.errors).toEqual(expect.any(Array));
+    expect(version.validation.warnings).toEqual(expect.any(Array));
+    expect(version.validation.validatedAt).toEqual(expect.any(String));
+
+    const model = version.model;
+    expect(model.requirements.confirmedAt).toEqual(expect.any(String));
+    expect(model.requirements.spec.functional.length).toBeGreaterThan(0);
+    expect(model.requirements.spec.nonFunctional.length).toBeGreaterThan(0);
+    expect(model.lld.classes.length).toBeGreaterThan(0);
+    expect(model.lld.relationships.length).toBeGreaterThan(0);
+    expect(model.hld.components.length).toBeGreaterThan(0);
+    expect(model.hld.connections.length).toBeGreaterThan(0);
+    expect(model.dsa.recommendations.length).toBeGreaterThan(0);
+    expect(model.learningSteps.length).toBeGreaterThan(0);
+    expect(model.meta.title).toEqual(expect.any(String));
+
+    const keyArchitecture = await request(server)
+      .get(`/api/projects/${created.project.id}/architecture`)
+      .set("x-project-key", created.accessKey);
+    expect(keyArchitecture.status).toBe(200);
+    expect(keyArchitecture.body).toEqual(ownerArchitecture.body);
+
+    const wrongKey = await request(server)
+      .get(`/api/projects/${created.project.id}/architecture`)
+      .set("x-project-key", "not-the-key");
+    expect(wrongKey.status).toBe(403);
+    expect((wrongKey.body as Envelope<null>).error?.code).toBe(
+      "PROJECT_ACCESS_DENIED",
+    );
   });
 
   it("returns 404 envelopes for malformed project and run ids", async () => {

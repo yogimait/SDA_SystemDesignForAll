@@ -28,6 +28,8 @@ export type ApiErrorCode = ErrorCode | ClientApiErrorCode;
 export const USER_MESSAGES: Record<ApiErrorCode, string> = {
   VALIDATION_ERROR:
     "The submitted data failed validation. Fix the highlighted fields and retry.",
+  ROUTE_NOT_FOUND:
+    "That endpoint does not exist on this server. The app may be out of date — reload the page and retry.",
   PROJECT_NOT_FOUND:
     "This project does not exist, or the link is stale. Start a new design.",
   PROJECT_ACCESS_DENIED:

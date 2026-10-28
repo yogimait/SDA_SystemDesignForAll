@@ -11,7 +11,19 @@ const IDE_TEXT =
   "Design a distributed rate limiter for a public API with sliding windows and a Redis backing store.";
 
 /** Drive landing → requirements → confirm → workspace. */
+async function registerViaUI(page: Page): Promise<void> {
+  const email = `journey_${Date.now().toString(36)}@example.com`;
+  await page.goto("/login");
+  await page.getByRole("tab", { name: "Create account" }).click();
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill("supersecret123");
+  await page.getByLabel("Confirm password").fill("supersecret123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/library$/);
+}
+
 async function journeyToWorkspace(page: Page): Promise<void> {
+  await registerViaUI(page);
   await page.goto("/");
   const ideaInput = page.getByLabel("Your system idea");
   await ideaInput.fill(IDE_TEXT);
@@ -145,6 +157,7 @@ test("happy journey: idea → requirements → workspace tabs → guided run →
 test("provider failure path: rate-limited run start maps to an actionable message", async ({
   page,
 }) => {
+  await registerViaUI(page);
   await page.goto("/");
   await page.getByLabel("Your system idea").fill(IDE_TEXT);
   await page.getByRole("button", { name: "Start design session" }).click();

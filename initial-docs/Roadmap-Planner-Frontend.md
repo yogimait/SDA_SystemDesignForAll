@@ -278,8 +278,32 @@ Status: Done (2026-10-27) — report-only items: mock fixture signature includes
 
 ---
 
+## Export / PDF round (2026-10-28, client-side split)
+
+No new backend endpoints — the export reads `GET /api/projects/:id` + `/architecture` through the existing query keys. Built:
+
+- [x] **Entry point**: workspace header **Export** button → `/projects/[id]/export`; disabled while `model === null` (nothing valid to export).
+- [x] **Route + flow** (`app/projects/[id]/export/page.tsx` + `components/export/export-flow.tsx`): key-or-owner-Bearer gate (D2 rule), JourneyShell error cards for no-access / query failure (retry) / `version === null` / **invalid model** (export blocked — an invalid model must not print as trusted), aria-busy skeleton. Shares workspace query cache → opens instantly from the workspace.
+- [x] **Document** (`components/export/export-document.tsx`): cover (idea/version/dates/validation verdict), requirements, HLD diagram + components + flows, LLD diagram + classes + relationships + patterns, DSA (existing `WorkspaceDsa`, flattened), learning steps, validation notes, footer — every string from contract fields (`lib/export/document.ts` + 4 tests).
+- [x] **SVG fidelity**: `lib/export/svg.ts` serializes the live diagram with computed styles inlined (light already, see theme), preserves markers/labels, strips interaction attrs, sizes from viewBox; per-diagram **Download SVG** (+ 4 tests: standalone XML, inline styles, non-mutation, filename slugs).
+- [x] **Large diagrams**: fit-to-page via the existing fit-on-resize hook; document container pinned to **690px on screen AND in print** so the fitted state survives onto paper; `break-inside: avoid` on sections/diagrams — no clipping, no mid-node page breaks. Rank-based pagination skipped (documented limitation).
+- [x] **Print CSS** (`globals.css`): `@page A4 / 14mm×12mm`, `@media print` hides `.no-print` chrome, width pin, break rules, `thead` repetition; page numbers come from the browser header/footer (Chromium ignores margin-box counters).
+- [x] **Theme**: on screen the export page **stays dark** (user rollback — no white page); `.export-doc` only paints its surface from the active tokens so text never blends into the shell. `@media print` re-scopes the full token set once as the app's **only** light palette — the printed document is dark-on-white regardless of theme.
+- [x] **Trigger**: "Print / Save as PDF" → `window.print()` (browser dialog by design — jsPDF/html2canvas rejected for SVG fidelity; server-side one-click PDF deferred until asked).
+- [x] **Tests**: Playwright `e2e/export.spec.ts` 7 journeys — full render, `emulateMedia("print")` chrome-hidden check, **A4 PDF buffer smoke** (`%PDF-` + non-empty → `test-results/export-smoke.pdf`), SVG download contents, missing/invalid model cards, signed-out access card, plus the `?next=` sign-in round-trip (proves that flow alive end-to-end).
+- [x] Docs: `frontend_client/docs/[[Export]]` + Home row; Impeccable detector exit 0 on the touched UI/CSS files.
+- [x] Also: `ROUTE_NOT_FOUND` (new contracts code) mapped into `USER_MESSAGES`; auth-gating cutover (`POST /api/projects` requires Bearer — `AuthGuard`, always sets `ownerId`; anonymous e2e expectations flipped to 401 AUTH_REQUIRED; journeys register through the UI first) landed this day with backend gates green.
+
+Verified: lint clean · **108/108 unit** · build green · **29/29 e2e** (journey 2 + user 20 + export 7). Note: a stale long-lived dev server was serving pre-export CSS (print rules absent) — killed; playwright boots fresh, and `npm run dev` restarts it for manual work.
+
+Status: Done (2026-10-28). Skipped deliberately: one-click PDF (needs a PDF lib or server rendering), rank-paginated diagrams, SVG export of DSA (tables have no SVG).
+
+- [x] **Export polish (2026-10-28, user screenshots)**: two-step fix per user feedback — (a) removed raw contract ids from every printed section (numbered lists instead of `fr_/nfr_/q_/asm_`, no learning-step refs, no validation rule/path; ids stay React keys only), (b) after a first attempt whitewashed the page (rejected), the final state **keeps the dark brand background on screen** and fixes visibility by painting the document surface from the active tokens (`background-color`/`color`) — headings/meta/diagrams all contrast properly; light returns only under `@media print`. E2e asserts no `fr_/nfr_/asm_` text; screenshot evidence `test-results/export-light-check.png`.
+
+---
+
 ## Deliberately out of frontend scope (MVP)
 
-Export to image/PDF, PDF report generation, multi-account UI, hosted-key flows, i18n, storybook, visual regression snapshots. Each becomes a small follow-up when the core learning loop is validated.
+One-click server PDF (Playwright rendering), image export, multi-account UI, hosted-key flows, i18n, storybook, visual regression snapshots. Browser-print export shipped 2026-10-28 ([[Export]]). Each becomes a small follow-up when the core learning loop is validated.
 
 Related: [[Home]] · [[Project-Overview]] · [[Tech-Stack]] · [[Roadmap-Planner-Backend]]

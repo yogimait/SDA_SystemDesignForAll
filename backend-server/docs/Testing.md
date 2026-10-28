@@ -60,7 +60,7 @@ The repository suite uses a real Drizzle + PGlite database, not mocks. It exerci
 
 ## E2e coverage
 
-`test/app.e2e-spec.ts` runs the public HTTP surface with supertest. `test/auth.e2e-spec.ts` covers register/login/me/logout, normalized email, duplicate/invalid credentials, project ownership and listing cursor/status, anonymous legacy access, provider config without keys, preference merge, plan limits/upgrade-required, dashboard aggregation/validation, owner reopening a project with the Bearer token alone, 404 envelopes for malformed project/run ids, cross-project requirement-id conflicts, and strict rejection of an `apiKey` in the provider-config save. Manual mock-mode verification uses `MOCK_PROVIDER=1` and the same HTTP surface.
+`test/app.e2e-spec.ts` runs the public HTTP surface with supertest. `test/auth.e2e-spec.ts` covers register/login/me/logout, normalized email, duplicate/invalid credentials, project ownership and listing cursor/status, anonymous legacy access, provider config without keys, preference merge, plan limits/upgrade-required, dashboard aggregation/validation, owner reopening a project with the Bearer token alone, complete client-export payloads and owner/key access, 404 envelopes for malformed project/run ids, cross-project requirement-id conflicts, and strict rejection of an `apiKey` in the provider-config save. Manual mock-mode verification uses `MOCK_PROVIDER=1` and the same HTTP surface.
 
 - health and provider metadata envelopes;
 - security headers and unknown-route `ROUTE_NOT_FOUND`;

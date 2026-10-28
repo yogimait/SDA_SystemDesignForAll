@@ -67,6 +67,7 @@ Run-start endpoints are throttled per IP (`THROTTLE_LIMIT` per `THROTTLE_TTL_MS`
 
 ```http
 POST /api/projects
+Authorization: Bearer <accessToken>
 Content-Type: application/json
 
 { "idea": "A collaborative workspace for small teams." }
@@ -80,7 +81,7 @@ Content-Type: application/json
     "project": {
       "id": "uuid",
       "idea": "A collaborative workspace for small teams.",
-      "ownerId": null,
+      "ownerId": "usr_...",
       "status": "requirements_pending",
       "createdAt": "2026-10-23T00:00:00.000Z",
       "updatedAt": "2026-10-23T00:00:00.000Z",
@@ -92,7 +93,12 @@ Content-Type: application/json
 }
 ```
 
-The idea is trimmed and limited to 8000 characters. Store the access key client-side; it cannot be retrieved again.
+Project creation requires a signed-in session (`401 AUTH_REQUIRED` without
+one) and always sets `ownerId`, so plan limits apply to every project. The
+idea is trimmed and limited to 8000 characters. Store the access key
+client-side; it cannot be retrieved again. Anonymous creation is gone;
+pre-existing anonymous rows (if any) stay readable through their
+`x-project-key` — the guard keeps that path for backwards compatibility.
 
 ## Authentication
 
@@ -122,7 +128,7 @@ Returns:
 
 Send `Authorization: Bearer <accessToken>` to `GET /api/auth/me`, `POST /api/auth/logout`, project list/owner access, provider config, preferences, and dashboard. Passwords are stored as scrypt hashes with per-password salt; session tokens are stored only as SHA-256 hashes. Unknown-email login performs a dummy scrypt verification so timing does not reveal whether the account exists.
 
-`POST /api/projects` with a Bearer token sets `ownerId`; without one it stays anonymous and `ownerId` is null. Anonymous projects remain accessible with their `x-project-key`. An owner can use a Bearer token without the project key. A valid Bearer session for a non-owner gets the same `PROJECT_NOT_FOUND` 404 as an unknown project.
+`POST /api/projects` requires a Bearer session and always sets `ownerId`. Pre-existing anonymous rows (if any) remain accessible with their `x-project-key`. An owner can use a Bearer token without the project key. A valid Bearer session for a non-owner gets the same `PROJECT_NOT_FOUND` 404 as an unknown project.
 
 `GET /api/projects?limit=20&status=architecture_ready&cursor=...` returns owned projects only. Cursor values are opaque; malformed cursors are `VALIDATION_ERROR`.
 
@@ -149,7 +155,7 @@ Plan limits use existing error codes:
 - Free: 3 projects, 50 runs per 30 days, 500k tokens per 30 days.
 - Pro: 100 projects, 1,000 runs per 30 days, 10M tokens per 30 days.
 - Scoped regeneration requires Pro for owned projects (`PLAN_UPGRADE_REQUIRED`).
-- Owned-project generation counts against the owner's plan whether access uses Bearer or `x-project-key`; anonymous projects have no account limit.
+- Owned-project generation counts against the owner's plan whether access uses Bearer or `x-project-key`.
 
 ## Start a run
 
@@ -246,7 +252,7 @@ Content-Type: application/json
 }
 ```
 
-The `model` is the canonical `ArchitectureModel` from `@sda/contracts`: requirements snapshot, LLD, HLD, DSA, and learning steps.
+The `model` is the canonical `ArchitectureModel` from `@sda/contracts`: requirements snapshot, LLD, HLD, DSA, and learning steps. Client-side export/PDF uses `GET /api/projects/:id` plus this response; no server-side PDF renderer or export endpoint is provided.
 
 ## Poll a run
 

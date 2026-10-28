@@ -17,7 +17,6 @@ import type {
 import { CreateProjectRequestSchema } from "@sda/contracts";
 import {
   AuthGuard,
-  OptionalAuthGuard,
 } from "../common/access/auth.guard.js";
 import {
   requireUser,
@@ -37,13 +36,13 @@ export class ProjectsController {
 
   @Post()
   @HttpCode(201)
-  @UseGuards(OptionalAuthGuard)
+  @UseGuards(AuthGuard)
   create(
     @Req() request: AuthRequest,
     @Body(new ZodValidationPipe(CreateProjectRequestSchema))
     body: CreateProjectRequest,
   ): Promise<CreateProjectResponse> {
-    return this.projects.create(body.idea, request.user);
+    return this.projects.create(body.idea, requireUser(request));
   }
 
   @Get()

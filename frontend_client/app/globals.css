@@ -154,3 +154,186 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ================================================================
+   Export / print document (Export round)
+   The export route STAYS in the app's dark brand theme on screen (user
+   decision 2026-10-28: no white page); visible text comes from the
+   normal dark tokens, and the document paints its own surface from the
+   active theme so nothing blends into the shell. Light appears only
+   under @media print, where the token set is re-scoped as a paper
+   palette (task: force light theme for print) — defined ONCE, there.
+   The document container width is pinned to the A4 printable width
+   (690px ≈ 182mm) on screen AND in print, so the canvases' fit-on-
+   resize state stays valid on paper and nothing clips.
+   ================================================================ */
+.export-doc {
+  /* Dark paper on screen, white paper in print — the print block below
+     flips these tokens, so every utility and SVG fill follows. */
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.export-section {
+  margin-top: 2rem;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.export-section h2 {
+  color: var(--foreground);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.4rem;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.export-section h3 {
+  color: var(--foreground);
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-top: 1rem;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.export-diagram {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  height: 620px;
+  overflow: hidden;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.export-list {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.export-list.export-numbered {
+  list-style: decimal;
+  padding-left: 1.4rem;
+}
+
+.export-defs {
+  margin-top: 0.6rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.export-defs dt {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.export-defs dd {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+  margin-top: 0.1rem;
+}
+
+/* DSA bento is built for the screen workspace; flatten it for paper. */
+.export-dsa {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+@page {
+  size: A4;
+  margin: 14mm 12mm;
+}
+
+@media print {
+  /* Force light paper for print regardless of the on-screen dark theme:
+     re-scope the full token set for the root (page shell paints) and the
+     document (text + SVG fills resolve through these). Defined once. */
+  :root,
+  .export-doc {
+    color-scheme: light;
+    background-color: oklch(0.99 0.004 75);
+    color: oklch(0.25 0.01 75);
+    --background: oklch(0.99 0.004 75);
+    --foreground: oklch(0.25 0.01 75);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.25 0.01 75);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.25 0.01 75);
+    --primary: oklch(0.6 0.11 55);
+    --primary-foreground: oklch(0.99 0 0);
+    --secondary: oklch(0.955 0.005 75);
+    --secondary-foreground: oklch(0.32 0.01 75);
+    --muted: oklch(0.96 0.005 75);
+    --muted-foreground: oklch(0.47 0.012 75);
+    --accent: oklch(0.945 0.008 75);
+    --accent-foreground: oklch(0.32 0.01 75);
+    --destructive: oklch(0.55 0.16 25);
+    --success: oklch(0.5 0.1 150);
+    --warning: oklch(0.6 0.11 85);
+    --data: oklch(0.52 0.1 255);
+    --border: oklch(0.9 0.008 75);
+    --input: oklch(0.9 0.008 75);
+    --ring: oklch(0.6 0.11 55);
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  /* Chrome: app chrome (header, buttons, dialogs) never prints. */
+  .no-print,
+  header.no-print {
+    display: none !important;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* Pin the print layout to the same width the canvases were fit against
+     (screen max-width = 690px) so the fit state survives onto paper. */
+  main {
+    width: 690px !important;
+    max-width: 690px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .export-section,
+  .export-diagram,
+  .export-defs > div {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  h1,
+  h2,
+  h3,
+  .export-defs dt {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Table rows may flow across pages; never orphan a lone header. */
+  table {
+    break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+}

@@ -1,6 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import type {
+  AuthResponse,
   CreateProjectResponse,
   GenerationRun,
   GetArchitectureResponse,
@@ -19,6 +20,8 @@ import type {
 } from "../src/providers/model-provider.js";
 import { MockProvider } from "../src/providers/mock/mock.provider.js";
 import { ProviderRegistry } from "../src/providers/provider.registry.js";
+import { USER_REPOSITORY } from "../src/database/repositories/user.repository.js";
+import type { UserRepository } from "../src/database/repositories/user.repository.js";
 
 const IDEA =
   "A collaborative workspace where small teams organize shared items and invite collaborators.";
@@ -86,14 +89,31 @@ async function createTestApp(
 
 async function createProject(
   server: App,
+  token?: string,
   idea = IDEA,
 ): Promise<CreateProjectResponse> {
-  const response = await request(server).post("/api/projects").send({ idea });
+  const bearer =
+    token ?? (await register(server, `auto_${Date.now()}_${Math.floor(Math.random() * 1e9)}@example.com`)).accessToken;
+  const response = await request(server)
+    .post("/api/projects")
+    .set("Authorization", `Bearer ${bearer}`)
+    .send({ idea });
   expect(response.status).toBe(201);
   const body = response.body as Envelope<CreateProjectResponse>;
   expect(body.status).toBe(true);
   expect(body.statusCode).toBe(201);
   return body.data;
+}
+
+async function register(
+  server: App,
+  email: string,
+): Promise<AuthResponse> {
+  const response = await request(server)
+    .post("/api/auth/register")
+    .send({ email, password: "password123" });
+  expect(response.status).toBe(201);
+  return (response.body as Envelope<AuthResponse>).data;
 }
 
 async function waitForRun(
@@ -182,9 +202,11 @@ describe("API (e2e)", () => {
   describe("full journey", () => {
     let app: INestApplication<App>;
     let server: App;
+    let token: string;
 
     beforeAll(async () => {
       ({ app, server } = await createTestApp());
+      token = (await register(server, "journey@example.com")).accessToken;
     });
 
     afterAll(async () => {
@@ -230,9 +252,22 @@ describe("API (e2e)", () => {
       expect(JSON.stringify(body)).not.toContain("apiKey");
     });
 
+    it("rejects anonymous project creation with AUTH_REQUIRED", async () => {
+      const response = await request(server)
+        .post("/api/projects")
+        .send({ idea: IDEA });
+      expect(response.status).toBe(401);
+      expect(response.body).toMatchObject({
+        status: false,
+        statusCode: 401,
+        error: { code: "AUTH_REQUIRED" },
+      });
+    });
+
     it("validates project creation input", async () => {
       const response = await request(server)
         .post("/api/projects")
+        .set("Authorization", `Bearer ${token}`)
         .send({ idea: "" });
       expect(response.status).toBe(400);
       const body = response.body as Envelope<null>;
@@ -246,6 +281,7 @@ describe("API (e2e)", () => {
     it("rejects bodies above MAX_REQUEST_BYTES with the envelope", async () => {
       const response = await request(server)
         .post("/api/projects")
+        .set("Authorization", `Bearer ${token}`)
         .send({ idea: "x".repeat(4000) });
       expect(response.status).toBe(413);
       expect(response.body).toMatchObject({
@@ -256,7 +292,7 @@ describe("API (e2e)", () => {
     });
 
     it("creates a project and protects it with the access key", async () => {
-      const created = await createProject(server);
+      const created = await createProject(server, token);
 
       const denied = await request(server).get(
         `/api/projects/${created.project.id}`,
@@ -288,6 +324,13 @@ describe("API (e2e)", () => {
       const created = await createProject(server);
       const projectId = created.project.id;
       const key = created.accessKey;
+
+      // Scoped regeneration is Pro-only; the journey covers the success
+      // path, so promote this throwaway owner before the regen step.
+      if (created.project.ownerId) {
+        const users = app.get(USER_REPOSITORY) as UserRepository;
+        await users.updatePlanTier(created.project.ownerId, "pro");
+      }
 
       const requirementsRunId = await startRequirements(server, projectId, key);
       const requirementsRun = await waitForRun(
