@@ -1,7 +1,7 @@
 ---
 description: System Design All-in-One UI/UX specialist. Owns visual hierarchy, layout, design-system use, responsive behavior, accessibility, and interaction polish across the SDA frontend.
 mode: subagent
-model: opencode-go/glm-5.3-flash
+model: opencode-go/mimo-v2.6-flash
 temperature: 0.4
 tools:
   bash: true

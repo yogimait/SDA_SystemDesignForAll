@@ -495,6 +495,13 @@ export function HldCanvas({
             {annotationChips !== undefined && annotationChips.length > 0 ? (
               <AnnotationChips
                 chips={annotationChips}
+                scene={{ width: scene.width, height: scene.height }}
+                obstacles={scene.nodes.map((node) => ({
+                  x: node.x,
+                  y: node.y,
+                  width: node.width,
+                  height: node.height,
+                }))}
                 onSelect={(id) => onAnnotationSelect?.(id)}
               />
             ) : null}

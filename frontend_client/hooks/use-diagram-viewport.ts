@@ -25,6 +25,7 @@ export function useDiagramViewport(
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [transform, setTransform] = useState<ViewportTransform>({ x: 0, y: 0, k: 1 });
   const userAdjusted = useRef(false);
+  const tweening = useRef(false);
   const panState = useRef<{ pointerId: number; lastX: number; lastY: number; moved: boolean } | null>(null);
 
   const fit = useCallback(() => {
@@ -46,7 +47,9 @@ export function useDiagramViewport(
     const el = wrapRef.current;
     if (el === null) return;
     const observer = new ResizeObserver(() => {
-      if (!userAdjusted.current) fit();
+      // Refit on breakpoint/container changes unless the user zoomed or panned
+      // since the last fit; a running guided tween owns the transform meanwhile.
+      if (!userAdjusted.current && !tweening.current) fit();
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -102,8 +105,9 @@ export function useDiagramViewport(
 
   /**
    * Fit the viewport to a scene-space bounding box (guided-mode step change).
-   * Animates briefly unless reduced motion is on, and marks the viewport as
-   * user-adjusted so scene-level refits don't fight the guided reveal.
+   * This is a programmatic reveal, NOT a user adjustment: a later container
+   * resize (e.g. crossing the 1024px breakpoint) refits the whole scene instead
+   * of leaving the diagram offscreen. Wheel/pan/zoom still lock the viewport.
    */
   const fitToBox = useCallback((box: { x: number; y: number; width: number; height: number }) => {
     const el = wrapRef.current;
@@ -115,13 +119,14 @@ export function useDiagramViewport(
       x: (rect.width - box.width * k) / 2 - box.x * k,
       y: (rect.height - box.height * k) / 2 - box.y * k,
     };
-    userAdjusted.current = true;
+    userAdjusted.current = false;
     if (prefersReducedMotion()) {
       setTransform(next);
       return;
     }
     const start = performance.now();
     const duration = 280;
+    tweening.current = true;
     setTransform((current) => {
       const from = { ...current };
       const tick = (now: number) => {
@@ -133,6 +138,7 @@ export function useDiagramViewport(
           y: from.y + (next.y - from.y) * eased,
         });
         if (t < 1) requestAnimationFrame(tick);
+        else tweening.current = false;
       };
       requestAnimationFrame(tick);
       return current; // first commit keeps current; RAF drives the tween

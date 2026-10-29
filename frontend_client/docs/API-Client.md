@@ -15,7 +15,8 @@
 
 ## Authenticated sessions
 
-- The access token lives in **sessionStorage only** (`sda:auth:session`) — it dies with the browser tab; there is no refresh token or `/me` endpoint in the contracts. Expired sessions are dropped on read (`lib/session/auth.ts`).
+- The access token lives in **sessionStorage only** (`sda:auth:session`) — it dies with the browser tab; there is no refresh token or `/me` endpoint in the contracts. Expired, malformed, or shape-invalid sessions are **dropped at the source** on read (`lib/session/auth.ts`, validated with the contracts `UserSchema`), so a stored copy can never be restored past its `expiresAt`.
+- **Server-rejected tokens sign the tab out**: when an `auth: true` call returns `AUTH_REQUIRED` (401), `apiFetch` clears the session (the shared store notifies every subscriber, so the header stops showing the identity immediately) and navigates to `/login?next=<current path+query>` with a full page load, so no stale page state survives. `POST /api/auth/logout` is exempt (the header already routes to `/login`). Anonymous and `x-project-key` flows are unchanged.
 - `apiFetch(..., { auth: true })` attaches `Authorization: Bearer <token>` from the session store (header only — never in URLs or logs).
 - React reads the session through `useSession()` (`hooks/use-session.ts`, `useSyncExternalStore`); `useHydrated()` exists because the hydration commit reports the server snapshot (null) and route guards must not redirect authenticated users before hydration settles.
 - Login/register store `AuthResponse` via `saveSession` and ride to `?next=` (default `/library`); sign-out is `clearSession` plus the auth-changed event.
@@ -34,4 +35,5 @@
 
 ## Tests
 
-`lib/api/client.test.ts` — success unwrap, schema mismatch, registered error mapping, statusCode mismatch surfacing, network failure, non-JSON body, unregistered code, header forwarding, authenticated-session Bearer attach, full message-map coverage.
+`lib/api/client.test.ts` — success unwrap, schema mismatch, registered error mapping, statusCode mismatch surfacing, network failure, non-JSON body, unregistered code, header forwarding, authenticated-session Bearer attach, `AUTH_REQUIRED` clearing the stored session (and leaving it alone for anonymous calls), full message-map coverage.
+`lib/session/auth.test.ts` — live save/load, expired / malformed / invalid-user-shape entries dropped and removed from storage, clear + change event, no localStorage copy.

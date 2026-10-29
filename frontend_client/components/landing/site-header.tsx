@@ -3,21 +3,42 @@
 import Link from "next/link";
 import { LogOutIcon } from "lucide-react";
 import { ProviderDialog } from "./provider-dialog";
+import { Button } from "@/components/ui/button";
 import {
-  Button,
-} from "@/components/ui/button";
+  DockButton,
+  DockLink,
+  DockSlot,
+  HORIZONTAL_HEADER_DOCKED,
+  ScrollDock,
+  useDock,
+} from "@/components/nav/dock";
+import { MobileNavSheet } from "@/components/nav/mobile-nav-sheet";
 import {
   FLOATING_HEADER_CARD,
   FLOATING_HEADER_SHELL,
 } from "@/components/ui/floating-header";
 import { useSession, signOut } from "@/hooks/use-session";
+import { cn } from "cn";
+import {
+  GaugeIcon,
+  HomeIcon,
+  LibraryIcon,
+  SettingsIcon,
+} from "lucide-react";
 
 export function SiteHeader() {
   const session = useSession();
+  const docked = useDock();
 
   return (
+    <>
     <header className={FLOATING_HEADER_SHELL}>
-      <div className={`${FLOATING_HEADER_CARD} mx-auto flex w-full max-w-[1100px] items-center justify-between px-6 py-3`}>
+      <div className={cn(
+        FLOATING_HEADER_CARD,
+        "mx-auto flex w-full max-w-[1100px] items-center justify-between px-6 py-3 transition-[opacity,transform] duration-200",
+        docked && HORIZONTAL_HEADER_DOCKED,
+      )}
+      inert={docked || undefined}>
         <Link
           href="/"
           className="focus-visible:ring-ring group flex items-center gap-2 rounded focus-visible:ring-2 focus-visible:outline-1"
@@ -29,7 +50,24 @@ export function SiteHeader() {
             System Design All-in-One
           </span>
         </Link>
-        <div className="flex items-center gap-4 md:gap-6">
+        <div className="flex items-center gap-2 md:gap-3">
+          <span className="md:hidden">
+            <MobileNavSheet
+              links={[
+                { href: "/#how-it-works", label: "How it works" },
+                { href: "/#idea-capture", label: "Examples" },
+                ...(session !== null
+                  ? [
+                      { href: "/library", label: "Library" },
+                      { href: "/dashboard", label: "Dashboard" },
+                      { href: "/settings", label: "Settings" },
+                    ]
+                  : []),
+              ]}
+              providerSetup
+              onSignOut={() => void signOut()}
+            />
+          </span>
           <nav
             aria-label="Landing sections"
             className="hidden items-center gap-6 md:flex"
@@ -90,5 +128,28 @@ export function SiteHeader() {
         </div>
       </div>
     </header>
+    <ScrollDock docked={docked}>
+      <DockLink href="/" label="Home" icon={<HomeIcon className="size-5" />} current />
+      {session !== null ? (
+        <>
+          <DockLink href="/library" label="Library" icon={<LibraryIcon className="size-5" />} />
+          <DockLink href="/dashboard" label="Dashboard" icon={<GaugeIcon className="size-5" />} />
+          <DockLink href="/settings" label="Settings" icon={<SettingsIcon className="size-5" />} />
+        </>
+      ) : null}
+      <DockSlot>
+        <ProviderDialog />
+      </DockSlot>
+      {session !== null ? (
+        <DockButton
+          label="Sign out"
+          icon={<LogOutIcon className="size-5" />}
+          onClick={() => void signOut()}
+        />
+      ) : (
+        <DockLink href="/login" label="Sign in" icon={<LogOutIcon className="size-5" />} />
+      )}
+    </ScrollDock>
+    </>
   );
 }

@@ -8,7 +8,7 @@
  */
 
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { fillAuthForm } from "./helpers";
+import { fillAuthForm, PROVIDER_SETUP_SEED } from "./helpers";
 
 const USER = {
   id: "usr_probe001",
@@ -100,6 +100,25 @@ const MODEL_FIXTURE = {
   },
 };
 
+/** Contract-shaped spec so the editor phase (and its gate) renders. */
+const REQUIREMENTS_SPEC = {
+  functional: [
+    { id: "fr_1", kind: "functional", text: "Clients submit a request", priority: "must" },
+  ],
+  nonFunctional: [
+    {
+      id: "nfr_1",
+      kind: "nonfunctional",
+      text: "Answer under 200ms",
+      priority: "should",
+      category: "performance",
+      target: "p95 < 200ms",
+    },
+  ],
+  assumptions: [{ id: "asm_1", text: "Single region" }],
+  clarifications: [{ id: "q_1", question: "Which cloud?", answer: "AWS" }],
+};
+
 type RouteLike = Route;
 const envelope = (data: unknown, code = 200) => ({ status: true, statusCode: code, data });
 const oh = (data: unknown, code = 200) =>
@@ -169,6 +188,19 @@ const AUTH_SAVE = `
     accessToken: "token_probe_001",
     expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
   }));
+`;
+
+/** Seeds once: a later navigation (e.g. the 401 redirect) must not re-create
+ *  the session that the app just discarded. */
+const AUTH_SAVE_ONCE = `
+  if (window.sessionStorage.getItem("sda:auth:seeded") === null) {
+    window.sessionStorage.setItem("sda:auth:seeded", "1");
+    window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
+      user: ${JSON.stringify(USER)},
+      accessToken: "token_probe_001",
+      expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+    }));
+  }
 `;
 
 test.describe("register / login / logout / restore", () => {
@@ -263,7 +295,7 @@ test.describe("session restore + project library", () => {
     await expect(page.getByText("Probe project one")).toBeVisible();
     await expect(page.getByText("Architecture ready").first()).toBeVisible();
     // Provider setup lives on the landing + library pages only.
-    await expect(page.getByLabel(/Provider (setup|ready)/)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Provider (setup|ready)/ })).toBeVisible();
   });
 
   test("status filter requests the filtered list", async ({ page }) => {
@@ -284,7 +316,7 @@ test.describe("session restore + project library", () => {
     await expect(page).toHaveURL(/\/login\?next=(\/|%2F)library$/);
   });
 
-  test("expired session drops back to login", async ({ page, context }) => {
+  test("expired session is never restored and drops back to login", async ({ page, context }) => {
     await context.addInitScript(`
       window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
         user: ${JSON.stringify(USER)},
@@ -294,6 +326,28 @@ test.describe("session restore + project library", () => {
     interceptUserEndpoints(page);
     await page.goto("/library");
     await expect(page).toHaveURL(/\/login/);
+    // Dropped at the source on read, not merely ignored by the header.
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")),
+      )
+      .toBeNull();
+  });
+
+  test("invalid stored session shape is not restored", async ({ page, context }) => {
+    await context.addInitScript(`
+      window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
+        user: { id: "usr_broken" }, accessToken: "t", expiresAt: "2099-01-01T00:00:00.000Z",
+      }));
+    `);
+    interceptUserEndpoints(page);
+    await page.goto("/library");
+    await expect(page).toHaveURL(/\/login/);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")),
+      )
+      .toBeNull();
   });
 });
 
@@ -307,7 +361,12 @@ test.describe("provider settings + preferences", () => {
     // shown by name, never by raw id.
     await expect(page.getByRole("combobox", { name: "Provider" })).toHaveText(/OpenRouter/);
     await expect(page.getByRole("combobox", { name: "Model" })).toHaveText(/z-ai\/glm-5.3-flash/);
-    await expect(page.getByLabel(/Reasoning effort/)).toHaveValue("");
+    // Dead controls are gone: no theme switch, no reasoning field, no second
+    // provider/model editor in a "Preferences" card.
+    await expect(page.getByLabel(/Reasoning effort/)).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "User preferences" })).toHaveCount(0);
+    await expect(page.getByLabel("Theme")).toHaveCount(0);
+    await expect(page.getByLabel("Default provider")).toHaveCount(0);
 
     // Model options come from the selected provider.
     await page.getByRole("combobox", { name: "Model" }).click();
@@ -358,7 +417,7 @@ test.describe("provider settings + preferences", () => {
     await page.addInitScript(AUTH_SAVE);
     await page.goto("/library");
 
-    await page.getByLabel(/Provider (setup|ready)/).click();
+    await page.getByRole("button", { name: /Provider (setup|ready)/ }).click();
     const provider = page.getByRole("combobox", { name: "Provider" });
     const model = page.getByRole("combobox", { name: "Model" });
     const apiKey = page.getByLabel("API key");
@@ -366,6 +425,8 @@ test.describe("provider settings + preferences", () => {
     await expect(provider).toHaveText(/OpenRouter/);
     await expect(model).toBeDisabled();
     await expect(apiKey).toBeEmpty();
+    // Settings saved provider/model pre-fills the dialog: one shared source.
+    await expect(model).toHaveText(/z-ai\/glm-5.3-flash/);
 
     await apiKey.fill("sk-or-test-key-0123456789");
     await expect(model).toBeEnabled();
@@ -384,11 +445,31 @@ test.describe("provider settings + preferences", () => {
 
     await page.getByRole("button", { name: "Save for this session" }).click();
     await expect(page.getByRole("dialog")).toBeHidden();
-    await expect(page.getByLabel(/Provider (setup|ready)/)).toHaveText(/Provider ready/);
+    await expect(page.getByRole("button", { name: /Provider (setup|ready)/ })).toHaveText(/Provider ready/);
     // Signed in: the choice lands server-side without the key.
     expect(savedBodies).toEqual([
       { provider: "openrouter", model: "z-ai/glm-5.3-flash" },
     ]);
+  });
+
+  test("settings and dialog agree on a saved model missing from the catalog", async ({ page }) => {
+    interceptUserEndpoints(page);
+    // The account saved a model the provider catalog no longer lists.
+    page.route("**/api/users/me/provider-config", (route) =>
+      oh({ config: { provider: "openrouter", model: "z-ai/legacy-flash", updatedAt: "t" } })(route),
+    );
+    await page.addInitScript(AUTH_SAVE);
+    await page.goto("/settings");
+    await expect(page.getByRole("combobox", { name: "Model" })).toHaveText(/z-ai\/legacy-flash/);
+
+    // The dialog shows the same model and keeps it selectable, marked as saved.
+    await page.goto("/library");
+    await page.getByRole("button", { name: /Provider (setup|ready)/ }).click();
+    const model = page.getByRole("combobox", { name: "Model" });
+    await expect(model).toHaveText(/z-ai\/legacy-flash/);
+    await page.getByLabel("API key").fill("sk-or-test-key-0123456789");
+    await model.click();
+    await expect(page.getByRole("option", { name: /z-ai\/legacy-flash · saved/ })).toBeVisible();
   });
 
   test("saved config failure maps to the message table", async ({ page }) => {
@@ -409,14 +490,93 @@ test.describe("provider settings + preferences", () => {
     ).toContainText("failed validation");
   });
 
-  test("preferences round-trip", async ({ page }) => {
+  test("settings has one provider/model source (no duplicate preference fields)", async ({ page }) => {
     interceptUserEndpoints(page);
     await page.addInitScript(AUTH_SAVE);
     await page.goto("/settings");
-    await expect(page.getByLabel("Theme")).toHaveValue("dark");
-    await page.getByLabel("Default provider").fill("groq");
-    await page.getByRole("button", { name: "Save preferences" }).click();
-    await expect(page.getByText("Preferences saved")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Generation defaults" })).toBeVisible();
+    // Exactly one provider/model editor on the page.
+    await expect(page.getByRole("combobox", { name: "Provider" })).toHaveCount(1);
+    await expect(page.getByRole("combobox", { name: "Model" })).toHaveCount(1);
+    // Preferences no longer duplicates provider/model or offers a dead theme.
+    await expect(page.getByLabel("Theme")).toHaveCount(0);
+    await expect(page.getByLabel("Default model")).toHaveCount(0);
+    // The precedence copy explains where a run gets its choice.
+    await expect(page.getByText(/fall back to its own environment defaults/)).toBeVisible();
+  });
+});
+
+test.describe("requirements provider gate", () => {
+  test("analysis start is blocked until provider setup exists", async ({ page }) => {
+    interceptUserEndpoints(page);
+    page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
+    page.route("**/api/projects/proj_1/requirements", oh({ spec: null, confirmedAt: null }));
+    await page.addInitScript(AUTH_SAVE);
+    await page.goto("/projects/proj_1/requirements");
+
+    const blocker = page.getByRole("region", { name: "Provider setup required" });
+    await expect(blocker).toBeVisible();
+    await expect(blocker).toContainText("Provider missing");
+    await expect(blocker).toContainText("API key missing");
+    const generate = page.getByRole("button", { name: "Generate requirements" });
+    await expect(generate).toBeDisabled();
+    await expect(page.getByText(/Add the missing provider setup above/)).toBeVisible();
+
+    // The CTA opens the shared dialog on this page; saving the key clears the gate.
+    await page.getByRole("button", { name: /Add provider & key/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByLabel("API key").fill("sk-or-e2e-key-0123456789");
+    await page.getByRole("button", { name: "Save for this session" }).click();
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(blocker).toHaveCount(0);
+    await expect(generate).toBeEnabled();
+  });
+
+  test("confirm is disabled without provider setup and re-enabled after saving", async ({ page }) => {
+    interceptUserEndpoints(page);
+    page.route("**/api/projects/proj_1", oh(PROJECT));
+    page.route("**/api/projects/proj_1/requirements", oh({ spec: REQUIREMENTS_SPEC, confirmedAt: "t" }));
+    await page.addInitScript(AUTH_SAVE);
+    await page.goto("/projects/proj_1/requirements");
+
+    const confirm = page.getByRole("button", { name: /Confirm & generate architecture/ });
+    await expect(confirm).toBeDisabled();
+    await expect(
+      page.getByRole("region", { name: "Provider setup required" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/Confirmation needs provider setup/),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: /Add provider & key/ }).click();
+    await page.getByLabel("API key").fill("sk-or-e2e-key-0123456789");
+    await page.getByRole("button", { name: "Save for this session" }).click();
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(confirm).toBeEnabled();
+    await expect(page.getByText(/Confirmation needs provider setup/)).toHaveCount(0);
+  });
+
+  test("back link points signed-in users at the library", async ({ page }) => {
+    interceptUserEndpoints(page);
+    page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
+    page.route("**/api/projects/proj_1/requirements", oh({ spec: null, confirmedAt: null }));
+    await page.addInitScript(AUTH_SAVE);
+    await page.goto("/projects/proj_1/requirements");
+    await expect(page.getByRole("link", { name: /Back to library/ })).toHaveAttribute(
+      "href",
+      "/library",
+    );
+  });
+
+  test("back link points anonymous visitors home", async ({ page }) => {
+    interceptUserEndpoints(page);
+    page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
+    page.route("**/api/projects/proj_1/requirements", oh({ spec: null, confirmedAt: null }));
+    await page.addInitScript(`
+      window.sessionStorage.setItem("sda:project:proj_1:access-key", "projkey_probe");
+    `);
+    await page.goto("/projects/proj_1/requirements");
+    await expect(page.getByRole("link", { name: /Back to home/ })).toHaveAttribute("href", "/");
   });
 });
 
@@ -459,12 +619,50 @@ test.describe("dashboard", () => {
     await expect(page.getByText("Plan-gated data")).toBeVisible();
   });
 
-  test("auth-required mid-journey surfaces re-login", async ({ page }) => {
+  test("auth-required mid-journey signs out and returns to login", async ({ page }) => {
     interceptUserEndpoints(page, { dashboard: ofail("AUTH_REQUIRED", "gone", 401) });
-    await page.addInitScript(AUTH_SAVE);
+    await page.addInitScript(AUTH_SAVE_ONCE);
     await page.goto("/dashboard");
-    await expect(page.getByText("Sign in to continue. Your session is missing or expired.")).toBeVisible();
-    await expect(page.getByText("Sign in again")).toBeVisible();
+
+    // A rejected token is a signed-out state everywhere: no page-level error
+    // while the header still shows the user.
+    await expect(page).toHaveURL(/\/login\?next=%2Fdashboard$/);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")),
+      )
+      .toBeNull();
+    await expect(page.getByText("probe@example.com")).toHaveCount(0);
+  });
+
+  test("401 from the library clears the session and redirects", async ({ page }) => {
+    interceptUserEndpoints(page);
+    page.route("**/api/projects?*", ofail("AUTH_REQUIRED", "gone", 401));
+    await page.addInitScript(AUTH_SAVE_ONCE);
+    await page.goto("/library");
+
+    await expect(page).toHaveURL(/\/login\?next=%2Flibrary$/);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")),
+      )
+      .toBeNull();
+    await expect(page.getByText("probe@example.com")).toHaveCount(0);
+  });
+
+  test("401 from settings clears the session and redirects", async ({ page }) => {
+    interceptUserEndpoints(page);
+    page.route("**/api/users/me/provider-config", ofail("AUTH_REQUIRED", "gone", 401));
+    await page.addInitScript(AUTH_SAVE_ONCE);
+    await page.goto("/settings");
+
+    await expect(page).toHaveURL(/\/login\?next=%2Fsettings$/);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")),
+      )
+      .toBeNull();
+    await expect(page.getByText("probe@example.com")).toHaveCount(0);
   });
 });
 
@@ -539,6 +737,7 @@ test.describe("unblocked path journeys", () => {
     });
     page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
     await page.addInitScript(AUTH_SAVE);
+    await page.addInitScript(PROVIDER_SETUP_SEED);
     await page.goto("/projects/proj_1/requirements");
 
     await page.getByRole("button", { name: "Generate requirements" }).click();
@@ -555,6 +754,7 @@ test.describe("unblocked path journeys", () => {
     });
     page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
     await page.addInitScript(AUTH_SAVE);
+    await page.addInitScript(PROVIDER_SETUP_SEED);
     await page.goto("/projects/proj_1/requirements");
 
     await page.getByRole("button", { name: "Generate requirements" }).click();
@@ -599,6 +799,7 @@ test.describe("unblocked path journeys", () => {
     page.route("**/api/runs/run_1", oh(FAILED_RUN));
     page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
     await page.addInitScript(AUTH_SAVE);
+    await page.addInitScript(PROVIDER_SETUP_SEED);
     await page.goto("/projects/proj_1/requirements");
 
     await page.getByRole("button", { name: "Generate requirements" }).click();

@@ -13,14 +13,26 @@ confirmed snapshot. Lives under `app/projects/[id]/requirements/`.
 
 ## States handled
 
-1. **Access gate** (`GET /api/projects/:id`, `GET /api/projects/:id/requirements`):
+1. **Back link** — always visible above the state card: signed in → `/library`,
+   anonymous (project key only) → `/`. A project page never traps the user.
+1. **Provider gate** — a run needs provider + model + that provider's key in
+   this tab (`lib/providers/setup.ts`, shared with the dialog's own guard).
+   When anything is missing, an inline `Provider setup required` card lists the
+   gaps (`Provider missing` / `Model missing` / `API key missing`) and opens the
+   shared `ProviderDialog` **on this page** via "Add provider & key" (headers
+   keep their compact trigger; the dialog writes sessionStorage and the account
+   default). "Generate requirements" and "Confirm & generate architecture" stay
+   disabled with explanatory copy until the setup is complete — no provider
+   402/`PROVIDER_AUTH_FAILED` should ever be the first feedback. The gate
+   re-reads the tab setup after the dialog saves.
+2. **Access gate** (`GET /api/projects/:id`, `GET /api/projects/:id/requirements`):
    the access key is loaded from sessionStorage (`sda:project:<id>:access-key`).
    Missing key → copy directing back to the landing page; 403/404/other errors
    map through the client error registry.
-2. **No spec yet** → "Generate requirements" button.
-3. **Run** (see below) — requirements generation or architecture generation.
-4. **Editor** — tabs Functional / Non-Functional, assumptions + clarifications context panels.
-5. **Architecture ready** — honest interim copy: the workspace UI is the next
+3. **No spec yet** → "Generate requirements" button (provider-gated).
+4. **Run** (see below) — requirements generation or architecture generation.
+5. **Editor** — tabs Functional / Non-Functional, assumptions + clarifications context panels.
+6. **Architecture ready** — honest interim copy: the workspace UI is the next
    phase; the user can return to the editor and re-confirm.
 
 ## Run updates: live stream with polling fallback
@@ -96,10 +108,14 @@ the polling DTO. The hook therefore:
 - `confirm: false` = "Save draft" (clears a snapshot per API contract — the
   project returns to `requirements_ready`).
 - `confirm: true` = "Confirm & generate architecture": PUT first, then
-  `POST /api/projects/:id/architecture` with the stored provider/model options
-  and `x-provider-api-key` when saved in this tab. Guards: any empty row
-  disables both buttons (`role="status"` hint), all mutations disable while
-  pending.
+  `POST /api/projects/:id/architecture` with the stored **provider + model**
+  options and `x-provider-api-key` when saved in this tab (provider and model
+  travel together so a non-default provider's key is never sent to another
+  provider). Guards: provider setup incomplete, or any empty row, disables both
+  buttons (`role="status"` hint for rows, a warning line for the provider
+  gate), all mutations disable while pending. A run always uses this
+  request-level choice; server env defaults apply only when the request omits
+  them.
 
 Unanswered clarifications show an `awaiting answer` chip and never block
 confirming.

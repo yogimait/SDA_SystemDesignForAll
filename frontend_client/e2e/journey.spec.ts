@@ -6,7 +6,7 @@
  * of the planner's viewport sweep; manual sweeps stay in the planner).
  */
 import { expect, test, type Page } from "@playwright/test";
-import { fillAuthForm } from "./helpers";
+import { fillAuthForm, PROVIDER_SETUP_SEED } from "./helpers";
 
 const IDE_TEXT =
   "Design a distributed rate limiter for a public API with sliding windows and a Redis backing store.";
@@ -14,6 +14,8 @@ const IDE_TEXT =
 /** Drive landing → requirements → confirm → workspace. */
 async function registerViaUI(page: Page): Promise<void> {
   const email = `journey_${Date.now().toString(36)}@example.com`;
+  // A run needs provider + model + key in this tab (requirements gate).
+  await page.addInitScript(PROVIDER_SETUP_SEED);
   await page.goto("/login");
   await page.getByRole("tab", { name: "Create account" }).click();
   await fillAuthForm(page, email, "supersecret123", { confirm: true, mode: "register" });
@@ -136,18 +138,18 @@ test("happy journey: idea → requirements → workspace tabs → guided run →
   // opened sheet is closed again before the next breakpoint assertion.
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("button", { name: "Outline" })).toBeVisible();
-  await page.getByRole("button", { name: "Details" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Details" }).click();
   await expect(page.getByRole("dialog", { name: "Details" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Details" })).toBeHidden();
 
   await page.setViewportSize({ width: 900, height: 800 });
-  await page.getByRole("button", { name: "Details" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Details" }).click();
   await expect(page.getByRole("dialog", { name: "Details" })).toBeVisible();
   await page.keyboard.press("Escape");
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await expect(page.getByRole("button", { name: "Details" })).toBeHidden();
+  await expect(page.getByRole("main").getByRole("button", { name: "Details" })).toBeHidden();
 
   // No sheets render on desktop; the three-panel layout is back.
   await expect(page.getByRole("tab", { name: "LLD" })).toBeVisible();

@@ -1,22 +1,25 @@
 "use client";
 
 /**
- * Settings (user-auth round): saved provider/model configuration and user
- * preferences. Saved config intentionally stores NO API key — the BYOK key
- * remains request-scoped through the shared Provider dialog.
+ * Settings: one source of truth for generation defaults (provider + model),
+ * stored per account through `PUT /api/users/me/provider-config` and shared
+ * with the provider dialog, which pre-fills from it. No API key is stored
+ * here — BYOK stays request-scoped in the dialog.
+ *
+ * Deliberately absent: theme (the app ships one branded dark palette; nothing
+ * to switch) and the duplicate default/provider-model fields that used to live
+ * in a "Preferences" card (they diverged from this configuration).
  */
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   SavedProviderConfigResponseSchema,
-  UserPreferencesResponseSchema,
   ProvidersResponseSchema,
 } from "@sda/contracts";
 import { CheckIcon } from "lucide-react";
 import { PortalHeader } from "@/components/portal/portal-header";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -27,12 +30,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { providerLabel } from "@/lib/providers/label";
-import { saveThemePreference } from "@/lib/theme/preferences";
 import { useHydrated, useSession } from "@/hooks/use-session";
 import { useRouter } from "next/navigation";
 
 type ProvidersInfo = import("@sda/contracts").ProvidersResponse;
-type UserPreferences = import("@sda/contracts").UserPreferences;
 
 export function SettingsContent() {
   const router = useRouter();
@@ -76,21 +77,50 @@ export function SettingsContent() {
         <div>
           <h1 className="text-foreground text-xl font-medium tracking-tight">Settings</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Saved generation defaults and interface preferences for{" "}
+            Generation defaults for{" "}
             <span className="font-mono text-[11px]">{session.user.email}</span>.
           </p>
         </div>
 
         <div className="mt-6 grid gap-4">
           <ProviderConfigCard providers={providers} />
-          <PreferencesCard />
-          <section aria-label="Bring your own key" className="bg-card border-border rounded-xl border border-solid p-4">            <h2 className="text-foreground text-sm font-semibold tracking-tight">Bring your own key (BYOK)</h2>
+          <section aria-label="How settings apply" className="bg-card border-border rounded-xl border border-solid p-4">
+            <h2 className="text-foreground text-sm font-semibold tracking-tight">
+              How these settings apply
+            </h2>
+            <ul className="text-muted-foreground mt-2 grid gap-1.5 text-sm leading-relaxed">
+              <li>
+                The provider dialog on the landing page, the library, and the
+                requirements page pre-fills the provider and model saved here.
+              </li>
+              <li>
+                A run always uses the provider, model, and{" "}
+                <span className="font-mono text-[11px]">x-provider-api-key</span>{" "}
+                you confirm in that dialog — the key stays in this browser tab
+                and is never stored server-side.
+              </li>
+              <li>
+                Only when nothing is chosen does the server fall back to its own
+                environment defaults (provider and model configured on the
+                backend).
+              </li>
+              <li>
+                The app ships one branded dark palette, so there is no theme
+                switch to set.
+              </li>
+            </ul>
+          </section>
+          <section aria-label="Bring your own key" className="bg-card border-border rounded-xl border border-solid p-4">
+            <h2 className="text-foreground text-sm font-semibold tracking-tight">
+              Bring your own key (BYOK)
+            </h2>
             <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-              The saved configuration keeps <strong className="text-foreground">no API key</strong>.
-              Per-request BYOK keys live in the Provider dialog on the landing page and in the
-              project library, travel only as the
-              <span className="font-mono text-[11px]"> x-provider-api-key</span> header for one run,
-              and never persist. Each provider keeps its own key in that tab.
+              The saved configuration keeps{" "}
+              <strong className="text-foreground">no API key</strong>. Per-request
+              BYOK keys live in the provider dialog, travel only as the{" "}
+              <span className="font-mono text-[11px]">x-provider-api-key</span>{" "}
+              header for one run, and never persist. Each provider keeps its own
+              key in that tab.
             </p>
           </section>
         </div>
@@ -106,6 +136,8 @@ interface ProviderConfigCardProps {
 function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
   const [provider, setProvider] = useState<string>("");
   const [model, setModel] = useState<string>("");
+  // Not editable: the provider adapters take reasoning effort from server
+  // config. Carried through saves so the stored value is never wiped.
   const [reasoningEffort, setReasoningEffort] = useState<string>("");
   const [loaded, setLoaded] = useState<
     "loading" | "empty" | "active" | "auth-required" | "error"
@@ -182,7 +214,8 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
         <div>
           <h2 className="text-foreground text-sm font-semibold tracking-tight">Generation defaults</h2>
           <p className="text-muted-foreground mt-1 text-xs">
-            Applied when a run starts without an explicit provider/model choice.
+            The provider and model the dialog pre-fills. A run still sends what
+            you confirm there, together with your key.
           </p>
         </div>
         <span
@@ -293,18 +326,13 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
               </Select>
             </div>
           </div>
-          <div>
-            <label htmlFor="reasoning-effort" className="text-foreground text-sm font-medium">
-              Reasoning effort <span className="text-muted-foreground text-xs">(optional)</span>
-            </label>
-            <Input
-              id="reasoning-effort"
-              value={reasoningEffort}
-              onChange={(event) => setReasoningEffort(event.target.value)}
-              placeholder="off · low · medium · high · max"
-              className="mt-1.5 font-mono text-xs"
-            />
-          </div>
+
+          {loaded === "empty" ? (
+            <p className="text-muted-foreground text-xs">
+              Nothing saved yet — the dialog asks for provider and model until you
+              save them here.
+            </p>
+          ) : null}
 
           {savedNote !== null ? (
             <p role="status" className="text-success flex items-center gap-1.5 text-xs">
@@ -322,163 +350,6 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
           <Button type="submit" disabled={busy || provider.trim() === "" || model.trim() === ""}>
             Save configuration
           </Button>
-        </form>
-      ) : null}
-    </section>
-  );
-}
-
-function PreferencesCard() {
-  const [theme, setTheme] = useState<UserPreferences["theme"]>("system");
-  const [defaultProvider, setDefaultProvider] = useState("");
-  const [defaultModel, setDefaultModel] = useState("");
-  const [loaded, setLoaded] = useState<"loading" | "ready" | "auth-required">("loading");
-  const [savedNote, setSavedNote] = useState<string | null>(null);
-  const [error, setError] = useState<{ user: string; detail: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const data = await apiFetch("/api/users/me/preferences", {
-          auth: true,
-          dataSchema: UserPreferencesResponseSchema,
-        });
-        setTheme(data.preferences.theme ?? "dark");
-        setDefaultProvider(data.preferences.defaultProvider ?? "");
-        setDefaultModel(data.preferences.defaultModel ?? "");
-        saveThemePreference(data.preferences.theme ?? "dark");
-      } catch (caught) {
-        if (caught instanceof ApiError && caught.code === "AUTH_REQUIRED") {
-          setLoaded("auth-required");
-          return;
-        }
-        // No saved preferences yet — keep the contract default.
-        setTheme("dark");
-      } finally {
-        setLoaded((current) => (current === "auth-required" ? current : "ready"));
-      }
-    })();
-  }, []);
-
-  async function save(): Promise<void> {
-    setBusy(true);
-    setSavedNote(null);
-    setError(null);
-    try {
-      const data = await apiFetch("/api/users/me/preferences", {
-        method: "PUT",
-        auth: true,
-        body: JSON.stringify({
-          theme,
-          defaultProvider: defaultProvider.trim() === "" ? undefined : defaultProvider.trim(),
-          defaultModel: defaultModel.trim() === "" ? undefined : defaultModel.trim(),
-        }),
-        dataSchema: UserPreferencesResponseSchema,
-      });
-      setTheme(data.preferences.theme ?? "dark");
-      setDefaultProvider(data.preferences.defaultProvider ?? "");
-      setDefaultModel(data.preferences.defaultModel ?? "");
-      saveThemePreference(data.preferences.theme ?? "dark");
-      setSavedNote("Preferences saved");
-    } catch (caught) {
-      if (caught instanceof ApiError) {
-        setError({ user: caught.userMessage, detail: caught.message });
-      } else {
-        setError({ user: "Saving preferences failed.", detail: String(caught) });
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section aria-label="User preferences" className="bg-card border-border rounded-xl border border-solid p-4">
-      <h2 className="text-foreground text-sm font-semibold tracking-tight">Preferences</h2>
-      <p className="text-muted-foreground mt-1 text-xs">
-        Stored server-side for your account. The stored theme lands on the
-        document (<span className="font-mono text-[11px]">data-theme</span>); the
-        palette you see is the branded dark look — switching colors lands when
-        a light palette ships.
-      </p>
-
-      {loaded === "loading" ? <Skeleton className="mt-4 h-24 rounded-lg" /> : null}
-
-      {loaded === "auth-required" ? (
-        <div className="bg-primary/10 border-primary/40 mt-4 rounded-lg border border-dashed p-4">
-          <p className="text-foreground text-sm font-medium">
-            Sign in to manage your preferences.
-          </p>
-          <Link
-            href="/login?next=%2Fsettings"
-            className="text-primary hover:underline mt-2 inline-block text-sm underline-offset-4"
-          >
-            Sign in
-          </Link>
-        </div>
-      ) : null}
-
-      {loaded === "ready" ? (
-        <form
-          className="mt-4 grid gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save();
-          }}
-        >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="theme" className="text-foreground text-sm font-medium">
-                Theme
-              </label>
-              <select
-                id="theme"
-                value={theme}
-                onChange={(event) => setTheme(event.target.value as UserPreferences["theme"])}
-                className="border-input bg-background text-foreground mt-1.5 h-8 w-full rounded-lg border border-solid px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <option value="system">Follow system</option>
-                <option value="dark">Dark (branded)</option>
-                <option value="light">Light (stored, not themed yet)</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="default-provider" className="text-foreground text-sm font-medium">
-                Default provider
-              </label>
-              <Input
-                id="default-provider"
-                value={defaultProvider}
-                onChange={(event) => setDefaultProvider(event.target.value)}
-                placeholder="openrouter"
-                className="mt-1.5 font-mono text-xs"
-              />
-            </div>
-          </div>
-          <div>
-            <label htmlFor="default-model" className="text-foreground text-sm font-medium">
-              Default model
-            </label>
-            <Input
-              id="default-model"
-              value={defaultModel}
-              onChange={(event) => setDefaultModel(event.target.value)}
-              placeholder="z-ai/glm-5.3-flash"
-              className="mt-1.5 font-mono text-xs"
-            />
-          </div>
-
-          {savedNote !== null ? (
-            <p role="status" className="text-success text-xs">{savedNote}</p>
-          ) : null}
-          {error !== null ? (
-            <div role="alert" className="bg-destructive/10 rounded-lg p-3">
-              <p className="text-destructive text-sm font-medium">{error.user}</p>
-              <p className="text-muted-foreground font-mono mt-0.5 text-[11px]">{error.detail}</p>
-            </div>
-          ) : null}
-
-          <Button type="submit" disabled={busy}>Save preferences</Button>
         </form>
       ) : null}
     </section>

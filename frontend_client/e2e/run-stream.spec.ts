@@ -21,6 +21,11 @@ const AUTH_SEED = `
     accessToken: "token_stream_001",
     expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
   }));
+  window.sessionStorage.setItem("sda:provider-setup", JSON.stringify({
+    provider: "openrouter",
+    model: "z-ai/glm-5.3-flash",
+    keys: { openrouter: "sk-or-e2e-key-0123456789" },
+  }));
 `;
 
 const PROJECT = {
@@ -299,7 +304,7 @@ test("aborted stream shows reconnecting, falls back to polling, still reaches te
   expect(pageErrors).toEqual([]);
 });
 
-test("run-status 401 shows mapped copy and a sign-in action, not raw text", async ({ page }) => {
+test("run-status 401 is treated as signed out: redirect to login, session cleared", async ({ page }) => {
   await page.route("**/api/runs/run_1/events*", (route) =>
     route.fulfill({
       status: 401,
@@ -326,15 +331,36 @@ test("run-status 401 shows mapped copy and a sign-in action, not raw text", asyn
   );
 
   await interceptProject(page);
-  await page.addInitScript(AUTH_SEED);
-  await startRun(page);
+  // Seed once: the redirect must not be re-seeded by the init script.
+  await page.addInitScript(`
+    if (window.sessionStorage.getItem("sda:stream:seeded") === null) {
+      window.sessionStorage.setItem("sda:stream:seeded", "1");
+      window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
+        user: ${JSON.stringify(USER)},
+        accessToken: "token_stream_001",
+        expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+      }));
+      window.sessionStorage.setItem("sda:provider-setup", JSON.stringify({
+        provider: "openrouter",
+        model: "z-ai/glm-5.3-flash",
+        keys: { openrouter: "sk-or-e2e-key-0123456789" },
+      }));
+    }
+  `);
+  await page.goto("/projects/proj_1/requirements");
+  await page.getByRole("button", { name: "Generate requirements" }).click();
 
-  // Mapped user copy + an actionable sign-in link (D4); the raw message
-  // stays available as technical detail.
+  // A rejected token is a signed-out state: no inline error card next to a
+  // signed-in header — the tab goes back to sign-in and returns here.
+  await expect(page).toHaveURL(
+    /\/login\?next=%2Fprojects%2Fproj_1%2Frequirements$/,
+    { timeout: 20_000 },
+  );
+  await expect
+    .poll(() => page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")))
+    .toBeNull();
+  await expect(page.getByRole("tab", { name: "Sign in" })).toBeVisible();
   await expect(
     page.getByText("Sign in to continue. Your session is missing or expired."),
-  ).toBeVisible({ timeout: 20_000 });
-  const signIn = page.getByRole("link", { name: "Sign in" });
-  await expect(signIn).toBeVisible();
-  await expect(signIn).toHaveAttribute("href", /\/login\?next=/);
+  ).toHaveCount(0);
 });

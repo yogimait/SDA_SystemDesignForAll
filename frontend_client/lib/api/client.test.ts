@@ -236,4 +236,31 @@ describe("apiFetch — authenticated sessions", () => {
     const headers = stub.calls[0].init?.headers as Record<string, string>;
     expect(headers.authorization).toBeUndefined();
   });
+
+  it("drops the stored session when an authenticated call returns AUTH_REQUIRED", async () => {
+    const { saveSession } = await import("../session/auth");
+    saveSession(AUTH);
+    stubFetch(jsonResponse(401, failEnvelope(401, "AUTH_REQUIRED", "Session expired")));
+
+    const err = (await apiFetch("/api/projects", { auth: true }).catch(
+      (e) => e,
+    )) as ApiError;
+
+    expect(err.code).toBe("AUTH_REQUIRED");
+    // Signed out at the source; jsdom cannot navigate, the e2e asserts the
+    // /login?next= redirect in a real browser.
+    expect(window.sessionStorage.getItem("sda:auth:session")).toBeNull();
+  });
+
+  it("leaves the session alone for anonymous AUTH_REQUIRED failures", async () => {
+    const { saveSession } = await import("../session/auth");
+    saveSession(AUTH);
+    stubFetch(jsonResponse(401, failEnvelope(401, "AUTH_REQUIRED", "Session expired")));
+
+    await apiFetch("/api/projects", { projectKey: "pk_test", auth: false }).catch(
+      () => undefined,
+    );
+
+    expect(window.sessionStorage.getItem("sda:auth:session")).not.toBeNull();
+  });
 });

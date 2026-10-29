@@ -5,13 +5,15 @@
  * data from one requirements generation run.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { fillAuthForm } from "./helpers";
+import { fillAuthForm, PROVIDER_SETUP_SEED } from "./helpers";
 
 const IDEA_TEXT =
   "Design a distributed rate limiter for a public API with sliding windows.";
 
 async function registerViaUI(page: Page): Promise<void> {
   const email = `qa_${Date.now().toString(36)}@example.com`;
+  // The requirements gate needs provider + model + key in this tab.
+  await page.addInitScript(PROVIDER_SETUP_SEED);
   await page.goto("/login");
   await page.getByRole("tab", { name: "Create account" }).click();
   await fillAuthForm(page, email, "supersecret123", { confirm: true, mode: "register" });
@@ -34,8 +36,8 @@ async function createRunWithData(page: Page): Promise<void> {
   ).toBeEnabled({ timeout: 90_000 });
 }
 
-/** Portal header at 390: identity collapses, nav links stay clickable (D2). */
-test("portal header at 390px: nav links clickable, no identity overlap", async ({
+/** Portal header clickability across widths: sheet on <768, direct ≥768 (D2). */
+test("portal header: menu sheet at 390, direct links ≥768, no overlap/overflow", async ({
   page,
 }) => {
   await createRunWithData(page);
@@ -48,14 +50,64 @@ test("portal header at 390px: nav links clickable, no identity overlap", async (
   await expect(
     page.locator("header span").filter({ hasText: /FREE|PRO/i }),
   ).toBeHidden();
+  // The text nav is display:none on phones; the sheet carries the links.
+  await expect(page.getByRole("navigation", { name: "Portal sections" })).toBeHidden();
 
-  // Every portal nav link is visible and navigates.
-  await page.getByRole("link", { name: "Settings" }).click();
+  // Text nav lives inside the hamburger sheet below 768 (nav round).
+  const menuTrigger = page.getByRole("button", { name: "Open navigation menu" });
+  const openMenu = async () => {
+    await menuTrigger.click();
+    return page.getByRole("dialog", { name: "Navigation" });
+  };
+  let sheet = await openMenu();
+
+  // All three portal links are visible and clickable in the sheet.
+  for (const label of ["Library", "Dashboard", "Settings"] as const) {
+    await expect(sheet.getByRole("link", { name: label })).toBeVisible();
+  }
+
+  // Click one and verify real navigation; Escape returns focus to the trigger.
+  await sheet.getByRole("link", { name: "Settings" }).click();
   await expect(page).toHaveURL(/\/settings$/);
-  await page.getByRole("link", { name: "Library" }).click();
+  sheet = await openMenu();
+  await sheet.getByRole("link", { name: "Library" }).click();
   await expect(page).toHaveURL(/\/library$/);
-  await page.getByRole("link", { name: "Dashboard" }).click();
+  sheet = await openMenu();
+  await sheet.getByRole("link", { name: "Dashboard" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  // Fresh sheet: Escape closes and focus returns to the hamburger trigger.
+  sheet = await openMenu();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(menuTrigger).toBeFocused();
+
+  // No overlap/interception anywhere at 390: hit-tests resolve to the links
+  // while the page holds no horizontal overflow.
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, "page overflow at 390px").toBeLessThanOrEqual(0);
+  await openMenu();
+  for (const label of ["Library", "Dashboard"] as const) {
+    const link = sheet.getByRole("link", { name: label });
+    const box = (await link.boundingBox())!;
+    const hit = await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.closest("a")?.textContent ?? "none",
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    );
+    expect(hit, `${label} intercepted at its center`).toContain(label);
+  }
+  await page.keyboard.press("Escape");
+
+  // Desktop stays direct: at ≥768(=2xl here) the text nav is in the header
+  // and the hamburger sheet is gone.
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await page.goto("/dashboard");
+  const direct = page.getByRole("link", { name: "Settings" });
+  await expect(direct).toBeVisible();
+  await direct.click();
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page.getByRole("button", { name: "Open navigation menu" })).toBeHidden();
 
   // Floating treatment: the header bar is a contained rounded card, not a
   // full-width edge-to-edge solid strip.

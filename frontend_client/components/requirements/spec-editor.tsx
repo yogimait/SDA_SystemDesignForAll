@@ -91,7 +91,7 @@ function ProviderNote({ setup }: { setup: ProviderSetup | null }) {
     return (
       <span className="text-warning flex items-center gap-1.5 font-mono text-[11px]">
         <CircleAlertIcon className="size-3" />
-        no provider key set — add one from the library
+        no provider key set — add one above
       </span>
     );
   }
@@ -112,6 +112,7 @@ export function SpecEditor({
   projectKey,
   spec,
   setup,
+  providerReady,
   onArchitectureStarted,
   onSpecSynced,
 }: {
@@ -119,6 +120,8 @@ export function SpecEditor({
   projectKey: string | null;
   spec: RequirementsSpec;
   setup: ProviderSetup | null;
+  /** Provider + model + key present: confirmation can start a run. */
+  providerReady: boolean;
   onArchitectureStarted: (runId: string) => void;
   /** Lets the flow refresh its cached spec after a server-authoritative save. */
   onSpecSynced: (spec: RequirementsSpec) => void;
@@ -194,7 +197,9 @@ export function SpecEditor({
       }
       setSavedNote("Specification confirmed — starting architecture generation…");
       const options: GenerationOptions = {
-        ...(setup === null ? {} : setup.model.trim() === "" ? {} : { model: setup.model.trim() }),
+        // Provider and key travel together; the saved model alone is not enough.
+        ...(setup === null || setup.provider === "" ? {} : { provider: setup.provider }),
+        ...(setup === null || setup.model.trim() === "" ? {} : { model: setup.model.trim() }),
       };
       const started = await apiFetch(`/api/projects/${projectId}/architecture`, {
         method: "POST",
@@ -496,7 +501,7 @@ export function SpecEditor({
           </Button>
           <Button
             onClick={() => void save(true)}
-            disabled={!canSubmit}
+            disabled={!canSubmit || !providerReady}
             className="min-h-9 px-5"
           >
             <CheckIcon />
@@ -504,6 +509,13 @@ export function SpecEditor({
           </Button>
         </div>
       </div>
+
+      {!providerReady ? (
+        <p className="text-warning mt-3 text-xs">
+          Confirmation needs provider setup: add the missing provider, model, or
+          key in the card above, then confirm again.
+        </p>
+      ) : null}
 
       {banner !== null ? (
         <div

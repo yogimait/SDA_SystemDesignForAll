@@ -24,23 +24,27 @@ import {
 } from "@/components/ui/select";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { providerLabel } from "@/lib/providers/label";
+import { MIN_PROVIDER_KEY_LENGTH } from "@/lib/providers/setup";
 import { loadProviderKeys, loadProviderSetup, saveProviderSetup } from "@/lib/session/keys";
 import type { ProviderSetup } from "@/lib/session/keys";
 import { useSession } from "@/hooks/use-session";
 
-/** Stored choice wins when the server still offers it; else the server default. */
+type Selection = { provider: string; model: string };
+
+/** Preferred choice wins when the server still offers the provider; a saved
+ *  model is kept even when the catalog dropped it (Settings does the same). */
 function resolveSelection(
   data: ProvidersResponse,
-  stored: ProviderSetup | null,
-): { provider: string; model: string } {
+  preferred: Selection | null,
+): Selection {
   const providerId =
-    stored !== null && data.providers.some((info) => info.id === stored.provider)
-      ? stored.provider
+    preferred !== null && data.providers.some((info) => info.id === preferred.provider)
+      ? preferred.provider
       : data.defaultProvider;
   const info = data.providers.find((entry) => entry.id === providerId) ?? data.providers[0];
   const model =
-    stored !== null && stored.provider === providerId && info?.models.includes(stored.model)
-      ? stored.model
+    preferred !== null && preferred.provider === providerId && preferred.model.trim() !== ""
+      ? preferred.model
       : (info?.models[0] ?? "");
   return { provider: info?.id ?? "", model };
 }
@@ -48,12 +52,24 @@ function resolveSelection(
 /**
  * Provider setup (BYOK). Provider + model lists come from `GET /api/providers`
  * (nothing hardcoded); keys stay in sessionStorage per provider — written
- * exclusively through lib/session/keys.ts. Signed-in users also get their
- * provider/model choice saved via `PUT /api/users/me/provider-config`; the key
- * never leaves the tab and is never part of that payload.
- * Focus trap, Esc-to-close and overlay come from the shared Dialog component.
+ * exclusively through lib/session/keys.ts.
+ *
+ * Signed-in users share one provider/model source with Settings: their saved
+ * provider-config pre-fills the dialog, and saving here writes it back via
+ * `PUT /api/users/me/provider-config` (no key in that payload). Anonymous
+ * visitors get sessionStorage only.
+ *
+ * `triggerLabel` lets a page-body CTA reuse the dialog (headers keep their
+ * compact label); `onSaved` fires once the tab-local setup is stored, so a
+ * gated page can re-check readiness without another source of truth.
  */
-export function ProviderDialog() {
+export function ProviderDialog({
+  triggerLabel,
+  onSaved,
+}: {
+  triggerLabel?: string;
+  onSaved?: (setup: ProviderSetup) => void;
+} = {}) {
   const session = useSession();
   const [open, setOpen] = useState(false);
   const [ready, setReady] = useState(false);
@@ -67,15 +83,38 @@ export function ProviderDialog() {
 
   const providerInfo = providers?.providers.find((info) => info.id === provider) ?? null;
   const apiKey = keys[provider] ?? "";
+  // Same rule as Settings: a saved model the catalog no longer lists stays
+  // selectable (clearly marked) instead of silently snapping to another model.
+  const catalogModels = providerInfo?.models ?? [];
+  const modelOptions =
+    model !== "" && !catalogModels.includes(model)
+      ? [model, ...catalogModels]
+      : catalogModels;
+
+  /** Saved account config is the shared source; local setup is the fallback. */
+  async function loadPreferredSelection(): Promise<Selection | null> {
+    const stored = loadProviderSetup();
+    if (session === null) return stored;
+    try {
+      const data = await apiFetch("/api/users/me/provider-config", {
+        auth: true,
+        dataSchema: SavedProviderConfigResponseSchema,
+      });
+      return { provider: data.config.provider, model: data.config.model };
+    } catch {
+      return stored; // not saved yet / offline: the tab-local choice still wins
+    }
+  }
 
   async function loadProviders(): Promise<void> {
     setLoadError(null);
     try {
-      const data = await apiFetch("/api/providers", {
-        dataSchema: ProvidersResponseSchema,
-      });
+      const [data, preferred] = await Promise.all([
+        apiFetch("/api/providers", { dataSchema: ProvidersResponseSchema }),
+        loadPreferredSelection(),
+      ]);
       setProviders(data);
-      const selection = resolveSelection(data, loadProviderSetup());
+      const selection = resolveSelection(data, preferred);
       setProvider(selection.provider);
       setModel(selection.model);
     } catch (caught) {
@@ -92,13 +131,7 @@ export function ProviderDialog() {
     setProvider(stored?.provider ?? "");
     setModel(stored?.model ?? "");
     setReady(stored !== null);
-    if (providers !== null) {
-      const selection = resolveSelection(providers, stored);
-      setProvider(selection.provider);
-      setModel(selection.model);
-    } else {
-      void loadProviders();
-    }
+    void loadProviders();
   }
 
   async function save(): Promise<void> {
@@ -106,6 +139,7 @@ export function ProviderDialog() {
     // Local first: the key is the part that only exists in this tab.
     saveProviderSetup(setup);
     setReady(true);
+    onSaved?.(setup);
     setSaveError(null);
     if (session === null) {
       setOpen(false);
@@ -132,7 +166,8 @@ export function ProviderDialog() {
     }
   }
 
-  const invalidSubmit = provider === "" || model === "" || apiKey.trim().length < 16;
+  const invalidSubmit =
+    provider === "" || model === "" || apiKey.trim().length < MIN_PROVIDER_KEY_LENGTH;
 
   return (
     <Dialog
@@ -146,13 +181,17 @@ export function ProviderDialog() {
         render={
           <Button
             variant="outline"
-            size="sm"
-            aria-label={ready ? "Provider ready" : "Provider setup"}
+            size={triggerLabel === undefined ? "sm" : "default"}
+            aria-label={ready ? "Provider ready" : (triggerLabel ?? "Provider setup")}
           />
         }
       >
         <KeyRoundIcon aria-hidden="true" />
-        <span className="hidden sm:inline">{ready ? "Provider ready" : "Provider setup"}</span>
+        {triggerLabel === undefined ? (
+          <span className="hidden sm:inline">{ready ? "Provider ready" : "Provider setup"}</span>
+        ) : (
+          <span>{ready ? "Provider ready" : triggerLabel}</span>
+        )}
       </DialogTrigger>
 
       <DialogContent className="max-w-[480px] p-6">
@@ -284,15 +323,17 @@ export function ProviderDialog() {
                 />
               </SelectTrigger>
               <SelectContent>
-                {(providerInfo?.models ?? []).map((slug) => (
+                {modelOptions.map((slug) => (
                   <SelectItem key={slug} value={slug}>
-                    {slug}
+                    {catalogModels.includes(slug) ? slug : `${slug} · saved`}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <p className="text-muted-foreground mt-1 text-xs">
-              Models listed for the selected provider.
+              {model !== "" && !catalogModels.includes(model)
+                ? "Your saved model is kept even though the provider no longer lists it."
+                : "Models listed for the selected provider."}
             </p>
           </div>
 

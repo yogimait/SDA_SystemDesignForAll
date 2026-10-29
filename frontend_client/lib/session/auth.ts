@@ -9,10 +9,14 @@
  *   `useSession` (hooks/) reads a stable module snapshot through
  *   useSyncExternalStore so React renders stay referentially stable.
  */
-import type { AuthResponse, User } from "@sda/contracts";
+import { UserSchema, type AuthResponse, type User } from "@sda/contracts";
 
 const SESSION_ENTRY = "sda:auth:session";
 export const AUTH_CHANGED_EVENT = "sda:auth-changed";
+
+/** The logout call runs while the session is being discarded; it must not
+ *  trigger the "sign in again" redirect (the header already routes to /login). */
+export const LOGOUT_PATH = "/api/auth/logout";
 
 export type StoredSession = {
   user: User;
@@ -33,30 +37,37 @@ function safeStorage(): Storage | null {
   }
 }
 
+/** Invalid, malformed, or expired entries are dropped at the source. */
 function readStored(storage: Storage | null): StoredSession | null {
   if (storage === null) return null;
+  const drop = (): null => {
+    storage.removeItem(SESSION_ENTRY);
+    return null;
+  };
   try {
     const raw = storage.getItem(SESSION_ENTRY);
     if (raw === null) return null;
     const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return drop();
+    const candidate = parsed as Partial<StoredSession>;
+    const user = UserSchema.safeParse(candidate.user);
     if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      typeof (parsed as { expiresAt?: unknown }).expiresAt !== "string" ||
-      typeof (parsed as { accessToken?: unknown }).accessToken !== "string"
+      !user.success ||
+      typeof candidate.accessToken !== "string" ||
+      candidate.accessToken === "" ||
+      typeof candidate.expiresAt !== "string"
     ) {
-      return null;
+      return drop();
     }
-    const candidate = parsed as StoredSession;
-    if (typeof candidate.user?.id !== "string") return null;
     const expires = new Date(candidate.expiresAt).getTime();
-    if (Number.isNaN(expires) || expires <= Date.now()) {
-      storage.removeItem(SESSION_ENTRY);
-      return null;
-    }
-    return candidate;
+    if (Number.isNaN(expires) || expires <= Date.now()) return drop();
+    return {
+      user: user.data,
+      accessToken: candidate.accessToken,
+      expiresAt: candidate.expiresAt,
+    };
   } catch {
-    return null;
+    return drop();
   }
 }
 
@@ -110,4 +121,19 @@ export function loadSession(): StoredSession | null {
     window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
   }
   return snapshot;
+}
+
+/**
+ * A server-rejected session (401 `AUTH_REQUIRED`): drop the local copy — the
+ * shared store notifies every subscriber, so the header stops showing the
+ * identity — then send the tab to sign in again and come back here.
+ * Full navigation (not router.push) guarantees no stale page state survives.
+ */
+export function handleAuthRequired(): void {
+  clearSession();
+  if (typeof window === "undefined") return;
+  const { pathname, search } = window.location;
+  if (pathname === "/login") return; // no redirect loop on the sign-in page
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- runs inside the API client (no router); a full reload is deliberate so no stale page state survives the sign-out
+  window.location.assign(`/login?next=${encodeURIComponent(`${pathname}${search}`)}`);
 }

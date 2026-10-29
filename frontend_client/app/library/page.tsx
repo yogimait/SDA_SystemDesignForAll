@@ -116,7 +116,7 @@ export function LibraryContent() {
     <div className="flex min-h-screen flex-col">
       <PortalHeader current="library" />
       <main className="mx-auto w-full max-w-[1100px] flex-1 px-6 py-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-foreground text-xl font-medium tracking-tight">Project library</h1>
             <p className="text-muted-foreground mt-1 text-sm">
@@ -124,14 +124,24 @@ export function LibraryContent() {
               keys.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <ProviderDialog />
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by status">
+          <div className="flex min-w-0 flex-col gap-2 md:flex-none md:items-end">
+            {/* Provider setup keeps its visible label on phones too — the BYOK
+                dialog is the primary library control (QA D5). */}
+            <div className="labeled-provider md:justify-self-end">
+              <ProviderDialog />
+            </div>
+            {/* Phones: one horizontal scroll row; ≥md: wrapping row. */}
+            <div
+              role="group"
+              aria-label="Filter by status"
+              className="border-border/40 -mx-6 flex items-center gap-2 overflow-x-auto border-y border-solid px-6 py-2 md:mx-0 md:flex-wrap md:overflow-visible md:border-0 md:p-0"
+            >
               {STATUS_OPTIONS.map((option) => (
                 <Button
                   key={option.label}
                   variant={status === option.value ? "secondary" : "outline"}
                   size="sm"
+                  className="h-11 shrink-0 px-3.5 sm:h-9 sm:px-2.5"
                   aria-pressed={status === option.value}
                   onClick={() => setStatus(option.value)}
                 >
@@ -206,6 +216,7 @@ export function LibraryContent() {
             <Button
               variant="outline"
               disabled={loading}
+              className="min-h-11 px-4"
               onClick={() => void load(page.nextCursor, false)}
             >
               <ChevronsDownIcon />

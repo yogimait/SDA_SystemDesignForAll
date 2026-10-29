@@ -1,28 +1,35 @@
 "use client";
 
+import type { GenerationOptions, RequirementsSpec } from "@sda/contracts";
 import {
   ProjectSchema,
   RequirementsResponseSchema,
   StartRunResponseSchema,
-  type GenerationOptions,
-  type RequirementsSpec,
 } from "@sda/contracts";
 import { CircleCheckIcon, ListChecksIcon, RotateCcwIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { JourneyShell } from "@/components/journey-shell";
+import { ProviderDialog } from "@/components/landing/provider-dialog";
 import { Button } from "@/components/ui/button";
 import { RunProgress } from "@/components/requirements/run-progress";
 import { SpecEditor } from "@/components/requirements/spec-editor";
 import { useRunTerminalEffect } from "@/hooks/use-generation-run";
 import { useRunLive } from "@/hooks/use-run-stream";
+import { useSession } from "@/hooks/use-session";
 import { apiFetch, ApiError } from "@/lib/api/client";
+import {
+  PROVIDER_GAP_LABELS,
+  providerSetupMessage,
+  providerSetupState,
+} from "@/lib/providers/setup";
 import { queryKeys } from "@/lib/query-keys";
 import {
   loadProjectAccessKey,
   loadProviderSetup,
 } from "@/lib/session/keys";
+import type { ProviderSetup } from "@/lib/session/keys";
 import { loadSession } from "@/lib/session/auth";
 
 type Phase =
@@ -40,14 +47,28 @@ type Phase =
  */
 export function RequirementsFlow({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
+  const session = useSession();
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [projectKey, setProjectKey] = useState<string | null>(null);
   const [spec, setSpec] = useState<RequirementsSpec | null>(null);
   const [starting, setStarting] = useState(false);
+  const [providerSetup, setProviderSetup] = useState<ProviderSetup | null>(null);
   const [startError, setStartError] = useState<{
     user: string;
     detail: string;
   } | null>(null);
+
+  const setupState = providerSetupState(providerSetup);
+
+  // The tab-local provider setup is the only thing a run can use; re-read it
+  // on mount (deferred off the effect body) and after the dialog saves, so the
+  // gate never goes stale.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setProviderSetup(loadProviderSetup());
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // Initial load: access key (creator's tab) OR owner Bearer → project →
   // requirements. Single gate, single error path.
@@ -121,6 +142,14 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
     setStartError(null);
     try {
       const setup = loadProviderSetup();
+      const guard = providerSetupState(setup);
+      if (!guard.ready) {
+        setStartError({
+          user: "Provider setup is incomplete.",
+          detail: providerSetupMessage(guard),
+        });
+        return null;
+      }
       const options: GenerationOptions = {
         // Provider and key must match: a Groq key on the default provider fails.
         ...(setup === null || setup.provider === ""
@@ -221,6 +250,48 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <Link
+          href={session !== null ? "/library" : "/"}
+          className="text-muted-foreground hover:text-foreground text-sm transition-colors"
+        >
+          ← {session !== null ? "Back to library" : "Back to home"}
+        </Link>
+      </div>
+
+      {/* Provider gate: a run cannot start without provider + model + key, so
+          say exactly what is missing and open the dialog right here. */}
+      {!setupState.ready &&
+      (phase.kind === "start" || phase.kind === "editor") ? (
+        <section
+          aria-label="Provider setup required"
+          className="bg-primary/10 border-primary/40 rounded-xl border border-dashed p-4"
+        >
+          <p className="text-foreground text-sm font-medium">
+            Provider setup needed before generation
+          </p>
+          <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+            {providerSetupMessage(setupState)} The key stays in this browser tab.
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {setupState.gaps.map((gap) => (
+              <li
+                key={gap}
+                className="border-primary/40 text-foreground/85 rounded-full border border-solid px-2.5 py-0.5 font-mono text-[10px] uppercase"
+              >
+                {PROVIDER_GAP_LABELS[gap]}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3">
+            <ProviderDialog
+              triggerLabel="Add provider & key"
+              onSaved={(next) => setProviderSetup(next)}
+            />
+          </div>
+        </section>
+      ) : null}
+
       {phase.kind === "error" ? (
         <JourneyShell
           stage="specification"
@@ -286,14 +357,16 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
           <div className="flex flex-wrap items-center gap-3 pt-6">
             <Button
               onClick={() => withRun("requirements")}
-              disabled={starting}
+              disabled={starting || !setupState.ready}
               className="min-h-9 px-5"
             >
               <ListChecksIcon />
               {starting ? "Queuing requirements run…" : "Generate requirements"}
             </Button>
             <p className="text-muted-foreground text-xs">
-              Confirming later publishes the specification snapshot — drafts stay editable.
+              {setupState.ready
+                ? "Confirming later publishes the specification snapshot — drafts stay editable."
+                : "Add the missing provider setup above to start the analysis."}
             </p>
           </div>
 
@@ -341,7 +414,8 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
             projectId={projectId}
             projectKey={projectKey}
             spec={spec}
-            setup={loadProviderSetup()}
+            setup={providerSetup}
+            providerReady={setupState.ready}
             onArchitectureStarted={(runId) =>
               setPhase({ kind: "run", runId, context: "architecture" })
             }

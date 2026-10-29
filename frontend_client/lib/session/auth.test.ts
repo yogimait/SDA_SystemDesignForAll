@@ -43,8 +43,33 @@ describe("session store", () => {
   it("rejects malformed stored payloads", () => {
     storage().setItem("sda:auth:session", "{not json");
     expect(loadSession()).toBeNull();
+    expect(storage().getItem("sda:auth:session")).toBeNull();
+
     storage().setItem("sda:auth:session", JSON.stringify({ accessToken: "x" }));
     expect(loadSession()).toBeNull();
+    expect(storage().getItem("sda:auth:session")).toBeNull();
+  });
+
+  it("drops a session whose user shape is invalid", () => {
+    storage().setItem(
+      "sda:auth:session",
+      JSON.stringify({
+        accessToken: AUTH.accessToken,
+        expiresAt: AUTH.expiresAt,
+        user: { id: "usr_1" }, // missing email/planTier/timestamps
+      }),
+    );
+    expect(loadSession()).toBeNull();
+    expect(storage().getItem("sda:auth:session")).toBeNull();
+  });
+
+  it("drops a session with an unparsable expiry", () => {
+    storage().setItem(
+      "sda:auth:session",
+      JSON.stringify({ ...AUTH, expiresAt: "not-a-date" }),
+    );
+    expect(loadSession()).toBeNull();
+    expect(storage().getItem("sda:auth:session")).toBeNull();
   });
 
   it("clears the session and dispatches the change event", () => {

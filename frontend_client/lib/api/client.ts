@@ -12,7 +12,7 @@ import {
   type ErrorCode,
   type ZodType,
 } from "@sda/contracts";
-import { loadSession } from "../session/auth";
+import { handleAuthRequired, loadSession, LOGOUT_PATH } from "../session/auth";
 
 /** Public API base — exported for the run-stream hook (SSE fetch, not envelope). */
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -177,6 +177,16 @@ export async function apiFetch<T = unknown>(
 
   const envelope = parsed.data;
   if (!envelope.status) {
+    // An authenticated call rejected as unauthenticated means the server no
+    // longer honours the token: drop it and sign in again (real progress —
+    // never keep a header identity the API refuses).
+    if (
+      envelope.error.code === "AUTH_REQUIRED" &&
+      auth === true &&
+      path !== LOGOUT_PATH
+    ) {
+      handleAuthRequired();
+    }
     throw new ApiError(envelope.error.code, {
       userMessage: USER_MESSAGES[envelope.error.code],
       message: envelope.message,

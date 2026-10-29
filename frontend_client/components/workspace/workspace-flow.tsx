@@ -15,7 +15,7 @@ import {
   type RegenerateScope,
   type ValidationReport,
 } from "@sda/contracts";
-import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon, GraduationCapIcon, ListChecksIcon, PanelRightCloseIcon, PanelRightOpenIcon, RefreshCcwIcon, TagsIcon, XIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon, GraduationCapIcon, HomeIcon, ListChecksIcon, MoreHorizontalIcon, PanelRightCloseIcon, PanelRightOpenIcon, RefreshCcwIcon, TagsIcon, XIcon } from "lucide-react";
 import { JourneyShell, type JourneyStage } from "@/components/journey-shell";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -46,6 +46,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -95,11 +99,34 @@ const KIND_CHIP: Record<string, string> = {
   value_object: "vo",
 };
 
-const REGEN_LABEL: Record<RegenerateScope, string> = {
-  lld: "LLD only (classes and relationships)",
-  hld: "HLD only (reuse unaffected sections)",
-  dsa: "DSA only (data-structure choices)",
-};
+/**
+ * Regeneration scopes and what a new run actually touches: each scope is its
+ * own paid provider pass; the success result replaces that view only.
+ */
+const REGEN_INFO: Array<{
+  scope: RegenerateScope;
+  label: string;
+  detail: string;
+}> = [
+  {
+    scope: "lld",
+    label: "LLD only",
+    detail:
+      "New provider run for the class diagram: classes, relationships and design patterns. Replaces the LLD view when the run succeeds.",
+  },
+  {
+    scope: "hld",
+    label: "HLD only",
+    detail:
+      "New provider run for the system view: components, request/event flows, scaling notes and failure scenarios.",
+  },
+  {
+    scope: "dsa",
+    label: "DSA only",
+    detail:
+      "New provider run for the operation analysis: data-structure choices, complexity claims and trade-offs.",
+  },
+];
 
 const NO_GUIDED_STEPS: {
   lld: LldStepFocus[];
@@ -138,6 +165,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
   // <768 stacks — diagram first, outline/details as sheets.
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const isPhone = useMediaQuery("(max-width: 767px)");
+  const [providerReady, setProviderReady] = useState(false);
   const [regenRunId, setRegenRunId] = useState<string | null>(null);
   const [regenScope, setRegenScope] = useState<RegenerateScope>("lld");
   const [regenError, setRegenError] = useState<{ user: string; detail: string } | null>(null);
@@ -213,6 +241,10 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
       }
       setProjectKey(key);
       setAuthed(loadSession() !== null);
+      // Provider-key presence decides whether scope items are live: without a
+      // key every scope is a guaranteed auth failure, so the menu explains it.
+      const setupNow = loadProviderSetup();
+      setProviderReady(Boolean(setupNow && setupNow.apiKey.trim() !== ""));
       // Guided-mode resume (per view): mid-session refresh restarts at each
       // saved cursor and reopens the last view that had one. Only a stored
       // cursor enables resume — a plain workspace load never auto-starts.
@@ -910,13 +942,108 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
     />
   ) : null;
 
+  // Regeneration menu content (desktop dropdown + mobile submenu share it):
+  // one paid provider pass per scope, success replaces that view only.
+  const regenMenuItems = REGEN_INFO.map((entry) => (
+    <DropdownMenuItem
+      key={entry.scope}
+      disabled={!providerReady}
+      className="flex-col items-start gap-0.5"
+      onClick={() => void regenerate(entry.scope)}
+    >
+      <span className="text-foreground text-sm">{entry.label}</span>
+      <span className="text-muted-foreground block text-xs leading-snug">
+        {entry.detail}
+      </span>
+    </DropdownMenuItem>
+  ));
+
+  const regenMenuNote = (
+    <p className="text-muted-foreground px-2 pb-1 text-[11px] leading-relaxed">
+      {providerReady
+        ? "Every scope is its own paid provider pass — success replaces that view only; the other views stay as they are."
+        : "No provider key in this tab, so every scope is disabled for now. Add one, then come back and pick a scope."}
+    </p>
+  );
+
+  const regenProviderItem = providerReady ? null : (
+    <DropdownMenuItem
+      className="flex-col items-start gap-0.5"
+      onClick={() => router.push("/")}
+    >
+      <span className="text-foreground text-sm">
+        Provider &amp; model key — open the Home page setup
+      </span>
+      <span className="text-muted-foreground block text-xs leading-snug">
+        Pick OpenRouter or Groq, add the key and model. Keys stay in this tab, so
+        you can come straight back through Library.
+      </span>
+    </DropdownMenuItem>
+  );
+
+  /** Shared "edit the spec" entry for both regen menus and the More menu. */
+  const EditRequirementsItem = (
+    <DropdownMenuItem
+      className="flex-col items-start gap-0.5"
+      onClick={() => router.push(`/projects/${projectId}/requirements`)}
+    >
+      <span className="text-foreground text-sm">Edit requirements…</span>
+      <span className="text-muted-foreground block text-xs leading-snug">
+        Change the specification, then re-run a scope from here.
+      </span>
+    </DropdownMenuItem>
+  );
+
+  // Escape affordance: signed-in releases go back to Library; anonymous
+  // workflows (kept open by a project key) release to Home. Never a dead end.
+  const escapeDestination = authed ? "/library" : "/";
+  const escapeLabel = authed ? "Library" : "Home";
+  const backLinkNode = (
+    <Link
+      href={escapeDestination}
+      aria-label="Back to Library"
+      className="text-secondary-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring group flex h-11 flex-none items-center gap-1 rounded-lg px-2 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-1 sm:h-9"
+    >
+      {authed ? <ChevronLeftIcon /> : <HomeIcon />}
+      <span className="hidden font-medium sm:inline">{escapeLabel}</span>
+    </Link>
+  );
+
+  // Narrow headers: the tab row hosts Outline/Details and a labeled More menu
+  // carries Guided/Annotate/Regenerate/Export (replaces the icon grid).
+  const tabsRowActions = !isDesktop && activeView !== "dsa" ? (
+    <div className="flex flex-none items-center gap-1.5">
+      {isPhone ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="min-h-11 px-3"
+          aria-haspopup="dialog"
+          onClick={() => setOutlineOpen(true)}
+        >
+          Outline
+        </Button>
+      ) : null}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="min-h-11 px-3"
+        aria-haspopup="dialog"
+        onClick={() => setDetailsOpen(true)}
+      >
+        Details
+      </Button>
+    </div>
+  ) : null;
+
   return (
     <div className="flex h-[100dvh] flex-col">
       <header className={`${FLOATING_HEADER_SHELL} shrink-0`}>
         <div className={`${FLOATING_HEADER_CARD} overflow-hidden`}>
         <div className="flex min-h-14 w-full flex-wrap items-center justify-between gap-2 px-3 py-2 sm:gap-4 sm:px-5">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="text-foreground hidden truncate text-sm font-semibold tracking-tight sm:block">
+          <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-3">
+            {backLinkNode}
+            <span className="text-foreground min-w-0 truncate text-sm font-semibold tracking-tight">
               {model?.meta.title ?? (project.data?.idea.slice(0, 60) ?? "")}
             </span>
             {validation !== null ? (
@@ -925,105 +1052,148 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
               </span>
             ) : null}
           </div>
-          {/* Wraps instead of overflowing narrow headers (D2); on phones the
-              badge joins the action row so no row is left holding it alone. */}
+          {/* Narrow headers: a labeled More menu replaces the scattered icon
+              buttons; desktop keeps the inline labeled buttons. */}
           <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
             {validation !== null ? (
               <span className="sm:hidden">
                 <ValidationBadge validation={validation} />
               </span>
             ) : null}
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label="Guided"
-              aria-pressed={guided}
-              disabled={guidedTotal[activeView] === 0}
-              onClick={toggleGuided}
-            >
-              <GraduationCapIcon />
-              <span className="hidden sm:inline">Guided</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label="Annotate"
-              aria-pressed={annotateOn}
-              disabled={model === null}
-              onClick={() => setAnnotateOn((value) => !value)}
-              className="hidden sm:inline-flex"
-            >
-              <TagsIcon />
-              <span className="hidden sm:inline">Annotate</span>
-            </Button>
-            {isDesktop && activeView !== "dsa" ? (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-pressed={focusMode}
-                aria-label={focusMode ? "Exit focus mode" : "Focus mode: hide side panels"}
-                onClick={() => setFocusMode((value) => !value)}
-              >
-                {focusMode ? <PanelRightOpenIcon /> : <PanelRightCloseIcon />}
-              </Button>
-            ) : null}
-            {!isDesktop && activeView !== "dsa" ? (
+            {isDesktop ? (
               <>
-                {isPhone ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-haspopup="dialog"
-                    onClick={() => setOutlineOpen(true)}
-                  >
-                    Outline
-                  </Button>
-                ) : null}
                 <Button
                   variant="ghost"
                   size="sm"
-                  aria-haspopup="dialog"
-                  onClick={() => setDetailsOpen(true)}
+                  aria-label="Guided"
+                  aria-pressed={guided}
+                  disabled={guidedTotal[activeView] === 0}
+                  onClick={toggleGuided}
                 >
-                  Details
+                  <GraduationCapIcon />
+                  <span className="hidden lg:inline">Guided</span>
                 </Button>
-              </>
-            ) : null}
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button variant="outline" size="sm" aria-label="Regenerate">
-                    <RefreshCcwIcon />
-                    <span className="hidden sm:inline">Regenerate</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Annotate"
+                  aria-pressed={annotateOn}
+                  disabled={model === null}
+                  onClick={() => setAnnotateOn((value) => !value)}
+                >
+                  <TagsIcon />
+                  <span className="hidden lg:inline">Annotate</span>
+                </Button>
+                {activeView !== "dsa" ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-pressed={focusMode}
+                    aria-label={focusMode ? "Exit focus mode" : "Focus mode: hide side panels"}
+                    onClick={() => setFocusMode((value) => !value)}
+                  >
+                    {focusMode ? <PanelRightOpenIcon /> : <PanelRightCloseIcon />}
                   </Button>
-                }
-              />
-              <DropdownMenuContent align="end" className="min-w-[240px]">
-                <DropdownMenuLabel>Regeneration scope</DropdownMenuLabel>
-                {(Object.keys(REGEN_LABEL) as Array<RegenerateScope>).map((scope) => (
-                  <DropdownMenuItem key={scope} onClick={() => void regenerate(scope)}>
-                    {REGEN_LABEL[scope]}
-                  </DropdownMenuItem>
-                ))}
-                <DropdownMenuItem
-                  onClick={() => router.push(`/projects/${projectId}/requirements`)}
-                >
-                  Edit requirements…
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {model !== null ? (
-              <Link href={`/projects/${projectId}/export`} passHref>
-                <Button variant="outline" size="sm" aria-label="Export">
-                  <DownloadIcon />
-                  <span className="hidden sm:inline">Export</span>
-                </Button>
-              </Link>
+                ) : null}
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button variant="outline" size="sm" aria-label="Regenerate">
+                        <RefreshCcwIcon />
+                        <span className="hidden lg:inline">Regenerate</span>
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="end" className="w-80">
+                    <DropdownMenuLabel>Regeneration scope</DropdownMenuLabel>
+                    {regenMenuNote}
+                    {regenMenuItems}
+                    {regenProviderItem}
+                    <DropdownMenuSeparator />
+                    {EditRequirementsItem}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                {model !== null ? (
+                  <Link href={`/projects/${projectId}/export`} passHref>
+                    <Button variant="outline" size="sm" aria-label="Export">
+                      <DownloadIcon />
+                      <span className="hidden lg:inline">Export</span>
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button variant="outline" size="sm" aria-label="Export" disabled aria-disabled="true">
+                    <DownloadIcon />
+                    <span className="hidden lg:inline">Export</span>
+                  </Button>
+                )}
+              </>
             ) : (
-              <Button variant="outline" size="sm" aria-label="Export" disabled aria-disabled="true">
-                <DownloadIcon />
-                <span className="hidden sm:inline">Export</span>
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="outline" size="sm" className="min-h-11 px-3" aria-label="More actions" aria-haspopup="menu">
+                      <MoreHorizontalIcon />
+                      <span className="hidden min-[420px]:inline">More</span>
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end" className="w-72">
+                  <DropdownMenuItem
+                    className="flex-col items-start gap-0.5"
+                    disabled={guidedTotal[activeView] === 0}
+                    onClick={toggleGuided}
+                  >
+                    <span className="text-foreground text-sm">
+                      {guided ? "Guided — on" : "Guided — off"}
+                    </span>
+                    <span className="text-muted-foreground block text-xs leading-snug">
+                      {guidedTotal[activeView] === 0
+                        ? `The current ${activeView.toUpperCase()} view has no guided steps.`
+                        : "Walk the visible view step by step with explanations."}
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="flex-col items-start gap-0.5"
+                    disabled={model === null}
+                    onClick={() => setAnnotateOn((value) => !value)}
+                  >
+                    <span className="text-foreground text-sm">
+                      {annotateOn ? "Annotate — on" : "Annotate — off"}
+                    </span>
+                    <span className="text-muted-foreground block text-xs leading-snug">
+                      Toggle narrative labels on highlighted elements.
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="min-h-11">
+                      Regenerate a view…
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-80">
+                      <DropdownMenuLabel>Regeneration scope</DropdownMenuLabel>
+                      {regenMenuNote}
+                      {regenMenuItems}
+                      {regenProviderItem}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="flex-col items-start gap-0.5"
+                    disabled={model === null}
+                    onClick={model !== null ? () => router.push(`/projects/${projectId}/export`) : undefined}
+                  >
+                    <span className="text-foreground text-sm">
+                      {model !== null ? "Export" : "Export — unavailable"}
+                    </span>
+                    <span className="text-muted-foreground block text-xs leading-snug">
+                      {model !== null
+                        ? "Browser-side document with every diagram, ready to print."
+                        : "Generate the architecture first — there is nothing to export yet."}
+                    </span>
+                  </DropdownMenuItem>
+                  {EditRequirementsItem}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </div>
@@ -1055,19 +1225,10 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
         {validation !== null &&
         validation.errors.length === 0 &&
         validation.warnings.length > 0 ? (
-          <div
-            role="status"
-            className="border-warning/40 bg-warning/10 border-t border-solid px-5 py-2"
-          >
-            <p className="text-warning text-xs font-medium">
-              {`${validation.warnings.length} validation warning${
-                validation.warnings.length === 1 ? "" : "s"
-              } — the diagram still renders from the generated model.`}
-            </p>
-            <p className="text-muted-foreground font-mono mt-0.5 text-[11px]">
-              {validation.warnings[0].message}
-            </p>
-          </div>
+          <ValidationWarningBanner
+            warnings={validation.warnings}
+            editHref={`/projects/${projectId}/requirements`}
+          />
         ) : null}
         </div>
       </header>
@@ -1115,11 +1276,17 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
               if (value === "lld" || value === "hld" || value === "dsa") setActiveView(value);
             }}
           >
-            <TabsList className="mb-2 w-fit">
-              <TabsTrigger value="lld">LLD</TabsTrigger>
-              <TabsTrigger value="hld">HLD</TabsTrigger>
-              <TabsTrigger value="dsa">DSA</TabsTrigger>
-            </TabsList>
+            {/* Top rails: the view tabs stay visible; on narrow screens the
+                Outline/Details affordances share this row (quick, identified),
+                not a second button grid below the header. */}
+            <div className="mb-2 flex w-full flex-wrap items-center justify-between gap-2">
+              <TabsList className="w-fit">
+                <TabsTrigger value="lld">LLD</TabsTrigger>
+                <TabsTrigger value="hld">HLD</TabsTrigger>
+                <TabsTrigger value="dsa">DSA</TabsTrigger>
+              </TabsList>
+              {tabsRowActions}
+            </div>
           </Tabs>
 
           {activeView === "dsa" ? (
@@ -1251,8 +1418,79 @@ function GuidedBar({
 }
 
 /** Validation badge: invalid (blocking) > warnings > clean. */
-function ValidationBadge({ validation }: { validation: ValidationReport }) {
-  const invalid = validation.errors.length > 0;
+/**
+ * Non-blocking validation warnings: summary + first message inline, the full
+ * list and the "what this means / how to fix it" guidance behind a toggle,
+ * plus a direct path to edit the specification. Rendering is never blocked.
+ */
+function ValidationWarningBanner({
+  warnings,
+  editHref,
+}: {
+  warnings: ValidationReport["warnings"];
+  editHref: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const first = warnings[0];
+  return (
+    <div
+      role="status"
+      className="border-warning/40 bg-warning/10 border-t border-solid px-5 py-2"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-warning text-xs font-medium">
+            {`${warnings.length} validation warning${
+              warnings.length === 1 ? "" : "s"
+            } — non-blocking: the diagram keeps rendering from the generated model.`}
+          </p>
+          <p className="text-muted-foreground font-mono mt-0.5 text-[11px]">
+            {first?.message ?? ""}
+          </p>
+        </div>
+        <div className="flex flex-none items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-h-11 sm:min-h-9"
+            aria-expanded={open}
+            onClick={() => setOpen((value) => !value)}
+          >
+            {open ? "Hide details" : "Details"}
+          </Button>
+          <Link href={editHref} className="inline-block">
+            <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-9">
+              Edit requirements…
+            </Button>
+          </Link>
+        </div>
+      </div>
+      {open ? (
+        <div className="mt-1.5 space-y-2">
+          <p className="text-muted-foreground text-[11px] leading-relaxed">
+            Warnings never block this view: they flag where the generated design
+            might not cover the spec — for example, a must-have requirement no
+            element references (the design may leave that part implicit). Edit
+            the requirements or regenerate a scope to address them; exploring
+            the current views stays safe in the meantime.
+          </p>
+          <ul className="space-y-1">
+            {warnings.map((warning, index) => (
+              <li
+                key={`warning-${index}`}
+                className="text-muted-foreground font-mono text-[11px] leading-snug"
+              >
+                {warning.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ValidationBadge({ validation }: { validation: ValidationReport }) {  const invalid = validation.errors.length > 0;
   return (
     <Badge
       className={cn(

@@ -142,6 +142,31 @@
   animation-delay: 180ms;
 }
 
+/* Floating scroll dock (desktop-only feature): while the vertical dock holds
+   the left edge, page content gets a safe left offset so the dock never
+   overlaps text at 1024px+. Applies to landing/portal mains only; the dock
+   (and this class) never renders on workspace/requirements/login/export. */
+@media (min-width: 1024px) {
+  /* !important: the centered mains use the px-6 utility, which out-specifies
+     an element selector without it. Deliberately not animated: layout property
+     changes should not be transitioned (layout thrash), and the offset lands
+     together with a scroll step anyway. */
+  body.dock-active main {
+    padding-left: 4.5rem !important;
+  }
+  /* Dock: the BYOK dialog trigger renders icon-only inside the narrow rail
+     (its visible label would blow the rail width); aria-label survives. */
+  .dock-providers button > span {
+    display: none;
+  }
+}
+
+/* Library: the provider setup button keeps its text label at every width
+   (it is the primary control there) — beats the dialog's own hidden/sm:inline. */
+.labeled-provider [data-slot="button"] > span {
+  display: inline !important;
+}
+
 /* Respect OS reduced-motion: kill transitions/animations, keep opacity changes.
    Guided-mode animations must also honor this (F5). */
 @media (prefers-reduced-motion: reduce) {

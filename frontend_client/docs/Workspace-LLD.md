@@ -5,10 +5,12 @@ Route `app/projects/[id]/workspace/` (PPR shell + client `WorkspaceFlow`),
 built on the canonical `ArchitectureModel` from `@sda/contracts` only.
 
 - `components/workspace/workspace-flow.tsx` — access gate, project +
-  architecture queries, header (validation badge, guided/annotate, focus
-  mode, regenerate menu with **Edit requirements…**, export), view tabs,
-  layout, regeneration overlay. Provider setup lives on the landing and
-  library pages only.
+  architecture queries, header (back-to-Library/Home escape link, validation
+  badge, desktop guided/annotate/focus + regenerate menu with per-scope
+  descriptions and provider gating, export; below 1024 a labeled More menu
+  carries the same actions and the tab row hosts Outline/Details), view tabs,
+  layout, regeneration overlay, expandable non-blocking warning banner.
+  Provider setup lives on the landing and library pages only.
 - `components/workspace/workspace-sidebar.tsx` — shared outline sidebar\n  (search + named groups, used by the LLD and HLD views).
 - `components/workspace/workspace-details.tsx` — per-element reference panels:
   `WorkspaceDetails` (LLD class/relationship/pattern) and `HldDetails`
@@ -63,7 +65,10 @@ overlay reuses the same shell around the card-less `RunProgress`. See
 
 Header badge: `validated` (success) or `validated · N warnings` (warning).
 Persisted versions are always valid — the backend persists only validated
-models — so no invalid-model state exists here.
+models — so no invalid-model state exists here. The warning banner
+(`ValidationWarningBanner`) clarifies that warnings are non-blocking, lists
+every warning under a Details toggle, and links "Edit requirements…" — the
+typical warning is a must-have requirement no element references.
 
 ## Scene mapping
 
@@ -203,6 +208,15 @@ the single source of truth. Focus+context: highlight dimming is unchanged
 anchors computed against `hldScene` for both scenes, so LLD guided chips
 never rendered — `buildChips` now takes the scene as its first argument
 (`hldScene` for HLD, `lldScene` for LLD).
+
+Chip placement is a pure helper (`lib/diagram/annotation-layout.ts`,
+unit-tested): chips keep their anchor-relative slot when free, otherwise stack
+upward/downward, never overlap another chip or a node rectangle, are clamped
+inside the scene, and are capped at **6** simultaneous chips (first chips win;
+a chip with no free slot is dropped rather than covering a node). A chip moved
+off its slot draws a leader line back to its anchor, so the element it explains
+stays unambiguous. Geometry is scene-space, so zoom/fit and mobile widths only
+scale the whole SVG — chip relationships never change.
 
 Panel contents per selection: component (responsibility, technology,
 in/out connections with kind + label, scaling notes, refs), connection
