@@ -46,3 +46,7 @@ probe-media.mjs
 
 # vitest
 /.vitest/
+
+# test artifacts
+/e2e/artifacts/
+/findings.txt
