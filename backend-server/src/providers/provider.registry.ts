@@ -67,12 +67,12 @@ export class ProviderRegistry {
     return [
       {
         id: "openrouter",
-        models: [this.config.OPENROUTER_MODEL],
+        models: this.config.OPENROUTER_MODELS,
         supportsStructuredOutput: true,
       },
       {
         id: "groq",
-        models: [this.config.GROQ_MODEL],
+        models: this.config.GROQ_MODELS,
         supportsStructuredOutput: true,
       },
     ];

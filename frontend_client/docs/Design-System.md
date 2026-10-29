@@ -49,8 +49,8 @@ Minimalist = motion is punctuation, not decoration. Everything is disarmed by th
 
 ## Components currently themed
 
-- `components/landing/site-header.tsx` — sticky slim nav, mono wordmark `sda/`.
-- `components/landing/provider-dialog.tsx` — provider (fixed OpenRouter) + key + model, privacy box, save-for-session.
+- `components/landing/site-header.tsx` — floating slim nav (rounded card, `components/ui/floating-header.ts`), mono wordmark `sda/`. Sharing the floating treatment: `portal-header.tsx` (email/plan identity hidden below `md` — QA D2, 390px) and the workspace header.
+- `components/landing/provider-dialog.tsx` — provider (from `GET /api/providers`) + per-provider session key + model (from the selected provider), privacy box, save-for-session (+ saved provider/model preference for signed-in users).
 - `components/landing/idea-form.tsx` — textarea card, example chips (mono), start button states, error banner, BYOK helper line.
 - `components/landing/capabilities.tsx` — three text-led cards + labelled static sample preview.
 

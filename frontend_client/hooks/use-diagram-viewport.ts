@@ -52,6 +52,19 @@ export function useDiagramViewport(
     return () => observer.disconnect();
   }, [fit]);
 
+  // Print layout differs from the screen box (export diagrams print on a
+  // landscape page); refit so the drawing fills the paper, then refit again
+  // when print media ends so the on-screen preview is not left clipped.
+  useEffect(() => {
+    const refit = () => fit();
+    window.addEventListener("beforeprint", refit);
+    window.addEventListener("afterprint", refit);
+    return () => {
+      window.removeEventListener("beforeprint", refit);
+      window.removeEventListener("afterprint", refit);
+    };
+  }, [fit]);
+
   // Wheel-zoom anchored at the cursor; non-passive so preventDefault sticks.
   useEffect(() => {
     const el = wrapRef.current;

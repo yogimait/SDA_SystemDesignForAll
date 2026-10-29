@@ -18,12 +18,12 @@ import {
 import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon, GraduationCapIcon, ListChecksIcon, PanelRightCloseIcon, PanelRightOpenIcon, RefreshCcwIcon, TagsIcon, XIcon } from "lucide-react";
 import { JourneyShell, type JourneyStage } from "@/components/journey-shell";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DiagramCanvas, type DiagramSelection } from "@/components/diagram/diagram-canvas";
 import { HldCanvas } from "@/components/diagram/hld-canvas";
 import { ReplayBar } from "@/components/diagram/replay-bar";
-import { ProviderDialog } from "@/components/landing/provider-dialog";
 import { RunProgress } from "@/components/requirements/run-progress";
 import { WorkspaceDsa } from "@/components/workspace/workspace-dsa";
 import {
@@ -50,9 +50,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  useGenerationRun,
+  FLOATING_HEADER_CARD,
+  FLOATING_HEADER_SHELL,
+} from "@/components/ui/floating-header";
+import {
   useRunTerminalEffect,
 } from "@/hooks/use-generation-run";
+import { useRunLive } from "@/hooks/use-run-stream";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import {
   dsaGuidedSteps,
@@ -80,6 +84,7 @@ import {
   loadProviderSetup,
 } from "@/lib/session/keys";
 import { loadSession } from "@/lib/session/auth";
+import { requirementRefLabels } from "@/lib/format";
 import { cn } from "cn";
 
 const KIND_CHIP: Record<string, string> = {
@@ -108,6 +113,7 @@ function guidedStorageKey(scope: GuidedScope, projectId: string): string {
 }
 
 export function WorkspaceFlow({ projectId }: { projectId: string }) {
+  const router = useRouter();
   const [projectKey, setProjectKey] = useState<string | null>(null);
   const [noAccessKey, setNoAccessKey] = useState(false);
   const [authed, setAuthed] = useState(false);
@@ -253,6 +259,15 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
 
   const version = architecture.data?.version ?? null;
   const model: ArchitectureModel | null = version?.model ?? null;
+
+  /** Requirement id → "FR 2"; detail panels never print contract ids. */
+  const requirementLabels = useMemo(
+    () =>
+      model === null
+        ? new Map<string, string>()
+        : requirementRefLabels(model.requirements.spec),
+    [model],
+  );
 
   /** Canvas pattern chips: class id → participating pattern names (deduped). */
   const patternNamesByClassId = useMemo(() => {
@@ -653,6 +668,8 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
     try {
       const setup = loadProviderSetup();
       const options: GenerationOptions = {
+        // Provider and key must match: a Groq key on the default provider fails.
+        ...(setup === null || setup.provider === "" ? {} : { provider: setup.provider }),
         ...(setup === null || setup.model.trim() === "" ? {} : { model: setup.model.trim() }),
       };
       const started = await apiFetch(`/api/projects/${projectId}/architecture/regenerate`, {
@@ -863,7 +880,12 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
 
   const detailsNode =
     model === null ? null : activeView === "lld" ? (
-      <WorkspaceDetails model={model.lld} selection={lldSelection} className="px-3 pb-4" />
+      <WorkspaceDetails
+        model={model.lld}
+        selection={lldSelection}
+        requirementLabels={requirementLabels}
+        className="px-3 pb-4"
+      />
     ) : (
       <HldDetails
         model={model.hld}
@@ -873,6 +895,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
           setFlowFocus(stepIndex === null ? null : { flowId, stepIndex })
         }
         onReplay={guided ? undefined : startReplay}
+        requirementLabels={requirementLabels}
         className="px-3 pb-4"
       />
     );
@@ -889,40 +912,49 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex h-[100dvh] flex-col">
-      <header className="border-border bg-card sticky top-0 z-40 w-full border-b border-solid">
-        <div className="flex h-14 w-full items-center justify-between gap-4 px-5">
+      <header className={`${FLOATING_HEADER_SHELL} shrink-0`}>
+        <div className={`${FLOATING_HEADER_CARD} overflow-hidden`}>
+        <div className="flex min-h-14 w-full flex-wrap items-center justify-between gap-2 px-3 py-2 sm:gap-4 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
-            <Link
-              href={`/projects/${projectId}/requirements`}
-              className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded font-mono text-xs transition-colors focus-visible:ring-2 focus-visible:outline-1"
-            >
-              ← requirements
-            </Link>
-            <span className="text-foreground truncate text-sm font-semibold tracking-tight">
+            <span className="text-foreground hidden truncate text-sm font-semibold tracking-tight sm:block">
               {model?.meta.title ?? (project.data?.idea.slice(0, 60) ?? "")}
             </span>
-            {validation !== null ? <ValidationBadge validation={validation} /> : null}
+            {validation !== null ? (
+              <span className="hidden sm:block">
+                <ValidationBadge validation={validation} />
+              </span>
+            ) : null}
           </div>
-          <div className="flex flex-none items-center gap-2">
+          {/* Wraps instead of overflowing narrow headers (D2); on phones the
+              badge joins the action row so no row is left holding it alone. */}
+          <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+            {validation !== null ? (
+              <span className="sm:hidden">
+                <ValidationBadge validation={validation} />
+              </span>
+            ) : null}
             <Button
               variant="ghost"
               size="sm"
+              aria-label="Guided"
               aria-pressed={guided}
               disabled={guidedTotal[activeView] === 0}
               onClick={toggleGuided}
             >
               <GraduationCapIcon />
-              Guided
+              <span className="hidden sm:inline">Guided</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
+              aria-label="Annotate"
               aria-pressed={annotateOn}
               disabled={model === null}
               onClick={() => setAnnotateOn((value) => !value)}
+              className="hidden sm:inline-flex"
             >
               <TagsIcon />
-              Annotate
+              <span className="hidden sm:inline">Annotate</span>
             </Button>
             {isDesktop && activeView !== "dsa" ? (
               <Button
@@ -960,9 +992,9 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" aria-label="Regenerate">
                     <RefreshCcwIcon />
-                    Regenerate
+                    <span className="hidden sm:inline">Regenerate</span>
                   </Button>
                 }
               />
@@ -973,22 +1005,26 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
                     {REGEN_LABEL[scope]}
                   </DropdownMenuItem>
                 ))}
+                <DropdownMenuItem
+                  onClick={() => router.push(`/projects/${projectId}/requirements`)}
+                >
+                  Edit requirements…
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             {model !== null ? (
               <Link href={`/projects/${projectId}/export`} passHref>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" aria-label="Export">
                   <DownloadIcon />
-                  Export
+                  <span className="hidden sm:inline">Export</span>
                 </Button>
               </Link>
             ) : (
-              <Button variant="outline" size="sm" disabled aria-disabled="true">
+              <Button variant="outline" size="sm" aria-label="Export" disabled aria-disabled="true">
                 <DownloadIcon />
-                Export
+                <span className="hidden sm:inline">Export</span>
               </Button>
             )}
-            <ProviderDialog />
           </div>
         </div>
         {regenError !== null ? (
@@ -1033,6 +1069,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
             </p>
           </div>
         ) : null}
+        </div>
       </header>
 
       {model === null || lldScene === null || hldScene === null ? (
@@ -1387,7 +1424,30 @@ function RegenRunPhase({
   onRetry: () => void;
 }) {
   const queryClient = useQueryClient();
-  const { run, isLoading, error } = useGenerationRun(runId, projectKey);
+  const { run, isLoading, error, connection } = useRunLive(runId, projectKey);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const regenActive =
+    run === null || run.status === "queued" || run.status === "running";
+
+  // Modal semantics (D5): focus moves into the dialog on mount and returns
+  // to the previously focused element on close — DOM moves only, no state.
+  useEffect(() => {
+    const previous = document.activeElement;
+    overlayRef.current?.focus();
+    return () => {
+      if (previous instanceof HTMLElement) previous.focus();
+    };
+  }, []);
+
+  // Escape closes the overlay (same path as the Close button — D5). The run
+  // keeps going server-side; the footer says so (D9).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onSettledClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onSettledClose]);
 
   useRunTerminalEffect(run, (outcome) => {
     if (outcome !== "succeeded") return; // failed/interrupted stay visible for retry
@@ -1400,8 +1460,12 @@ function RegenRunPhase({
 
   return (
     <div
-      className="bg-background/70 fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-6 backdrop-blur-xs"
-      role="presentation"
+      ref={overlayRef}
+      tabIndex={-1}
+      className="bg-background/70 fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-6 backdrop-blur-xs focus:outline-none"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Regenerating the architecture"
     >
       <div className="w-full max-w-[640px]">
         <JourneyShell
@@ -1416,8 +1480,15 @@ function RegenRunPhase({
             isLoading={isLoading}
             context="architecture"
             onRetry={onRetry}
+            connection={connection}
           />
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex flex-col items-end gap-2">
+            {regenActive ? (
+              <p className="text-muted-foreground max-w-[46ch] text-right text-xs leading-relaxed">
+                Runs keep going server-side — closing leaves this view, not the
+                run. Reopen the workspace to check its outcome.
+              </p>
+            ) : null}
             <Button variant="ghost" size="sm" onClick={onSettledClose}>
               Close
             </Button>

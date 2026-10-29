@@ -40,7 +40,7 @@ Unknown API routes return a 404 envelope with `ROUTE_NOT_FOUND`. Responses set `
 | Method | Path | Success | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/health` | 200 | Liveness + active database driver. |
-| `GET` | `/api/providers` | 200 | Provider metadata, default provider/model, mock flag. |
+| `GET` | `/api/providers` | 200 | Provider metadata with per-provider model catalogs, default provider/model, mock flag. |
 | `POST` | `/api/auth/register` | 201 | Create an account and return a Bearer session. |
 | `POST` | `/api/auth/login` | 200 | Authenticate and return a Bearer session. |
 | `GET` | `/api/auth/me` | 200 | Current user. |
@@ -60,8 +60,40 @@ Unknown API routes return a 404 envelope with `ROUTE_NOT_FOUND`. Responses set `
 | `POST` | `/api/projects/:id/architecture/regenerate` | 202 | Regenerate one section (`hld`, `lld`, or `dsa`). |
 | `GET` | `/api/projects/:id/architecture` | 200 | Current architecture version + validation report. |
 | `GET` | `/api/runs/:runId` | 200 | Run status, ordered stages, usage, errors. |
+| `GET` | `/api/runs/:runId/events` | 200 | SSE live/replayed run and stage events. |
+| `GET` | `/api/runs/:runId/events?lastEventId=...` | 200 | SSE reconnect fallback when `Last-Event-ID` cannot be sent. |
 
 Run-start endpoints are throttled per IP (`THROTTLE_LIMIT` per `THROTTLE_TTL_MS`). Exceeding the window returns `429 QUOTA_EXCEEDED`.
+
+## List providers
+
+`GET /api/providers` is public and returns no secrets. Catalogs come from `OPENROUTER_MODELS` / `GROQ_MODELS`, never from a provider API call. `mock: true` still lists both providers; only generation is mocked.
+
+```json
+{
+  "status": true,
+  "statusCode": 200,
+  "data": {
+    "providers": [
+      {
+        "id": "openrouter",
+        "models": ["z-ai/glm-5.3-flash", "anthropic/claude-sonnet-4.5"],
+        "supportsStructuredOutput": true
+      },
+      {
+        "id": "groq",
+        "models": ["openai/gpt-oss-120b", "openai/gpt-oss-20b"],
+        "supportsStructuredOutput": true
+      }
+    ],
+    "defaultProvider": "openrouter",
+    "defaultModel": "z-ai/glm-5.3-flash",
+    "mock": false
+  }
+}
+```
+
+`defaultModel` is a suggestion, not a whitelist: `POST` run bodies may name any model the key can access. `models[]` drives the client dropdown only.
 
 ## Create a project
 
@@ -296,6 +328,32 @@ Stages are ordered and reflect persisted `generation_stages` rows only. No stage
 ```
 
 Terminal statuses are `succeeded`, `failed`, and `interrupted`. A failed run carries `error.code`, `error.message`, and optional safe `error.details`; the failing stage carries the same error.
+
+## Stream a run
+
+```http
+GET /api/runs/:runId/events
+x-project-key: <key>
+Accept: text/event-stream
+```
+
+The response is `text/event-stream` and uses the same project-key or owner Bearer access as `GET /api/runs/:runId`. On connect it replays all persisted stages in order and then the current run state. Live events follow until a terminal run state, then the connection closes.
+
+```text
+id: stage:analyze_idea:running:0
+event: stage
+data: {"type":"stage","name":"analyze_idea","status":"running","attempt":0,"startedAt":"2026-10-28T00:00:00.000Z","finishedAt":null,"error":null,"usage":null}
+
+id: run:succeeded
+event: run
+data: {"type":"run","status":"succeeded","error":null,"usage":{"promptTokens":120,"completionTokens":240,"totalTokens":360},"updatedAt":"2026-10-28T00:00:10.000Z"}
+```
+
+- Reconnect with the standard `Last-Event-ID` header; it is resolved against persisted state, not an in-memory event buffer. `?lastEventId=<id>` is also accepted for clients that cannot set the header.
+- A comment heartbeat (`: heartbeat`) is sent every 10 seconds. It carries no `id`, `event`, or `data`, so it cannot affect frame order or `Last-Event-ID`.
+- `Cache-Control: no-cache, no-transform`, `Connection: keep-alive`, and `X-Accel-Buffering: no` are set.
+- Polling `GET /api/runs/:runId` remains available and reports the same stage sequence.
+- The event bus is single-instance only; multi-instance deployments require a shared pub/sub layer.
 
 ## Error codes
 

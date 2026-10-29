@@ -25,6 +25,10 @@ import {
 } from "../database/repositories/run.repository.js";
 import { ProviderRegistry } from "../providers/provider.registry.js";
 import { GenerationWorker } from "./generation.worker.js";
+import {
+  RunEventsService,
+  toRunStreamRunEvent,
+} from "./run-events.service.js";
 
 const REQUIREMENTS_STAGES = ["analyze_idea", "persist"];
 const ARCHITECTURE_STAGES = [
@@ -43,6 +47,7 @@ export class RunService {
     private readonly registry: ProviderRegistry,
     private readonly worker: GenerationWorker,
     private readonly plans: PlanService,
+    private readonly events: RunEventsService,
   ) {}
 
   async startRequirements(
@@ -150,8 +155,9 @@ export class RunService {
     // Bind the BYOK provider before the worker can claim the run. The key lives
     // only inside this closure for the lifetime of the run.
     this.worker.registerProvider(runId, provider);
+    let created: RunRow;
     try {
-      await this.runs.create({
+      created = await this.runs.create({
         id: runId,
         projectId: project.id,
         type,
@@ -169,6 +175,7 @@ export class RunService {
       throw error;
     }
 
+    this.events.publish(runId, toRunStreamRunEvent(created, emptyUsage()));
     this.worker.wake();
     return { runId };
   }
@@ -176,6 +183,10 @@ export class RunService {
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function emptyUsage(): TokenUsage {
+  return { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 }
 
 export function toRunDto(run: RunRow, stages: StageRow[]): GenerationRun {

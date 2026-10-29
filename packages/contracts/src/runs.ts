@@ -62,3 +62,46 @@ export const GenerationRunSchema = z.object({
   finishedAt: z.string().nullable(),
 });
 export type GenerationRun = z.infer<typeof GenerationRunSchema>;
+
+export const RunStreamRunEventSchema = z.object({
+  type: z.literal("run"),
+  status: RunStatusSchema,
+  error: RunErrorSchema.nullable(),
+  usage: TokenUsageSchema,
+  updatedAt: z.string().min(1),
+});
+export type RunStreamRunEvent = z.infer<typeof RunStreamRunEventSchema>;
+
+export const RunStreamStageEventSchema = z.object({
+  type: z.literal("stage"),
+  name: z.string().min(1),
+  status: StageStatusSchema,
+  attempt: z.number().int().min(0),
+  startedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+  error: RunErrorSchema.nullable(),
+  usage: TokenUsageSchema.nullable(),
+});
+export type RunStreamStageEvent = z.infer<typeof RunStreamStageEventSchema>;
+
+export const RunStreamHeartbeatEventSchema = z.object({
+  type: z.literal("heartbeat"),
+  at: z.string().min(1),
+});
+export type RunStreamHeartbeatEvent = z.infer<
+  typeof RunStreamHeartbeatEventSchema
+>;
+
+export const RunStreamEventSchema = z.discriminatedUnion("type", [
+  RunStreamRunEventSchema,
+  RunStreamStageEventSchema,
+  RunStreamHeartbeatEventSchema,
+]);
+export type RunStreamEvent = z.infer<typeof RunStreamEventSchema>;
+export type RunStreamEventType = RunStreamEvent["type"];
+
+/** Optional query fallback for clients that cannot send Last-Event-ID. */
+export const RunStreamQuerySchema = z.object({
+  lastEventId: z.string().min(1).optional(),
+});
+export type RunStreamQuery = z.infer<typeof RunStreamQuerySchema>;

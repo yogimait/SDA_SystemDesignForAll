@@ -3,6 +3,7 @@ import {
   clearProviderSetup,
   consumePendingIdea,
   loadProjectAccessKey,
+  loadProviderKeys,
   loadProviderSetup,
   peekPendingIdea,
   savePendingIdea,
@@ -48,6 +49,38 @@ describe("provider setup storage", () => {
     saveProviderSetup({ provider: "openrouter", apiKey: "k", model: "m" });
     clearProviderSetup();
     expect(loadProviderSetup()).toBeNull();
+  });
+
+  it("keeps one key per provider when switching back and forth", () => {
+    saveProviderSetup({ provider: "openrouter", apiKey: "sk-or-one", model: "z-ai/glm-5.3-flash" });
+    saveProviderSetup({ provider: "groq", apiKey: "gsk_two", model: "openai/gpt-oss-120b" });
+
+    expect(loadProviderSetup()).toEqual({
+      provider: "groq",
+      apiKey: "gsk_two",
+      model: "openai/gpt-oss-120b",
+    });
+    expect(loadProviderKeys()).toEqual({ openrouter: "sk-or-one", groq: "gsk_two" });
+
+    // Switching back restores the other provider's key, not the active one.
+    saveProviderSetup({ provider: "openrouter", apiKey: "sk-or-one", model: "z-ai/glm-5.3-flash" });
+    expect(loadProviderSetup()?.apiKey).toBe("sk-or-one");
+    expect(window.sessionStorage.length).toBe(1);
+  });
+
+  it("migrates the single-key entry shape", () => {
+    window.sessionStorage.setItem(
+      "sda:provider-setup",
+      JSON.stringify({ provider: "openrouter", apiKey: "sk-or-old", model: "z-ai/glm-5.3-flash" }),
+    );
+    expect(loadProviderSetup()).toEqual({
+      provider: "openrouter",
+      apiKey: "sk-or-old",
+      model: "z-ai/glm-5.3-flash",
+    });
+    // Saving another provider keeps the migrated key.
+    saveProviderSetup({ provider: "groq", apiKey: "gsk_two", model: "openai/gpt-oss-120b" });
+    expect(loadProviderKeys()).toEqual({ openrouter: "sk-or-old", groq: "gsk_two" });
   });
 });
 

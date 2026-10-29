@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { ProviderDialog } from "@/components/landing/provider-dialog";
 import { RequirementsFlow } from "@/components/requirements/requirements-flow";
+import {
+  FLOATING_HEADER_CARD,
+  FLOATING_HEADER_SHELL,
+} from "@/components/ui/floating-header";
 
 export const metadata: Metadata = {
   title: "Requirements",
@@ -23,8 +26,8 @@ export default function RequirementsPage(
 ) {
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-border bg-card sticky top-0 z-40 w-full border-b border-solid">
-        <div className="mx-auto flex w-full max-w-[1100px] items-center justify-between px-6 py-3">
+      <header className={FLOATING_HEADER_SHELL}>
+        <div className={`${FLOATING_HEADER_CARD} mx-auto flex w-full max-w-[1100px] items-center px-6 py-3`}>
           <Link
             href="/"
             className="focus-visible:ring-ring flex items-center gap-2 rounded focus-visible:ring-2 focus-visible:outline-1"
@@ -34,7 +37,6 @@ export default function RequirementsPage(
               System Design All-in-One
             </span>
           </Link>
-          <ProviderDialog />
         </div>
       </header>
       <main className="mx-auto w-full max-w-[1100px] flex-grow px-6 py-10">

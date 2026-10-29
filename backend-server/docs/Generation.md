@@ -156,6 +156,22 @@ DSA regeneration does not touch `hld` or `lld`; the e2e suite asserts the untouc
 
 `failRun()` marks the currently running stage failed, then the run failed, with the same code/message/details. Usage accumulated before the failure is retained.
 
+## Live run stream (SSE)
+
+`GET /api/runs/:runId/events` is the push alternative to polling. It uses the same `x-project-key` or owner Bearer auth as `GET /api/runs/:runId`.
+
+- On connect, the controller subscribes to the in-process event bus, reads the persisted run and stages, and immediately replays every stage row in position order followed by the current run state.
+- Live events then arrive as SSE frames: `id: ...`, `event: run|stage`, `data: <RunStreamEvent JSON>`.
+- `run` frames carry status, safe error, usage, and `updatedAt`.
+- `stage` frames carry name, status, attempt, started/finished times, safe error, and nullable usage.
+- Frame `data` is a `RunStreamEvent`, not the polling `GenerationRun` DTO; clients that need the full DTO should use polling or merge stage frames themselves.
+- Repair attempts are emitted as `stage` frames with `status: "running"` and the higher `attempt` number.
+- A comment heartbeat (`: heartbeat`) is written every 10 seconds, below the client idle timeout. It is an SSE comment with no `id`, `event`, or `data`, so it does not enter the event sequence or the `Last-Event-ID` cursor. The response closes immediately after a terminal run event (`succeeded`, `failed`, or `interrupted`), and the heartbeat timer is cleared on close.
+- `Last-Event-ID` (or the optional `?lastEventId=` fallback) is resolved against the persisted snapshot; if the id no longer matches current state, the full persisted snapshot is replayed. No in-memory history is required.
+- Polling remains supported and returns the same persisted state and stage order.
+
+The event bus is intentionally process-local: one backend instance only. Multi-instance deployments need Redis pub/sub (or equivalent) and are deferred; without it, a client connected to one instance will not receive events emitted by another. No provider keys or raw model payloads are placed on the bus or in SSE frames. Interrupted runs are surfaced by the persisted snapshot on reconnect because no live connection survives the restart that caused them.
+
 ## Observability
 
 Persisted per run: status, provider, model, scope, stage timestamps, attempts/retry count, prompt and completion tokens, error code/message/details. Per version: full validation report with warning list and `validatedAt`. Duration is derivable from `createdAt`/`startedAt`/`finishedAt`.

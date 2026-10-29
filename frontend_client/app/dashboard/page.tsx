@@ -33,12 +33,24 @@ import {
 import { PortalHeader } from "@/components/portal/portal-header";
 import { apiFetch, ApiError, USER_MESSAGES } from "@/lib/api/client";
 import {
+  bucketLabelStep,
+  bucketTickIndices,
   formatTokensCompact,
   rangeLabel,
   sortRunsNewestFirst,
   usageBarPercent,
 } from "@/lib/dashboard/format";
 import { useHydrated, useSession } from "@/hooks/use-session";
+import type { RunStatus } from "@sda/contracts";
+
+/** Status label color; status is always spelled out — color never alone. */
+const STATUS_CLASS: Record<RunStatus, string> = {
+  queued: "text-muted-foreground",
+  running: "text-foreground",
+  succeeded: "text-success",
+  failed: "text-destructive",
+  interrupted: "text-muted-foreground",
+};
 
 const RANGES: DashboardRange[] = ["last_7_days", "last_30_days", "last_90_days"];
 
@@ -109,22 +121,33 @@ export function DashboardContent() {
               Model usage and run activity for your account.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Dashboard range">
-            {RANGES.map((option) => (
-              <Button
-                key={option}
-                variant={range === option ? "secondary" : "outline"}
-                size="sm"
-                aria-pressed={range === option}
-                onClick={() => setRange(option)}
-              >
-                {rangeLabel(option)}
-              </Button>
-            ))}
+          {/* Subtle busy state while a range switch refetches over the
+              previous content — live data is never swapped for skeletons
+              (QA D3). */}
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <span
+              role="status"
+              className={loading && data !== null ? "text-muted-foreground font-mono text-[11px]" : "sr-only"}
+            >
+              Updating…
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Dashboard range">
+              {RANGES.map((option) => (
+                <Button
+                  key={option}
+                  variant={range === option ? "secondary" : "outline"}
+                  size="sm"
+                  aria-pressed={range === option}
+                  onClick={() => setRange(option)}
+                >
+                  {rangeLabel(option)}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {loading ? (
+        {loading && data === null ? (
           <div aria-busy="true" className="mt-6 grid gap-3 md:grid-cols-2">
             {["a", "b", "c", "d"].map((key) => (
               <Skeleton key={key} className="h-36 rounded-xl" />
@@ -157,7 +180,11 @@ export function DashboardContent() {
           </div>
         ) : null}
 
-        {data !== null ? <DashboardBody data={data} /> : null}
+        {data !== null ? (
+          <div aria-busy={loading || undefined}>
+            <DashboardBody data={data} />
+          </div>
+        ) : null}
       </main>
     </div>
   );
@@ -185,29 +212,32 @@ function DashboardBody({ data }: { data: DashboardData }) {
   const perModelMax = Math.max(1, ...data.topModels.map((model) => model.totalTokens));
 
   return (
-    <div className="mt-6 grid gap-3">
-      <section aria-label="Usage totals" className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="mt-6 grid min-w-0 gap-3">
+      <section
+        aria-label="Usage totals"
+        className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      >
         <TotalCard
           icon={<ListChecksIcon className="size-4" />}
           label="Runs"
           value={String(data.usage.runCount)}
-          sub={`across ${data.usage.projectCount} project${data.usage.projectCount === 1 ? "" : "s"}`}
+          sub="architecture + requirements runs"
         />
         <TotalCard
           icon={<GaugeIcon className="size-4" />}
-          label="Tokens prompt + completion"
+          label="Tokens"
           value={formatTokensCompact(data.usage.totalTokens)}
           sub={`prompt ${formatTokensCompact(data.usage.promptTokens)} · completion ${formatTokensCompact(data.usage.completionTokens)}`}
         />
         <TotalCard
           icon={<DatabaseIcon className="size-4" aria-hidden="true" />}
-          label={`${rangeLabel(data.range)} window`}
+          label={`Projects · ${rangeLabel(data.range).toLowerCase()}`}
           value={String(data.usage.projectCount)}
           sub="projects with provider runs in this window"
         />
       </section>
 
-      <section aria-label="Usage over time" className="bg-card border-border rounded-xl border border-solid p-4">
+      <section aria-label="Usage over time" className="bg-card border-border min-w-0 rounded-xl border border-solid p-4">
         <h2 className="text-foreground text-sm font-semibold tracking-tight">Token usage over time</h2>
         {data.buckets.length === 0 ? (
           <p className="text-muted-foreground mt-2 text-xs italic">No bucketed activity in this window.</p>
@@ -216,7 +246,7 @@ function DashboardBody({ data }: { data: DashboardData }) {
         )}
       </section>
 
-      <section aria-label="Top models" className="bg-card border-border rounded-xl border border-solid p-4">
+      <section aria-label="Top models" className="bg-card border-border min-w-0 rounded-xl border border-solid p-4">
         <h2 className="text-foreground text-sm font-semibold tracking-tight">Top models</h2>
         {data.topModels.length === 0 ? (
           <p className="text-muted-foreground mt-2 text-xs italic">No model usage recorded in this window.</p>
@@ -234,7 +264,7 @@ function DashboardBody({ data }: { data: DashboardData }) {
                     aria-hidden="true"
                   />
                 </span>
-                <span className="text-muted-foreground w-20 flex-none text-right font-mono text-[10px]">
+                <span className="text-muted-foreground flex-none whitespace-nowrap font-mono text-[10px]">
                   {formatTokensCompact(model.totalTokens)} tok · {model.runCount} runs
                 </span>
               </li>
@@ -243,7 +273,7 @@ function DashboardBody({ data }: { data: DashboardData }) {
         )}
       </section>
 
-      <section aria-label="Recent runs" className="bg-card border-border overflow-hidden rounded-xl border border-solid">
+      <section aria-label="Recent runs" className="bg-card border-border min-w-0 overflow-hidden rounded-xl border border-solid">
         <h2 className="text-foreground border-border/60 border-b border-solid px-4 py-2.5 text-sm font-semibold tracking-tight">
           Recent runs
         </h2>
@@ -253,9 +283,8 @@ function DashboardBody({ data }: { data: DashboardData }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Run</TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>Type · status</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Model</TableHead>
                 <TableHead>Started</TableHead>
               </TableRow>
@@ -263,15 +292,12 @@ function DashboardBody({ data }: { data: DashboardData }) {
             <TableBody>
               {sortRunsNewestFirst(data.recentRuns).map((run) => (
                 <TableRow key={run.id}>
-                  <TableCell className="text-foreground font-mono text-[11px]">{run.id.slice(0, 8)}</TableCell>
-                  <TableCell className="text-muted-foreground truncate font-mono text-[11px]">{run.projectId.slice(0, 8)}</TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
-                    {run.type} · {run.status}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground font-mono text-[11px]" title={`${run.provider} · ${run.model}`}>
+                  <TableCell className="text-muted-foreground text-xs">{run.type}</TableCell>
+                  <TableCell className={`text-xs ${STATUS_CLASS[run.status]}`}>{run.status}</TableCell>
+                  <TableCell className="text-muted-foreground max-w-[180px] truncate font-mono text-[11px]" title={`${run.provider} · ${run.model}`}>
                     {run.model}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-[11px]">
+                  <TableCell className="text-muted-foreground whitespace-nowrap text-[11px]">
                     {new Date(run.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                   </TableCell>
                 </TableRow>
@@ -281,42 +307,84 @@ function DashboardBody({ data }: { data: DashboardData }) {
         )}
       </section>
 
-      <p className="text-muted-foreground pb-4 text-[11px]">
-        Snapshot generated {new Date(data.generatedAt).toLocaleTimeString("en-US")}
-        . Usage = provider calls only; project work without a provider call does
-        not appear.
+      <p className="text-muted-foreground pb-4 text-[11px] leading-relaxed">
+        Snapshot generated {new Date(data.generatedAt).toLocaleTimeString("en-US")}.
+        Usage covers provider calls only. An architecture run makes two provider
+        calls (HLD, then LLD/DSA synthesis); a requirements run makes one.
       </p>
     </div>
   );
 }
 
-/** Daily token-usage bars; max computed once, width via usageBarPercent. */
+/**
+ * Vertical bar chart of daily token usage, CSS only: one column per bucket,
+ * height proportional to the bucket's total tokens, date ticks at
+ * bucketLabelStep intervals anchored to both ends, each bar readable via
+ * role="img" + aria-label.
+ */
 function UsageBuckets({
   buckets,
 }: {
   buckets: import("@sda/contracts").DashboardData["buckets"];
 }) {
   const max = Math.max(1, ...buckets.map((bucket) => bucket.totalTokens));
+  const step = bucketLabelStep(buckets.length);
+  const tickIndices = bucketTickIndices(buckets.length, step);
+  const tickFormatter = (index: number) =>
+    new Date(buckets[index].periodStart).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
   return (
-    <ul className="mt-3 space-y-2">
-      {buckets.map((bucket) => (
-        <li key={bucket.periodStart} className="flex items-center gap-3">
-          <span className="text-muted-foreground w-40 flex-none truncate font-mono text-[10px]">
-            {new Date(bucket.periodStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-          </span>
-          <span className="bg-muted h-2.5 min-w-0 flex-1 overflow-hidden rounded-full">
-            <span
-              className="bg-primary block h-2.5 rounded-full"
-              style={{ width: `${usageBarPercent(bucket.totalTokens, max)}%` }}
-              aria-hidden="true"
-            />
-          </span>
-          <span className="text-muted-foreground w-16 flex-none text-right font-mono text-[10px]">
-            {formatTokensCompact(bucket.totalTokens)}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <div className="mt-3">
+      <div
+        aria-hidden="true"
+        className="bg-muted/40 text-muted-foreground mb-1 text-right font-mono text-[10px]"
+      >
+        max {formatTokensCompact(max)} tokens
+      </div>
+      <ul
+        aria-label="Token usage per day"
+        className="border-border/60 flex h-40 items-end gap-[3px] border-b border-solid"
+      >
+        {buckets.map((bucket, index) => {
+          const short = tickFormatter(index);
+          const tokens = formatTokensCompact(bucket.totalTokens);
+          return (
+            <li
+              key={bucket.periodStart}
+              className="bg-muted/50 flex h-full min-w-0 flex-1 items-end rounded-t-[2px]"
+            >
+              <span
+                role="img"
+                aria-label={`${short}: ${tokens} tokens`}
+                title={`${short} — ${tokens} tokens`}
+                className="bg-primary block w-full rounded-t-[2px] transition-[height] duration-200"
+                style={{
+                  height: `${usageBarPercent(bucket.totalTokens, max)}%`,
+                  minHeight: bucket.totalTokens > 0 ? 2 : 0,
+                }}
+              />
+            </li>
+          );
+        })}
+      </ul>
+      {/* Tick labels span their interval (edge-anchored, evenly spread) so
+          they never get clipped by a narrow flex column (QA D4). */}
+      <ul
+        aria-hidden="true"
+        className="text-muted-foreground mt-1 flex justify-between font-mono text-[10px]"
+      >
+        {tickIndices.map((index) => (
+          <li
+            key={buckets[index].periodStart}
+            className="whitespace-nowrap"
+          >
+            {tickFormatter(index)}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

@@ -67,39 +67,61 @@ function inlineStyles(
   }
 }
 
-/** Serializes a live <svg> into a standalone document string. */
-export function serializeSvg(svg: SVGSVGElement): string {
+/** Serializes a live <svg> into a standalone document string. `size` is the
+ * scene's own dimensions — the live SVG carries the fitted pan/zoom transform,
+ * and a downloaded file must instead be the untransformed scene at full
+ * resolution. */
+export function serializeSvg(
+  svg: SVGSVGElement,
+  size?: { width: number; height: number },
+): string {
   const clone = svg.cloneNode(true) as SVGSVGElement;
   inlineStyles(svg, clone, window);
+
+  // Drop the viewport transform so the scene paints at its native scale.
+  const root = clone.querySelector("[data-diagram-root]");
+  if (root !== null) {
+    root.removeAttribute("transform");
+    root.removeAttribute("data-diagram-root");
+  }
 
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.removeAttribute("tabindex");
 
-  // Parse the viewBox attribute directly (SVGAnimatedRect is unavailable in
-  // jsdom, and the attribute is the ground truth anyway).
+  const box = size ?? viewBoxSize(svg);
+  if (box !== null) {
+    clone.setAttribute("viewBox", `0 0 ${Math.round(box.width)} ${Math.round(box.height)}`);
+    clone.setAttribute("width", String(Math.round(box.width)));
+    clone.setAttribute("height", String(Math.round(box.height)));
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(clone)}`;
+}
+
+/** viewBox attribute as {width,height} — SVGAnimatedRect is unavailable in jsdom. */
+function viewBoxSize(svg: SVGSVGElement): { width: number; height: number } | null {
   const parts = (svg.getAttribute("viewBox") ?? "")
     .trim()
     .split(/[\s,]+/)
     .map(Number);
   const width = parts[2];
   const height = parts[3];
-  if (
-    width !== undefined &&
+  return width !== undefined &&
     height !== undefined &&
     Number.isFinite(width) &&
     Number.isFinite(height) &&
     width > 0 &&
     height > 0
-  ) {
-    clone.setAttribute("width", String(Math.round(width)));
-    clone.setAttribute("height", String(Math.round(height)));
-  }
-  return `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(clone)}`;
+    ? { width, height }
+    : null;
 }
 
 /** Triggers a browser download of the serialized SVG under a readable name. */
-export function downloadSvg(filename: string, svg: SVGSVGElement): void {
-  const blob = new Blob([serializeSvg(svg)], { type: "image/svg+xml" });
+export function downloadSvg(
+  filename: string,
+  svg: SVGSVGElement,
+  size?: { width: number; height: number },
+): void {
+  const blob = new Blob([serializeSvg(svg, size)], { type: "image/svg+xml" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

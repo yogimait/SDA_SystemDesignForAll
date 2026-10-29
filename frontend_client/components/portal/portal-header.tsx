@@ -9,6 +9,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogOutIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  FLOATING_HEADER_CARD,
+  FLOATING_HEADER_SHELL,
+} from "@/components/ui/floating-header";
 import { useSession } from "@/hooks/use-session";
 import { signOut } from "@/hooks/use-session";
 import { cn } from "cn";
@@ -24,8 +28,8 @@ export function PortalHeader({ current }: { current: "library" | "dashboard" | "
   const session = useSession();
 
   return (
-    <header className="border-border bg-card sticky top-0 z-40 w-full border-b border-solid">
-      <div className="mx-auto flex w-full max-w-[1100px] items-center justify-between gap-4 px-6 py-3">
+    <header className={FLOATING_HEADER_SHELL}>
+      <div className={`${FLOATING_HEADER_CARD} mx-auto flex w-full max-w-[1100px] items-center justify-between gap-4 px-6 py-3`}>
         <div className="flex min-w-0 items-center gap-4">
           <Link href="/" className="focus-visible:ring-ring flex items-center gap-2 rounded focus-visible:ring-2 focus-visible:outline-1">
             <span className="text-primary font-mono text-sm font-bold">sda/</span>
@@ -51,16 +55,18 @@ export function PortalHeader({ current }: { current: "library" | "dashboard" | "
             ))}
           </nav>
         </div>
-        <div className="flex flex-none items-center gap-3">
+        <div className="flex flex-none items-center gap-2 sm:gap-3">
           {session !== null ? (
             <>
+              {/* Identity details are secondary: below md they collapse so
+                  they cannot overlap or block the nav links (QA D2, 390px). */}
               <span
-                className="text-muted-foreground max-w-[220px] truncate font-mono text-[11px]"
+                className="text-muted-foreground hidden max-w-[220px] truncate font-mono text-[11px] md:inline"
                 title={session.user.email}
               >
                 {session.user.email}
               </span>
-              <span className="text-muted-foreground border-border/60 rounded border border-solid px-1.5 py-0.5 font-mono text-[10px] uppercase">
+              <span className="text-muted-foreground border-border/60 hidden rounded border border-solid px-1.5 py-0.5 font-mono text-[10px] uppercase md:inline">
                 {session.user.planTier}
               </span>
               <Button

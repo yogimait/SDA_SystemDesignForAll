@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { BackToWorkspace } from "@/components/export/back-to-workspace";
 import { ExportFlow } from "@/components/export/export-flow";
 
 export const metadata: Metadata = {
@@ -29,7 +30,10 @@ export default function ExportPage(props: PageProps<"/projects/[id]/export">) {
               System Design All-in-One
             </span>
           </Link>
-          <p className="text-muted-foreground font-mono text-xs">export view</p>
+          <p className="text-muted-foreground hidden font-mono text-xs sm:block">export view</p>
+          <Suspense fallback={null}>
+            <BackToWorkspace />
+          </Suspense>
         </div>
       </header>
       <main className="mx-auto w-full max-w-[690px] flex-grow px-6 py-8">

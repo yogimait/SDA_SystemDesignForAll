@@ -14,6 +14,7 @@ import type { ProjectStatus } from "@sda/contracts";
 import { ListProjectsResponseSchema } from "@sda/contracts";
 import { ArrowUpRightIcon, ChevronsDownIcon, CircleAlertIcon } from "lucide-react";
 import { PortalHeader } from "@/components/portal/portal-header";
+import { ProviderDialog } from "@/components/landing/provider-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch, ApiError } from "@/lib/api/client";
@@ -123,18 +124,21 @@ export function LibraryContent() {
               keys.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by status">
-            {STATUS_OPTIONS.map((option) => (
-              <Button
-                key={option.label}
-                variant={status === option.value ? "secondary" : "outline"}
-                size="sm"
-                aria-pressed={status === option.value}
-                onClick={() => setStatus(option.value)}
-              >
-                {option.label}
-              </Button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <ProviderDialog />
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by status">
+              {STATUS_OPTIONS.map((option) => (
+                <Button
+                  key={option.label}
+                  variant={status === option.value ? "secondary" : "outline"}
+                  size="sm"
+                  aria-pressed={status === option.value}
+                  onClick={() => setStatus(option.value)}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
 

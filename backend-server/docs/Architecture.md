@@ -15,6 +15,7 @@ flowchart TB
     RC[Requirements]
     ARC[Architecture]
     RNC[Run polling]
+    SSE[Run SSE]
     PRC[Providers]
   end
 
@@ -32,6 +33,7 @@ flowchart TB
     AG[Architecture generator]
     AV[Validator]
     WK[Generation worker]
+    RE[Run events bus]
   end
 
   subgraph Infrastructure
@@ -59,7 +61,7 @@ flowchart TB
 | `src/config/` | Zod-validated environment; single source of `process.env` reads. |
 | `src/database/` | `DatabaseService`, Drizzle schema, migrations, repository interfaces and implementations. |
 | `src/providers/` | `ModelProvider` boundary, registry, OpenRouter adapter, mock provider, schema sanitizer, prompts. |
-| `src/generation/` | Run service, DB-backed worker, requirements and architecture generators, run DTO mapping. |
+| `src/generation/` | Run service, DB-backed worker, requirements and architecture generators, run DTO mapping, process-local run event bus, SSE framing. |
 | `src/projects/`, `src/requirements/`, `src/architecture/` | HTTP controllers and domain services. |
 | `src/auth/` | Register/login/logout, scrypt password hashing, opaque session issuance. |
 | `src/account/` | Saved provider config and user preferences. |
@@ -99,11 +101,13 @@ Failures bypass the success interceptor and are normalized by `AllExceptionsFilt
 
 - `POST /api/projects` returns a 256-bit random Base64URL access key once.
 - Only its SHA-256 hex hash is stored in `project_access`.
-- Every project-scoped route and `GET /api/runs/:runId` requires `x-project-key`.
+- Every project-scoped route, `GET /api/runs/:runId`, and `GET /api/runs/:runId/events` accepts `x-project-key` or an owner Bearer session.
 - Verification uses `timingSafeEqual`.
 - The guard strips the stored hash before exposing the project to controllers.
 
 Run polling resolves the run first, then checks the key against that run's project. A run id cannot be enumerated without a valid key; an unknown run returns `RUN_NOT_FOUND`.
+
+Run SSE uses the same guard. The controller writes raw `text/event-stream` frames outside the JSON envelope: it replays persisted stage rows and the current run state, then forwards live events from the process-local `RunEventsService`. Heartbeats are comments; terminal run frames close the response. This bus is single-instance only; multi-instance deployments need a shared pub/sub layer.
 
 ## Configuration
 

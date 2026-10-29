@@ -19,6 +19,10 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { saveSession } from "@/lib/session/auth";
+import {
+  FLOATING_HEADER_CARD,
+  FLOATING_HEADER_SHELL,
+} from "@/components/ui/floating-header";
 
 function AuthForms() {
   const router = useRouter();
@@ -204,8 +208,8 @@ function LoginContent() {
 export default function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-border bg-card sticky top-0 z-40 w-full border-b border-solid">
-        <div className="mx-auto w-full max-w-[1100px] px-6 py-3">
+      <header className={FLOATING_HEADER_SHELL}>
+        <div className={`${FLOATING_HEADER_CARD} mx-auto w-full max-w-[1100px] px-6 py-3`}>
           <Link href="/" className="focus-visible:ring-ring flex items-center gap-2 rounded focus-visible:ring-2 focus-visible:outline-1">
             <span className="text-primary font-mono text-sm font-bold">sda/</span>
             <span className="text-foreground text-sm font-bold tracking-tight">

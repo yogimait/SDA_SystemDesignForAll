@@ -42,8 +42,10 @@ Configuration is Zod-validated at boot; invalid values stop the process with a r
 | `MOCK_PROVIDER` | `0` | Explicit deterministic provider for demos/tests. |
 | `DEFAULT_PROVIDER` | `openrouter` | Provider when a request omits one: `openrouter` or `groq`. |
 | `DEFAULT_MODEL` | `z-ai/glm-5.3-flash` | Active model when a request omits one. |
-| `OPENROUTER_MODEL` | `z-ai/glm-5.3-flash` | Model shown for the OpenRouter provider. |
-| `GROQ_MODEL` | `openai/gpt-oss-120b` | Model shown for the Groq provider. |
+| `OPENROUTER_MODELS` | `z-ai/glm-5.3-flash,...` | Comma-separated OpenRouter model catalog shown by `GET /api/providers`. |
+| `GROQ_MODELS` | `openai/gpt-oss-120b,...` | Comma-separated Groq model catalog shown by `GET /api/providers`. |
+
+`OPENROUTER_MODEL` and `GROQ_MODEL` were renamed to the plural forms above. The old singular names are ignored; move existing values into the comma-separated catalogs. Keep `DEFAULT_MODEL` inside the selected provider's catalog so the dropdown shows the active default.
 | `OPENROUTER_REASONING_EFFORT` | `low` | `off`, `low`, `medium`, `high`, or `max`; reasoning tokens share `max_tokens`. |
 | `GROQ_REASONING_EFFORT` | `low` | `off`, `low`, `medium`, or `high`; sent as `reasoning_effort`. |
 | `OPENROUTER_API_KEY` | — | Local development fallback only. The `x-provider-api-key` header wins; ignored when `NODE_ENV=production`. |
@@ -91,6 +93,9 @@ The response contains a one-time `accessKey`; send it as `x-project-key` on ever
 | `POST` | `/api/projects/:id/architecture/regenerate` | Regenerate `hld`, `lld`, or `dsa`. |
 | `GET` | `/api/projects/:id/architecture` | Current version + validation report. |
 | `GET` | `/api/runs/:runId` | Poll run status, stages, usage, errors. |
+| `GET` | `/api/runs/:runId/events` | SSE replay/live run and stage events. |
+
+SSE responses are `text/event-stream`, not JSON envelopes; polling remains available. A comment heartbeat is sent every 10 seconds and a terminal run frame closes the stream.
 
 Every JSON response uses the shared envelope: `{ status, statusCode, data }` on success; `{ status, statusCode, message, error: { code, details? } }` on failure.
 

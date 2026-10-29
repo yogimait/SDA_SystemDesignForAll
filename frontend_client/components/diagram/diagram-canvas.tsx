@@ -224,7 +224,10 @@ export function DiagramCanvas({
             {...viewport.backgroundHandlers}
           />
 
-          <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.k})`}>
+          <g
+            data-diagram-root
+            transform={`translate(${transform.x}, ${transform.y}) scale(${transform.k})`}
+          >
             {scene.edges.map((edge) => {
               const selected = selection !== null && selection.type === "relationship" && selection.id === edge.id;
               const highlighted = highlightRelationshipIds?.has(edge.id) === true;
@@ -473,7 +476,7 @@ export function DiagramCanvas({
           </g>
         </svg>
 
-        <div className="bg-card/80 border-border absolute right-3 bottom-3 flex items-center gap-1 rounded-lg border border-solid p-1 shadow-sm backdrop-blur">
+        <div className="no-print bg-card/80 border-border absolute right-3 bottom-3 flex items-center gap-1 rounded-lg border border-solid p-1 shadow-sm backdrop-blur">
           <Button variant="ghost" size="icon-xs" aria-label="Zoom out" onClick={() => zoomBy(0.8)}>
             <MinusIcon />
           </Button>

@@ -14,13 +14,16 @@ Cover (idea, version, dates, validation verdict + counts) → requirements (func
 
 ## Diagrams on paper
 
-- The same scene pipeline as the workspace (`buildLldScene` / `buildHldScene`) renders into `.export-diagram` boxes (620px tall). The canvas fit-on-resize hook re-fits automatically; the document container is pinned to **690px on screen and in print** (`main { width: 690px }` in the print block) so the fitted state is valid on paper — nothing clips.
-- **Download SVG** (per diagram) serializes the live SVG with computed styles inlined (`lib/export/svg.ts`) — the export page is already light-scoped, so the file is light-themed too.
+- The same scene pipeline as the workspace (`buildLldScene` / `buildHldScene`) renders into `.export-diagram` boxes (620px tall on screen). Each diagram section (`.export-diagram-page`) prints on its **own A4 landscape page** (`@page export-diagram`), roughly 50% more width than portrait, so the fit-to-page scale stays legible. In print the box shrinks to **172mm**: the landscape printable height is 190mm (210mm − 2 × 10mm margin) and the heading + its gap take ~12mm, so one diagram always fits one page. `use-diagram-viewport` listens for `beforeprint` and re-fits the live SVGs to the print box; the print box is still taller than the 620px screen box, so a missed refit cannot clip.
+  - Ops fact: the named page must **not** be called `diagram`. Chromium 156 silently ignores a landscape `@page diagram` and prints portrait pages (found through `page.pdf` MediaBox inspection) — any other identifier works.
+- Canvas zoom controls carry `.no-print` (interaction chrome, not paper). The marker legend still prints.
+- **Download SVG** (per diagram, next to its heading) serializes the live SVG with computed styles inlined (`lib/export/svg.ts`). It strips the fitted pan/zoom transform (`data-diagram-root`) and writes the scene's native `viewBox`/`width`/`height`, so the file is the full-resolution fallback; the print toolbar states this next to **Print / Save as PDF**.
+- **Back to workspace** in the header resolves the route id client-side (`components/export/back-to-workspace.tsx`, `useParams` inside Suspense) — never a params-promise cast.
 
 ## Light theme + print rules (`globals.css`)
 
 - **On screen the export page stays in the app's dark brand theme** (user decision: no white page); `.export-doc` only paints its surface from the active tokens (`background-color`/`color`), which keeps every heading/meta/diagram text visible instead of blending into the shell.
-- **Print flips to light paper**: `@media print` re-scopes the full token set once (`.export-doc` + `:root`), so text, utilities, and SVG fills print as dark-on-white under any app theme. Also in the print block: hide `.no-print` chrome (header, buttons), pin the content width, `break-inside: avoid` on sections/diagrams/definition rows, `break-after: avoid` on headings, `thead { display: table-header-group }`. `@page { size: A4; margin: 14mm 12mm }`.
+- **Print flips to light paper**: `@media print` re-scopes the full token set once (`.export-doc` + `:root`), so text, utilities, and SVG fills print as dark-on-white under any app theme. Also in the print block: hide `.no-print` chrome (header, buttons, canvas zoom controls), release the content width to the page, `break-inside: avoid` on sections/diagrams/definition rows, `break-after: avoid` on headings, `thead { display: table-header-group }`. `@page { size: A4; margin: 12mm 10mm }`, `@page export-diagram { size: A4 landscape; margin: 10mm }`, `.export-diagram { height: 172mm }` in print.
 - Ops note: **restart `npm run dev` after CSS-only edits** — globals.css HMR misses served stale print/light rules twice.
 
 ## Limitations (deliberate)
@@ -33,4 +36,4 @@ Cover (idea, version, dates, validation verdict + counts) → requirements (func
 ## Tests
 
 - Unit: `lib/export/document.test.ts` (cover/rows/warnings/date), `lib/export/svg.test.ts` (standalone XML, inline styles preserved, live element untouched, filename slugs).
-- Playwright `e2e/export.spec.ts`: full document render, `emulateMedia("print")` chrome-hidden check + **A4 PDF buffer smoke** (asserted `%PDF-` + non-empty, written to `test-results/export-smoke.pdf`), SVG download contents, missing/invalid model cards, signed-out access card, and the `?next=` sign-in round-trip.
+- Playwright `e2e/export.spec.ts`: full document render, back-link href, `emulateMedia("print")` chrome-hidden + **A4 PDF page-geometry check** (`preferCSSPageSize`, asserted `%PDF-`, exactly two landscape pages — one per diagram, no split — and every diagram section ≤ the 190mm landscape printable height; written to `test-results/export-smoke.pdf`), overflow sweep at 1440/1280/834/390, SVG download contents (full-resolution `viewBox`, no fitted transform), missing/invalid model cards, signed-out access card, and the `?next=` sign-in round-trip.

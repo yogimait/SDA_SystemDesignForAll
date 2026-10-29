@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { KeyRoundIcon } from "lucide-react";
+import type { ProvidersResponse } from "@sda/contracts";
+import { ProvidersResponseSchema, SavedProviderConfigResponseSchema } from "@sda/contracts";
 import {
   Dialog,
   DialogClose,
@@ -11,58 +14,153 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import {
-  DEFAULT_SETUP,
-  type ProviderSetup,
-  loadProviderSetup,
-  saveProviderSetup,
-} from "@/lib/session/keys";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { apiFetch, ApiError } from "@/lib/api/client";
+import { providerLabel } from "@/lib/providers/label";
+import { loadProviderKeys, loadProviderSetup, saveProviderSetup } from "@/lib/session/keys";
+import type { ProviderSetup } from "@/lib/session/keys";
+import { useSession } from "@/hooks/use-session";
+
+/** Stored choice wins when the server still offers it; else the server default. */
+function resolveSelection(
+  data: ProvidersResponse,
+  stored: ProviderSetup | null,
+): { provider: string; model: string } {
+  const providerId =
+    stored !== null && data.providers.some((info) => info.id === stored.provider)
+      ? stored.provider
+      : data.defaultProvider;
+  const info = data.providers.find((entry) => entry.id === providerId) ?? data.providers[0];
+  const model =
+    stored !== null && stored.provider === providerId && info?.models.includes(stored.model)
+      ? stored.model
+      : (info?.models[0] ?? "");
+  return { provider: info?.id ?? "", model };
+}
 
 /**
- * First-run provider setup (OpenRouter BYOK). Keys stay in sessionStorage
- * (this tab only) — written exclusively through lib/session/keys.ts.
+ * Provider setup (BYOK). Provider + model lists come from `GET /api/providers`
+ * (nothing hardcoded); keys stay in sessionStorage per provider — written
+ * exclusively through lib/session/keys.ts. Signed-in users also get their
+ * provider/model choice saved via `PUT /api/users/me/provider-config`; the key
+ * never leaves the tab and is never part of that payload.
  * Focus trap, Esc-to-close and overlay come from the shared Dialog component.
  */
 export function ProviderDialog() {
+  const session = useSession();
   const [open, setOpen] = useState(false);
   const [ready, setReady] = useState(false);
-  const [draft, setDraft] = useState<ProviderSetup>(DEFAULT_SETUP);
+  const [providers, setProviders] = useState<ProvidersResponse | null>(null);
+  const [provider, setProvider] = useState("");
+  const [model, setModel] = useState("");
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  async function whenOpening() {
-    const stored = await loadProviderSetup();
-    setDraft(stored ?? DEFAULT_SETUP);
+  const providerInfo = providers?.providers.find((info) => info.id === provider) ?? null;
+  const apiKey = keys[provider] ?? "";
+
+  async function loadProviders(): Promise<void> {
+    setLoadError(null);
+    try {
+      const data = await apiFetch("/api/providers", {
+        dataSchema: ProvidersResponseSchema,
+      });
+      setProviders(data);
+      const selection = resolveSelection(data, loadProviderSetup());
+      setProvider(selection.provider);
+      setModel(selection.model);
+    } catch (caught) {
+      setLoadError(
+        caught instanceof ApiError ? caught.userMessage : "Loading providers failed.",
+      );
+    }
+  }
+
+  function whenOpening(): void {
+    setSaveError(null);
+    setKeys(loadProviderKeys());
+    const stored = loadProviderSetup();
+    setProvider(stored?.provider ?? "");
+    setModel(stored?.model ?? "");
     setReady(stored !== null);
+    if (providers !== null) {
+      const selection = resolveSelection(providers, stored);
+      setProvider(selection.provider);
+      setModel(selection.model);
+    } else {
+      void loadProviders();
+    }
   }
 
-  function avoidInvalidSubmit(): boolean {
-    return draft.apiKey.trim().length < 16;
+  async function save(): Promise<void> {
+    const setup: ProviderSetup = { provider, apiKey: apiKey.trim(), model };
+    // Local first: the key is the part that only exists in this tab.
+    saveProviderSetup(setup);
+    setReady(true);
+    setSaveError(null);
+    if (session === null) {
+      setOpen(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      // No key in this payload — the contract rejects unknown fields.
+      await apiFetch("/api/users/me/provider-config", {
+        method: "PUT",
+        auth: true,
+        body: JSON.stringify({ provider: setup.provider, model: setup.model }),
+        dataSchema: SavedProviderConfigResponseSchema,
+      });
+      setOpen(false);
+    } catch (caught) {
+      setSaveError(
+        caught instanceof ApiError
+          ? caught.userMessage
+          : "Saving the provider preference failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
+
+  const invalidSubmit = provider === "" || model === "" || apiKey.trim().length < 16;
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next) void whenOpening();
+        if (next) whenOpening();
       }}
     >
       <DialogTrigger
-        onClick={() => {
-          void whenOpening();
-        }}
-        className="text-foreground hover:bg-popover bg-border/30 border-input focus-visible:ring-ring focus-visible:ring-2 h-10 rounded-xl border border-solid px-4 text-sm transition-colors focus-visible:outline-1"
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={ready ? "Provider ready" : "Provider setup"}
+          />
+        }
       >
-        {ready ? "Provider ready" : "Provider setup"}
+        <KeyRoundIcon aria-hidden="true" />
+        <span className="hidden sm:inline">{ready ? "Provider ready" : "Provider setup"}</span>
       </DialogTrigger>
 
       <DialogContent className="max-w-[480px] p-6">
         <DialogHeader>
-          <DialogTitle className="text-base">
-            Set up model access
-          </DialogTitle>
+          <DialogTitle className="text-base">Set up model access</DialogTitle>
           <DialogDescription className="leading-relaxed">
-            The app talks to OpenRouter with your own API key. OpenRouter offers
-            the GLM-5.3 Flash model, used by default.
+            Generation runs on your own provider key. Pick a provider, add its
+            key, then choose the model.
           </DialogDescription>
         </DialogHeader>
 
@@ -70,10 +168,7 @@ export function ProviderDialog() {
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            saveProviderSetup({ ...draft, provider: "openrouter" });
-            setReady(true);
-            // Closing IS the confirmation; the trigger flips to "Provider ready".
-            setOpen(false);
+            void save();
           }}
         >
           <div>
@@ -83,19 +178,58 @@ export function ProviderDialog() {
             >
               Provider
             </label>
-            <input
-              id="provider-name"
-              type="text"
-              value="OpenRouter"
-              disabled
-              className="bg-card border-input text-foreground w-full cursor-not-allowed rounded-lg border px-3.5 py-2.5 text-sm"
-            />
-            <p
-              id="provider-name-hint"
-              className="text-muted-foreground mt-1 text-xs"
+            <Select
+              value={provider === "" ? null : provider}
+              onValueChange={(value: string | null) => {
+                if (value === null) return;
+                setProvider(value);
+                const models = providers?.providers.find((info) => info.id === value)?.models ?? [];
+                setModel((current) =>
+                  models.includes(current) ? current : (models[0] ?? ""),
+                );
+              }}
+              disabled={providers === null}
             >
-              More providers (Groq, Gemini) can be added later.
-            </p>
+              <SelectTrigger
+                id="provider-name"
+                aria-label="Provider"
+                className="bg-card mt-1.5 h-10! w-full"
+              >
+                <SelectValue>
+                  {(value: string | null) =>
+                    value === null
+                      ? loadError !== null
+                        ? "Provider list unreachable"
+                        : "Pick a provider"
+                      : providerLabel(value)
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {(providers?.providers ?? []).map((info) => (
+                  <SelectItem key={info.id} value={info.id}>
+                    {providerLabel(info.id)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {loadError !== null ? (
+              <div role="alert" className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-destructive text-xs">{loadError}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => void loadProviders()}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : (
+              <p className="text-muted-foreground mt-1 text-xs">
+                Only providers the server has registered are listed.
+              </p>
+            )}
           </div>
 
           <div>
@@ -110,18 +244,17 @@ export function ProviderDialog() {
               type="password"
               autoComplete="off"
               spellCheck={false}
-              value={draft.apiKey}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  apiKey: event.target.value,
-                }))
-              }
-              placeholder="sk-or-…"
-              className="placeholder:text-muted-foreground/60 text-foreground border-input bg-card w-full rounded-lg border px-3.5 py-2.5 font-mono text-sm focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-1"
+              disabled={provider === ""}
+              value={apiKey}
+              onChange={(event) => {
+                const value = event.target.value;
+                setKeys((current) => ({ ...current, [provider]: value }));
+              }}
+              placeholder={provider === "" ? "Pick a provider first" : "Paste the provider key"}
+              className="placeholder:text-muted-foreground/60 text-foreground border-input bg-card w-full rounded-lg border px-3.5 py-2.5 font-mono text-sm focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-1 disabled:cursor-not-allowed disabled:opacity-50"
             />
             <p className="text-muted-foreground mt-1 text-xs">
-              Starts with <span className="font-mono">sk-or-</span>
+              Each provider keeps its own key in this tab.
             </p>
           </div>
 
@@ -132,51 +265,65 @@ export function ProviderDialog() {
             >
               Model
             </label>
-            <input
-              id="provider-model"
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              value={draft.model}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  model: event.target.value,
-                }))
-              }
-              className="placeholder:text-muted-foreground/60 text-foreground border-input bg-card w-full rounded-lg border px-3.5 py-2.5 font-mono text-sm focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-1"
-            />
+            <Select
+              value={model === "" ? null : model}
+              onValueChange={(value: string | null) => {
+                if (value !== null) setModel(value);
+              }}
+              disabled={apiKey.trim() === ""}
+            >
+              <SelectTrigger
+                id="provider-model"
+                aria-label="Model"
+                className="bg-card mt-1.5 h-10! w-full font-mono text-xs"
+              >
+                <SelectValue
+                  placeholder={
+                    apiKey.trim() === "" ? "Add your API key first" : "Pick a model"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {(providerInfo?.models ?? []).map((slug) => (
+                  <SelectItem key={slug} value={slug}>
+                    {slug}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="text-muted-foreground mt-1 text-xs">
-              Any OpenRouter model name works; the default is{" "}
-              <span className="font-mono">GLM-5.3 Flash</span>.
+              Models listed for the selected provider.
             </p>
           </div>
 
           <div className="bg-card border-border rounded-lg border border-solid p-3">
-            <p className="text-foreground text-sm font-medium">
-              Where your key lives
-            </p>
+            <p className="text-foreground text-sm font-medium">Where your key lives</p>
             <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-              Stored in this browser tab only (sessionStorage). Cleared when
-              you close the tab. Sent only for generation requests via the{" "}
+              Stored in this browser tab only (sessionStorage). Cleared when you
+              close the tab. Sent only for generation requests via the{" "}
               <span className="font-mono">x-provider-api-key</span> header —
               never logged, never stored server-side.
             </p>
           </div>
 
+          {saveError !== null ? (
+            <div role="alert" className="bg-destructive/10 rounded-lg p-3">
+              <p className="text-destructive text-sm font-medium">{saveError}</p>
+              <p className="text-muted-foreground mt-0.5 text-xs">
+                The key is saved for this tab; only the saved preference failed.
+              </p>
+            </div>
+          ) : null}
+
           <DialogFooter className="sm:justify-between">
             <DialogClose
-              className="text-foreground hover:bg-card border-input focus-visible:ring-ring h-10 rounded-xl border border-solid px-4 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-1"
+              render={<Button type="button" variant="outline" />}
             >
               Not now
             </DialogClose>
-            <button
-              type="submit"
-              disabled={avoidInvalidSubmit()}
-              className="bg-primary text-primary-foreground hover:brightness-105 hover:-translate-y-px active:translate-y-0 active:brightness-95 focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-1 h-10 rounded-xl px-4 text-sm font-medium transition-[filter,transform] duration-150 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Save for this session
-            </button>
+            <Button type="submit" disabled={busy || invalidSubmit}>
+              {busy ? "Saving…" : "Save for this session"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

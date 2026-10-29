@@ -14,7 +14,8 @@ import {
 } from "@sda/contracts";
 import { loadSession } from "../session/auth";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+/** Public API base — exported for the run-stream hook (SSE fetch, not envelope). */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 /**
  * Client-local codes produced by this client only. The backend never sends
@@ -107,8 +108,9 @@ export type ApiFetchOptions<T> = Omit<RequestInit, "headers"> & {
   dataSchema?: ZodType<T>;
   /** BYOK model-provider key, sent as `x-provider-api-key`. Never part of the URL. */
   providerKey?: string;
-  /** Per-project access key, sent as `x-project-key`. Never part of the URL. */
-  projectKey?: string;
+  /** Per-project access key, sent as `x-project-key`. Never part of the URL.
+   *  `null` is allowed for owner-Bearer-only flows and skips the header. */
+  projectKey?: string | null;
   /** Attach the authenticated session's access token as a Bearer header. */
   auth?: boolean;
   headers?: HeadersInit;
@@ -128,7 +130,8 @@ export async function apiFetch<T = unknown>(
     ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
   };
   if (providerKey !== undefined) requestHeaders["x-provider-api-key"] = providerKey;
-  if (projectKey !== undefined) requestHeaders["x-project-key"] = projectKey;
+  // Truthy guard: a null-cast key must never travel as a literal "null".
+  if (projectKey) requestHeaders["x-project-key"] = projectKey;
   if (auth === true) {
     // The access token travels by header only — never in URLs, queries, or logs.
     const session = loadSession();

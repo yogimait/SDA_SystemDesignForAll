@@ -9,6 +9,24 @@ const BooleanFlagSchema = z
   .default("0")
   .transform((value) => value === "1" || value === "true");
 
+/** Comma-separated model catalog: trimmed, de-duplicated, blanks dropped. */
+const ModelListSchema = (fallback: string) =>
+  z
+    .string()
+    .trim()
+    .default(fallback)
+    .transform((value) => [
+      ...new Set(
+        value
+          .split(",")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0),
+      ),
+    ])
+    .refine((models) => models.length > 0, {
+      message: "At least one model slug is required.",
+    });
+
 export const EnvSchema = z
   .object({
     NODE_ENV: z
@@ -24,16 +42,12 @@ export const EnvSchema = z
     MOCK_PROVIDER: BooleanFlagSchema,
     DEFAULT_PROVIDER: z.string().trim().min(1).default("openrouter"),
     DEFAULT_MODEL: z.string().trim().min(1).default("z-ai/glm-5.3-flash"),
-    OPENROUTER_MODEL: z
-      .string()
-      .trim()
-      .min(1)
-      .default("z-ai/glm-5.3-flash"),
-    GROQ_MODEL: z
-      .string()
-      .trim()
-      .min(1)
-      .default("openai/gpt-oss-120b"),
+    OPENROUTER_MODELS: ModelListSchema(
+      "z-ai/glm-5.3-flash,anthropic/claude-sonnet-4.5,openai/gpt-5,google/gemini-2.5-pro,deepseek/deepseek-chat",
+    ),
+    GROQ_MODELS: ModelListSchema(
+      "openai/gpt-oss-120b,openai/gpt-oss-20b,llama-3.3-70b-versatile,llama-3.1-8b-instant",
+    ),
     OPENROUTER_REASONING_EFFORT: z
       .enum(["off", "low", "medium", "high", "max"])
       .default("low"),

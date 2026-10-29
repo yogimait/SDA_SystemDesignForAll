@@ -4,9 +4,10 @@ The pending state machine that turns a generated requirements spec into a
 confirmed snapshot. Lives under `app/projects/[id]/requirements/`.
 
 - `components/requirements/requirements-flow.tsx` — controller client component.
-- `components/requirements/run-progress.tsx` — polled run stage list.
+- `components/requirements/run-progress.tsx` — live stage list (streamed or polled).
 - `components/requirements/spec-editor.tsx` — the editor itself.
-- `hooks/use-generation-run.ts` + `lib/requirements/editor.ts` — the testable core.
+- `hooks/use-run-stream.ts` (`useRunLive`) + `hooks/use-generation-run.ts`
+  + `lib/run-stream.ts` + `lib/requirements/editor.ts` — the testable core.
 - Payload shapes come from `@sda/contracts` only (`RequirementsSpec`,
   `SaveRequirementsRequest`, `GenerationRun`, `StartRunResponse`).
 
@@ -22,14 +23,50 @@ confirmed snapshot. Lives under `app/projects/[id]/requirements/`.
 5. **Architecture ready** — honest interim copy: the workspace UI is the next
    phase; the user can return to the editor and re-confirm.
 
-## Run polling
+## Run updates: live stream with polling fallback
 
-`useGenerationRun` polls `GET /api/runs/:runId` (`x-project-key` header) every
-1.2 s while status is `queued|running`, then stops. Stage rows are the
-backend-persisted DTO only — the client never simulates stages. Terminal
-`succeeded` triggers invalidations of `requirements`, `architecture`, and
-`project` queries; `failed`/`interrupted` render the run error banner with a
-retry that starts a fresh run (`RUN_CONFLICT` surfaced through the registry).
+`hooks/use-run-stream.ts` (`useRunLive`) replaces blind polling. The stream
+endpoint is the backend's (see `backend-server/docs/Generation.md`):
+`GET /api/runs/:runId/events`, fetch()-streamed because EventSource cannot
+send `Authorization` / `x-project-key`. Frames are **`RunStreamEvent`** —
+`id: …`, `event: run|stage`, `data:{type:"run"|"stage"|"heartbeat",…}` — NOT
+the polling DTO. The hook therefore:
+
+1. **bootstraps ONCE** with `GET /api/runs/:runId` for the full
+   `GenerationRun` (identity fields: id/provider/model/scope/createdAt), then
+2. merges every stream frame into that DTO via `applyRunStreamEvent`
+   (`lib/run-stream.ts`): stage frames patch their row in place (position
+   preserved, attempt/usage/error included), run frames patch
+   status/error/usage, heartbeats are no-ops.
+
+- **Reconnect** with deterministic exponential backoff (`backoffDelayMs`:
+  500ms → 1s → 2s, cap 4s) on network/timeout/5xx/429; connect timeout 10s,
+  cleared as soon as response headers open (a healthy long-running stream is
+  never aborted mid-generation). Idle timeout **60s** (the backend writes a
+  `:` comment heartbeat every **10s** — a wide margin avoids live/reconnecting
+  flicker while providers think). Reconnects send the last frame `id:` as
+  `?lastEventId=` (query form — the documented fallback that needs no CORS
+  preflight); the server replays persisted frames, which re-merge cleanly.
+- **Fallback** (`classifyFailure`): 401/403/404 and other definitive 4xx
+  fall back to polling instantly; repeated failures fall back after 3
+  retries. `useRunLive` runs stream OR poll — never both — and closes the
+  stream on terminal status or unmount (no leaked readers).
+- `useGenerationRun` keeps polling as the fallback path (its `enabled`
+  option parks the query while the stream owns the run); both consumers
+  (`RunPhase`, `RegenRunPhase`) call `useRunLive`.
+- `RunProgress` shows a connection indicator (live / reconnecting /
+  connecting / polling — dot + word), visible from the very first connect
+  even before a run row exists; the running stage gets
+  `aria-current="step"` + a warning tint; repair attempt counts and live
+  token usage come from the same frames. The indicator hides once terminal.
+- Run-read failures surface mapped copy (never raw HTTP text): `AUTH_REQUIRED`
+  offers a Sign in link back to the current route, everything else a Retry.
+- Stage rows are still backend-persisted state only — the client never
+  simulates stages. Terminal `succeeded` triggers the same invalidations as
+  before; `failed`/`interrupted` render the run error banner with retry.
+  (Requirements success swaps to the editor, so a terminal `failed` is the
+  state that stays visibly rendered — the e2e asserts exactly that; a retry
+  starts a fresh run with `RUN_CONFLICT` surfaced through the registry.)
 
 ## Editor semantics
 

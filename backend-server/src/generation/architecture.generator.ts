@@ -21,6 +21,7 @@ import {
 } from "@sda/contracts";
 import { AppError } from "../common/errors/app-error.js";
 import { invalidOutputRepair } from "./output-issues.js";
+import type { GenerationAttemptListener } from "./attempt-listener.js";
 import type {
   ChatMessage,
   ModelProvider,
@@ -93,6 +94,7 @@ export class ArchitectureGenerator {
     model: string,
     idea: string,
     requirements: ConfirmedRequirements,
+    onAttempt?: GenerationAttemptListener,
   ): Promise<HldGeneration> {
     const system = hldSystemPrompt();
     const messages: ChatMessage[] = [
@@ -106,6 +108,7 @@ export class ArchitectureGenerator {
     const stageName = "hld_model";
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      onAttempt?.(attempt);
       try {
         const result = await provider.generateStructured({
           model,
@@ -170,6 +173,7 @@ export class ArchitectureGenerator {
     idea: string,
     requirements: ConfirmedRequirements,
     hld: HldModel,
+    onAttempt?: GenerationAttemptListener,
   ): Promise<LldDsaGeneration> {
     const system = lldDsaSystemPrompt();
     const messages: ChatMessage[] = [
@@ -187,6 +191,7 @@ export class ArchitectureGenerator {
     const stageName = "lld_dsa_model";
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      onAttempt?.(attempt);
       try {
         const result = await provider.generateStructured({
           model,
@@ -279,6 +284,7 @@ export class ArchitectureGenerator {
     current: ArchitectureModel,
     scope: RegenerateScope,
     requirementsDiff: string,
+    onAttempt?: GenerationAttemptListener,
   ): Promise<ScopedGeneration> {
     const configuration = scopedConfiguration(
       scope,
@@ -295,6 +301,7 @@ export class ArchitectureGenerator {
     let issues: ValidationIssue[] = [];
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      onAttempt?.(attempt);
       let sectionData: unknown;
       try {
         const result = await provider.generateStructured({

@@ -111,10 +111,26 @@ function RefChips({ refs }: { refs: string[] }) {
   );
 }
 
-function RequirementRefs({ refs, title }: { refs: string[]; title: string }) {
+function RequirementRefs({
+  refs,
+  labels,
+  title,
+}: {
+  refs: string[];
+  labels: Map<string, string>;
+  title: string;
+}) {
+  // Contract ids stay keys; readers see the numbered row ("FR 2").
+  const shown = refs
+    .map((ref) => labels.get(ref))
+    .filter((label): label is string => label !== undefined);
   return (
     <Section title={title}>
-      <RefChips refs={refs} />
+      {shown.length === 0 ? (
+        <Empty text="No requirement references." />
+      ) : (
+        <RefChips refs={shown} />
+      )}
     </Section>
   );
 }
@@ -122,10 +138,13 @@ function RequirementRefs({ refs, title }: { refs: string[]; title: string }) {
 export function WorkspaceDetails({
   model,
   selection,
+  requirementLabels,
   className,
 }: {
   model: LldModel;
   selection: WorkspaceSelection;
+  /** requirement id → numbered label ("FR 2"); ids never render. */
+  requirementLabels: Map<string, string>;
   className?: string;
 }) {
   const names = useMemo(
@@ -226,7 +245,7 @@ export function WorkspaceDetails({
             </ul>
           </Section>
         ) : null}
-        <RequirementRefs refs={cls.requirementRefs} title="Requirement references" />
+        <RequirementRefs refs={cls.requirementRefs} labels={requirementLabels} title="Requirement references" />
       </div>
     );
   }
@@ -235,7 +254,7 @@ export function WorkspaceDetails({
     const rel = model.relationships.find((r) => r.id === selection.id);
     if (rel === undefined) return <Missing />;
     return (
-      <div aria-label={`Details for ${rel.id}`} className={cn("text-sm", className)}>
+      <div aria-label={`Details for ${names.get(rel.sourceId) ?? "unknown class"} ${REL_LABEL[rel.kind]} ${names.get(rel.targetId) ?? "unknown class"}`} className={cn("text-sm", className)}>
         <PanelHeading
           title={REL_LABEL[rel.kind]}
           tag={
@@ -254,7 +273,9 @@ export function WorkspaceDetails({
         </Section>
         <Section title="Endpoints">
           <p className="text-muted-foreground font-mono text-[11px]">
-            {`${rel.sourceId} (${rel.sourceMultiplicity}) → ${rel.targetId} (${rel.targetMultiplicity})`}
+            {`${names.get(rel.sourceId) ?? "unknown class"} (${rel.sourceMultiplicity}) → ${
+              names.get(rel.targetId) ?? "unknown class"
+            } (${rel.targetMultiplicity})`}
           </p>
         </Section>
       </div>
@@ -263,16 +284,25 @@ export function WorkspaceDetails({
 
   const pattern = model.patterns.find((p) => p.id === selection.id);
   if (pattern === undefined) return <Missing />;
-  return <PatternDetails pattern={pattern} names={names} className={className} />;
+  return (
+    <PatternDetails
+      pattern={pattern}
+      names={names}
+      requirementLabels={requirementLabels}
+      className={className}
+    />
+  );
 }
 
 function PatternDetails({
   pattern,
   names,
+  requirementLabels,
   className,
 }: {
   pattern: DesignPattern;
   names: Map<string, string>;
+  requirementLabels: Map<string, string>;
   className?: string;
 }) {  return (
     <div aria-label={`Details for pattern ${pattern.name}`} className={cn("text-sm", className)}>
@@ -281,7 +311,7 @@ function PatternDetails({
         tag={<Badge className="bg-secondary text-secondary-foreground font-mono">{pattern.category}</Badge>}
       />
       <Section title="Participants">
-        <RefChips refs={pattern.participantClassIds.map((id) => names.get(id) ?? id)} />
+        <RefChips refs={pattern.participantClassIds.map((id) => names.get(id) ?? "unknown class")} />
       </Section>
       <Section title="Rationale">
         <p className="text-muted-foreground">{pattern.rationale}</p>
@@ -306,7 +336,11 @@ function PatternDetails({
       <Section title="When unnecessary">
         <p className="text-muted-foreground">{pattern.whenUnnecessary}</p>
       </Section>
-      <RequirementRefs refs={pattern.requirementRefs} title="Requirement references" />
+      <RequirementRefs
+        refs={pattern.requirementRefs}
+        labels={requirementLabels}
+        title="Requirement references"
+      />
     </div>
   );
 }
@@ -353,6 +387,7 @@ export function HldDetails({
   focusedFlow,
   onFlowStepFocus,
   onReplay,
+  requirementLabels,
   className,
 }: {
   model: HldModel;
@@ -362,6 +397,8 @@ export function HldDetails({
   onFlowStepFocus: (flowId: string, stepIndex: number | null) => void;
   /** Flow-panel replay trigger (wired by the workspace header state). */
   onReplay?: (flowId: string) => void;
+  /** requirement id → numbered label ("FR 2"); ids never render. */
+  requirementLabels: Map<string, string>;
   className?: string;
 }) {
   const names = useMemo(
@@ -409,7 +446,11 @@ export function HldDetails({
           {component.requirementRefs.length === 0 ? (
             <Empty text="No requirement references." />
           ) : (
-            <RefChips refs={component.requirementRefs} />
+            <RefChips
+              refs={component.requirementRefs
+                .map((ref) => requirementLabels.get(ref))
+                .filter((label): label is string => label !== undefined)}
+            />
           )}
         </Section>
       </div>
@@ -431,8 +472,8 @@ export function HldDetails({
         />
         <Section title="Endpoints">
           <p className="text-muted-foreground font-mono text-[11px]">
-            {`${names.get(connection.fromComponentId) ?? connection.fromComponentId} → ${
-              names.get(connection.toComponentId) ?? connection.toComponentId
+            {`${names.get(connection.fromComponentId) ?? "unknown component"} → ${
+              names.get(connection.toComponentId) ?? "unknown component"
             }`}
           </p>
         </Section>
@@ -504,7 +545,11 @@ export function HldDetails({
           {flow.requirementRefs.length === 0 ? (
             <Empty text="No requirement references." />
           ) : (
-            <RefChips refs={flow.requirementRefs} />
+            <RefChips
+              refs={flow.requirementRefs
+                .map((ref) => requirementLabels.get(ref))
+                .filter((label): label is string => label !== undefined)}
+            />
           )}
         </Section>
       </div>
@@ -619,8 +664,8 @@ function ConnectionsForComponent({
   );
   return (
     <ul className="space-y-2">
-      {outgoing.map((conn) => line(conn, "→", names.get(conn.toComponentId) ?? conn.toComponentId))}
-      {incoming.map((conn) => line(conn, "←", names.get(conn.fromComponentId) ?? conn.fromComponentId))}
+      {outgoing.map((conn) => line(conn, "→", names.get(conn.toComponentId) ?? "unknown component"))}
+      {incoming.map((conn) => line(conn, "←", names.get(conn.fromComponentId) ?? "unknown component"))}
     </ul>
   );
 }

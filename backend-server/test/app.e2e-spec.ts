@@ -1,12 +1,20 @@
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import { request as httpRequest, type IncomingHttpHeaders } from "node:http";
+import type { AddressInfo } from "node:net";
 import type {
   AuthResponse,
   CreateProjectResponse,
   GenerationRun,
   GetArchitectureResponse,
+  ProvidersResponse,
   RequirementsResponse,
+  RunStreamEvent,
   StartRunResponse,
+} from "@sda/contracts";
+import {
+  ProvidersResponseSchema,
+  RunStreamEventSchema,
 } from "@sda/contracts";
 import request from "supertest";
 import type { App } from "supertest/types";
@@ -32,6 +40,101 @@ interface Envelope<T> {
   data: T;
   message?: string;
   error?: { code: string; details?: Record<string, unknown> };
+}
+
+interface SseFrame {
+  id?: string;
+  event?: string;
+  data: RunStreamEvent;
+}
+
+interface SseResponse {
+  status: number;
+  headers: IncomingHttpHeaders;
+  body: string;
+}
+
+interface SseStream {
+  opened: Promise<void>;
+  done: Promise<SseResponse>;
+}
+
+function collectSse(
+  server: App,
+  path: string,
+  headers: Record<string, string>,
+): SseStream {
+  const started = server.listening
+    ? Promise.resolve()
+    : new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => resolve());
+      });
+
+  let resolveOpened: () => void = () => undefined;
+  const opened = new Promise<void>((resolve) => {
+    resolveOpened = resolve;
+  });
+  const done = started.then(
+    () =>
+      new Promise<SseResponse>((resolve, reject) => {
+        const address = server.address() as AddressInfo;
+        const request = httpRequest(
+          {
+            hostname: "127.0.0.1",
+            port: address.port,
+            path,
+            method: "GET",
+            headers: {
+              accept: "text/event-stream",
+              ...headers,
+            },
+          },
+          (response) => {
+            resolveOpened();
+            let body = "";
+            response.setEncoding("utf8");
+            response.on("data", (chunk: string) => {
+              body += chunk;
+            });
+            response.on("end", () => {
+              resolve({
+                status: response.statusCode ?? 0,
+                headers: response.headers,
+                body,
+              });
+            });
+          },
+        );
+        request.on("error", reject);
+        request.end();
+      }),
+  );
+  return { opened, done };
+}
+
+function parseSse(body: string): SseFrame[] {
+  return body
+    .split(/\r?\n\r?\n/)
+    .filter((block) => block.trim().length > 0 && !block.startsWith(":"))
+    .map((block) => {
+      let id: string | undefined;
+      let event: string | undefined;
+      let data: string | undefined;
+      for (const line of block.split(/\r?\n/)) {
+        if (line.startsWith("id: ")) id = line.slice(4);
+        if (line.startsWith("event: ")) event = line.slice(7);
+        if (line.startsWith("data: ")) data = line.slice(6);
+      }
+      if (!data) {
+        throw new Error(`SSE frame without data: ${block}`);
+      }
+      return {
+        ...(id ? { id } : {}),
+        ...(event ? { event } : {}),
+        data: RunStreamEventSchema.parse(JSON.parse(data)) as RunStreamEvent,
+      };
+    });
 }
 
 interface TestApp {
@@ -244,11 +347,17 @@ describe("API (e2e)", () => {
     it("lists provider configuration without secrets", async () => {
       const response = await request(server).get("/api/providers");
       expect(response.status).toBe(200);
-      const body = response.body as Envelope<Record<string, unknown>>;
-      expect(body.data).toMatchObject({
-        defaultModel: "test/model",
-        mock: true,
-      });
+      const body = response.body as Envelope<ProvidersResponse>;
+      const data = ProvidersResponseSchema.parse(body.data);
+      expect(data).toMatchObject({ defaultModel: "test/model", mock: true });
+      expect(data.providers.map((provider) => provider.id)).toEqual([
+        "openrouter",
+        "groq",
+      ]);
+      for (const provider of data.providers) {
+        expect(provider.models.length).toBeGreaterThan(0);
+        expect(provider.supportsStructuredOutput).toBe(true);
+      }
       expect(JSON.stringify(body)).not.toContain("apiKey");
     });
 
@@ -571,6 +680,141 @@ describe("API (e2e)", () => {
         created.accessKey,
       );
       expect(run.status).toBe("succeeded");
+    });
+
+    it("streams persisted and live stage events, then closes", async () => {
+      const owner = await register(
+        server,
+        `sse-owner-${Date.now()}@example.com`,
+      );
+      const created = await createProject(server, owner.accessToken);
+      const block = provider.armBlock();
+      const runId = await startRequirements(
+        server,
+        created.project.id,
+        created.accessKey,
+      );
+      await block.started;
+
+      const stream = collectSse(
+        server,
+        `/api/runs/${runId}/events`,
+        { "x-project-key": created.accessKey },
+      );
+      await stream.opened;
+      block.release();
+      const streamed = await stream.done;
+
+      expect(streamed.status).toBe(200);
+      expect(streamed.headers["content-type"]).toContain("text/event-stream");
+      expect(streamed.headers["cache-control"]).toContain("no-cache");
+      expect(streamed.headers["x-accel-buffering"]).toBe("no");
+      expect(streamed.body).not.toContain(created.accessKey);
+
+      const frames = parseSse(streamed.body);
+      expect(frames.every((frame) => frame.event === frame.data.type)).toBe(true);
+      const stageFrames = frames.filter((frame) => frame.data.type === "stage");
+      const stageNames = [
+        ...new Set(
+          stageFrames.map((frame) =>
+            frame.data.type === "stage" ? frame.data.name : "",
+          ),
+        ),
+      ].filter(Boolean);
+      expect(stageNames).toEqual(["analyze_idea", "persist"]);
+      expect(
+        stageFrames.some(
+          (frame) =>
+            frame.data.type === "stage" && frame.data.status === "running",
+        ),
+      ).toBe(true);
+      expect(frames.at(-1)?.data).toMatchObject({
+        type: "run",
+        status: "succeeded",
+      });
+      const terminal = frames.at(-1)?.data;
+      if (!terminal || terminal.type !== "run") {
+        throw new Error("Expected a terminal run frame.");
+      }
+      expect(terminal.usage.totalTokens).toBeGreaterThan(0);
+
+      const ownerStream = collectSse(
+        server,
+        `/api/runs/${runId}/events`,
+        { Authorization: `Bearer ${owner.accessToken}` },
+      );
+      await ownerStream.opened;
+      const ownerReplay = await ownerStream.done;
+      expect(ownerReplay.status).toBe(200);
+      expect(parseSse(ownerReplay.body).at(-1)?.data).toMatchObject({
+        type: "run",
+        status: "succeeded",
+      });
+
+      const polled = await request(server)
+        .get(`/api/runs/${runId}`)
+        .set("x-project-key", created.accessKey);
+      const polledRun = (polled.body as Envelope<GenerationRun>).data;
+      expect(polledRun.stages.map((stage) => stage.name)).toEqual(stageNames);
+      expect(polledRun.status).toBe("succeeded");
+
+      const resumeId = stageFrames.find(
+        (frame) =>
+          frame.data.type === "stage" &&
+          frame.data.status === "succeeded" &&
+          frame.id,
+      )?.id;
+      if (!resumeId) {
+        throw new Error("Expected a stage event id.");
+      }
+      const replay = collectSse(
+        server,
+        `/api/runs/${runId}/events`,
+        {
+          "x-project-key": created.accessKey,
+          "Last-Event-ID": resumeId,
+        },
+      );
+      await replay.opened;
+      const replayed = parseSse((await replay.done).body);
+      expect(replayed[0]?.data).toMatchObject({
+        type: "stage",
+        name: "persist",
+      });
+      expect(replayed.at(-1)?.data).toMatchObject({
+        type: "run",
+        status: "succeeded",
+      });
+    });
+
+    it("protects the event stream like run polling", async () => {
+      const created = await createProject(server);
+      const block = provider.armBlock();
+      const runId = await startRequirements(
+        server,
+        created.project.id,
+        created.accessKey,
+      );
+      await block.started;
+
+      const noAuth = await request(server).get(
+        `/api/runs/${runId}/events`,
+      );
+      expect(noAuth.status).toBe(403);
+
+      const invalidToken = await request(server)
+        .get(`/api/runs/${runId}/events`)
+        .set("Authorization", "Bearer not-a-session");
+      expect(invalidToken.status).toBe(401);
+
+      const unknown = await request(server)
+        .get("/api/runs/00000000-0000-4000-8000-000000000000/events")
+        .set("x-project-key", created.accessKey);
+      expect(unknown.status).toBe(404);
+      expect(unknown.body).toMatchObject({ error: { code: "RUN_NOT_FOUND" } });
+
+      block.release();
+      await waitForRun(server, runId, created.accessKey);
     });
 
     it("fails the run when model output stays invalid", async () => {

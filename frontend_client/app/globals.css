@@ -163,9 +163,9 @@
    active theme so nothing blends into the shell. Light appears only
    under @media print, where the token set is re-scoped as a paper
    palette (task: force light theme for print) — defined ONCE, there.
-   The document container width is pinned to the A4 printable width
-   (690px ≈ 182mm) on screen AND in print, so the canvases' fit-on-
-   resize state stays valid on paper and nothing clips.
+   On screen the document is pinned to the A4 text width (690px ≈ 182mm)
+   so the canvases fit once; print widens to the page and re-fits on
+   beforeprint, and diagram sections print on a landscape named page.
    ================================================================ */
 .export-doc {
   /* Dark paper on screen, white paper in print — the print block below
@@ -253,7 +253,17 @@
 
 @page {
   size: A4;
-  margin: 14mm 12mm;
+  margin: 12mm 10mm;
+}
+
+/* Diagram pages print landscape: a wide UML/architecture drawing gets ~50%
+   more width than A4 portrait, so the fit-to-page scale (and its text) stays
+   legible. Chrome honors named pages in the print dialog. The name must NOT
+   be `diagram`: Chromium 156 silently drops a landscape @page with that
+   identifier and prints portrait pages (verified through page.pdf MediaBox). */
+@page export-diagram {
+  size: A4 landscape;
+  margin: 10mm;
 }
 
 @media print {
@@ -304,13 +314,30 @@
     text-decoration: none;
   }
 
-  /* Pin the print layout to the same width the canvases were fit against
-     (screen max-width = 690px) so the fit state survives onto paper. */
+  /* Pin the print layout to the full printable page. Diagram sections get
+     their own landscape page; the on-screen canvases re-fit on beforeprint
+     (use-diagram-viewport) so the fit state matches the paper. */
   main {
-    width: 690px !important;
-    max-width: 690px !important;
+    width: 100% !important;
+    max-width: none !important;
     margin: 0 !important;
     padding: 0 !important;
+  }
+
+  .export-diagram-page {
+    page: export-diagram;
+    break-before: page;
+    break-after: page;
+    /* Each diagram owns its page: no section gap above the heading. */
+    margin-top: 0;
+  }
+
+  /* Landscape A4 printable height = 210mm - 2 × 10mm margin = 190mm. The box
+     leaves room for the section heading (~9mm) and its gap (~3mm), so one
+     diagram never spills onto a second page. Still taller than the 620px
+     screen box (164mm), so a missed beforeprint refit cannot clip. */
+  .export-diagram {
+    height: 172mm;
   }
 
   .export-section,

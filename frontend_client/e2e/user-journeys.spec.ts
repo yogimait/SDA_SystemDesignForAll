@@ -8,6 +8,7 @@
  */
 
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { fillAuthForm } from "./helpers";
 
 const USER = {
   id: "usr_probe001",
@@ -27,12 +28,66 @@ const MODEL = {
   meta: { title: "Library fixture", summary: "Fixture model." },
   requirements: {
     confirmedAt: "t",
-    spec: { functional: [{ id: "fr_probe", kind: "functional", text: "p", priority: "must" }], nonFunctional: [], assumptions: [], clarifications: [] },
+    spec: {
+      functional: [{ id: "fr_probe", kind: "functional", text: "p", priority: "must" }],
+      nonFunctional: [],
+      assumptions: [],
+      clarifications: [],
+    },
   },
-  hld: { components: [], connections: [], flows: [], technologyDecisions: [], scalabilityNotes: [], failureScenarios: [] },
-  lld: { classes: [], relationships: [], patterns: [] },
-  dsa: { recommendations: [], algorithmicPatterns: [] },
-  learningSteps: [{ id: "step_1", title: "t", explanation: "e", elementRefs: ["cmp_x"] }],
+  hld: {
+    components: [
+      { id: "cmp_probe", name: "Gateway", type: "gateway", responsibility: "Routes calls", technology: "nginx", requirementRefs: ["fr_probe"], scalingNotes: "" },
+    ],
+    connections: [
+      { id: "conn_probe", fromComponentId: "cmp_probe", toComponentId: "cmp_probe", kind: "sync", label: "check", protocol: "http", rationale: "Inline" },
+    ],
+    flows: [
+      { id: "flow_probe", name: "Check", description: "A call is checked.", steps: [{ order: 1, description: "gateway checks", elementRefs: ["cmp_probe"] }], requirementRefs: [] },
+    ],
+    technologyDecisions: [],
+    scalabilityNotes: [],
+    failureScenarios: [],
+  },
+  lld: {
+    classes: [
+      {
+        id: "cls_probe",
+        name: "Limiter",
+        kind: "class",
+        responsibility: "Counts calls",
+        requirementRefs: ["fr_probe"],
+        rationale: "One owner",
+        alternatives: [],
+        invariants: [],
+        attributes: [],
+        methods: [],
+      },
+    ],
+    relationships: [
+      { id: "rel_probe", kind: "association", sourceId: "cls_probe", targetId: "cls_probe", sourceMultiplicity: "1", targetMultiplicity: "0..*", label: "", rationale: "Refers" },
+    ],
+    patterns: [],
+  },
+  dsa: {
+    recommendations: [
+      {
+        id: "dsa_probe",
+        operation: "count",
+        layer: "lld",
+        dataStructure: "ring buffer",
+        algorithm: "sliding window",
+        complexity: { average: "O(1)", worst: "O(1)", notes: "" },
+        rationale: "Constant",
+        requirementRefs: [],
+        assumptions: [],
+        alternatives: [],
+        limitations: [],
+      },
+    ],
+    algorithmicPatterns: [],
+  },
+  learningSteps: [{ id: "step_1", title: "t", explanation: "e", elementRefs: ["cmp_probe"] }],
 };
 const MODEL_FIXTURE = {
   version: {
@@ -67,6 +122,15 @@ const PROJECT = {
   currentArchitectureVersion: 1,
 };
 const LIBRARY_PAGE = { projects: [PROJECT], nextCursor: null };
+const PROVIDERS = {
+  providers: [
+    { id: "openrouter", models: ["z-ai/glm-5.3-flash", "openai/gpt-5"], supportsStructuredOutput: true },
+    { id: "groq", models: ["openai/gpt-oss-120b", "llama-3.1-8b-instant"], supportsStructuredOutput: true },
+  ],
+  defaultProvider: "openrouter",
+  defaultModel: "z-ai/glm-5.3-flash",
+  mock: true,
+};
 const DASHBOARD = {
   range: "last_30_days",
   generatedAt: "t",
@@ -92,6 +156,7 @@ function interceptUserEndpoints(
   page.route("**/api/dashboard?*", overrides.dashboard ?? oh(DASHBOARD));
   page.route("**/api/dashboard", overrides.dashboard ?? oh(DASHBOARD));
   page.route("**/api/projects?*", overrides.projects ?? oh(LIBRARY_PAGE));
+  page.route("**/api/providers", oh(PROVIDERS));
   page.route("**/api/users/me/provider-config", oh({ config: { provider: "openrouter", model: "z-ai/glm-5.3-flash", updatedAt: "t" } }));
   page.route("**/api/users/me/preferences", oh({ preferences: { theme: "dark", defaultProvider: "openrouter", defaultModel: "z-ai/glm-5.3-flash" } }));
   page.route("**/api/projects/proj_1/architecture", oh(MODEL_FIXTURE));
@@ -117,9 +182,7 @@ test.describe("register / login / logout / restore", () => {
     await page.addInitScript(AUTH_SAVE.replace("sda:auth:session", "sda:none")); // keep storage empty pre-login
     await page.goto("/login");
     await page.getByRole("tab", { name: "Create account" }).click();
-    await page.getByLabel("Email").fill("probe@example.com");
-    await page.getByLabel("Password", { exact: true }).fill("supersecret1");
-    await page.getByLabel("Confirm password").fill("supersecret1");
+    await fillAuthForm(page, "probe@example.com", "supersecret1", { confirm: true, mode: "register" });
     await page.getByRole("button", { name: "Create account" }).click();
 
     await expect(page).toHaveURL(/\/library$/);
@@ -133,10 +196,11 @@ test.describe("register / login / logout / restore", () => {
   test("login invalid credentials maps the error", async ({ page }) => {
     interceptUserEndpoints(page, { login: ofail("AUTH_INVALID_CREDENTIALS", "bad", 401) });
     await page.goto("/login");
-    await page.getByLabel("Email").fill("probe@example.com");
-    await page.getByLabel("Password", { exact: true }).fill("wrongpass1");
+    await fillAuthForm(page, "probe@example.com", "wrongpass1");
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.locator("form").getByRole("alert")).toContainText("incorrect");
+    await expect(
+      page.getByRole("tabpanel", { name: "Sign in" }).getByRole("alert"),
+    ).toContainText("incorrect");
     await expect(page).toHaveURL(/\/login$/);
   });
 
@@ -144,11 +208,11 @@ test.describe("register / login / logout / restore", () => {
     interceptUserEndpoints(page, { register: ofail("AUTH_EMAIL_TAKEN", "taken", 409) });
     await page.goto("/login");
     await page.getByRole("tab", { name: "Create account" }).click();
-    await page.getByLabel("Email").fill("probe@example.com");
-    await page.getByLabel("Password", { exact: true }).fill("supersecret1");
-    await page.getByLabel("Confirm password").fill("supersecret1");
+    await fillAuthForm(page, "probe@example.com", "supersecret1", { confirm: true, mode: "register" });
     await page.getByRole("button", { name: "Create account" }).click();
-    await expect(page.locator("form").getByRole("alert")).toContainText("already registered");
+    await expect(
+      page.getByRole("tabpanel", { name: "Create account" }).getByRole("alert"),
+    ).toContainText("already registered");
   });
 
   test("auth-required idea submit stashes the idea and rides to login", async ({ page }) => {
@@ -183,8 +247,7 @@ test.describe("register / login / logout / restore", () => {
     await page.getByRole("button", { name: "Start design session" }).click();
     await expect(page).toHaveURL(/\/login/);
 
-    await page.getByLabel("Email").fill("probe@example.com");
-    await page.getByLabel("Password", { exact: true }).fill("supersecret1");
+    await fillAuthForm(page, "probe@example.com", "supersecret1");
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await expect(page).toHaveURL(/\/$/);
@@ -199,6 +262,8 @@ test.describe("session restore + project library", () => {
     await page.goto("/library");
     await expect(page.getByText("Probe project one")).toBeVisible();
     await expect(page.getByText("Architecture ready").first()).toBeVisible();
+    // Provider setup lives on the landing + library pages only.
+    await expect(page.getByLabel(/Provider (setup|ready)/)).toBeVisible();
   });
 
   test("status filter requests the filtered list", async ({ page }) => {
@@ -238,14 +303,92 @@ test.describe("provider settings + preferences", () => {
     await page.addInitScript(AUTH_SAVE);
     await page.goto("/settings");
 
-    // Base UI Select trigger is a combobox button, not an input.
-    await expect(page.getByRole("combobox", { name: "Provider" })).toHaveText(/openrouter/);
-    await expect(page.getByLabel("Model", { exact: true })).toHaveValue("z-ai/glm-5.3-flash");
+    // Base UI Select trigger is a combobox button, not an input; providers are
+    // shown by name, never by raw id.
+    await expect(page.getByRole("combobox", { name: "Provider" })).toHaveText(/OpenRouter/);
+    await expect(page.getByRole("combobox", { name: "Model" })).toHaveText(/z-ai\/glm-5.3-flash/);
     await expect(page.getByLabel(/Reasoning effort/)).toHaveValue("");
 
-    await page.getByLabel("Model", { exact: true }).fill("groq/openai/gpt-oss-120b");
+    // Model options come from the selected provider.
+    await page.getByRole("combobox", { name: "Model" }).click();
+    await page.getByRole("option", { name: "openai/gpt-5" }).click();
     await page.getByRole("button", { name: "Save configuration" }).click();
     await expect(page.getByRole("status").last()).toContainText("Saved");
+  });
+
+  test("model list follows the provider and locks without one", async ({ page }) => {
+    let saved: unknown = null;
+    interceptUserEndpoints(page);
+    page.route("**/api/users/me/provider-config", (route) => {
+      if (route.request().method() === "PUT") {
+        saved = route.request().postDataJSON();
+        return oh({ config: { provider: "groq", model: "openai/gpt-oss-120b", updatedAt: "t" } })(route);
+      }
+      return ofail("PROVIDER_CONFIG_NOT_FOUND", "not set", 404)(route);
+    });
+    await page.addInitScript(AUTH_SAVE);
+    await page.goto("/settings");
+
+    // No saved config: nothing to pick a model for yet.
+    await expect(page.getByRole("combobox", { name: "Model" })).toBeDisabled();
+
+    await page.getByRole("combobox", { name: "Provider" }).click();
+    await page.getByRole("option", { name: "Groq" }).click();
+    await expect(page.getByRole("combobox", { name: "Model" })).toBeEnabled();
+    await page.getByRole("combobox", { name: "Model" }).click();
+    await page.getByRole("option", { name: "openai/gpt-oss-120b" }).click();
+    await expect(page.getByRole("combobox", { name: "Model" })).toHaveText(/openai\/gpt-oss-120b/);
+
+    await page.getByRole("button", { name: "Save configuration" }).click();
+    await expect(page.getByRole("status").last()).toContainText("Saved");
+    // The saved payload carries provider/model only — never a key.
+    expect(saved).toEqual({ provider: "groq", model: "openai/gpt-oss-120b" });
+  });
+
+  test("provider dialog picks provider, key, and model per provider", async ({ page }) => {
+    const savedBodies: unknown[] = [];
+    interceptUserEndpoints(page);
+    page.route("**/api/users/me/provider-config", (route) => {
+      if (route.request().method() === "PUT") {
+        savedBodies.push(route.request().postDataJSON());
+        return oh({ config: { provider: "openrouter", model: "z-ai/glm-5.3-flash", updatedAt: "t" } })(route);
+      }
+      return oh({ config: { provider: "openrouter", model: "z-ai/glm-5.3-flash", updatedAt: "t" } })(route);
+    });
+    await page.addInitScript(AUTH_SAVE);
+    await page.goto("/library");
+
+    await page.getByLabel(/Provider (setup|ready)/).click();
+    const provider = page.getByRole("combobox", { name: "Provider" });
+    const model = page.getByRole("combobox", { name: "Model" });
+    const apiKey = page.getByLabel("API key");
+
+    await expect(provider).toHaveText(/OpenRouter/);
+    await expect(model).toBeDisabled();
+    await expect(apiKey).toBeEmpty();
+
+    await apiKey.fill("sk-or-test-key-0123456789");
+    await expect(model).toBeEnabled();
+    await expect(model).toHaveText(/z-ai\/glm-5.3-flash/);
+
+    // The other provider has no key yet: its key slot is empty and the model
+    // dropdown locks again — the OpenRouter key is not overwritten.
+    await provider.click();
+    await page.getByRole("option", { name: "Groq" }).click();
+    await expect(apiKey).toBeEmpty();
+    await expect(model).toBeDisabled();
+
+    await provider.click();
+    await page.getByRole("option", { name: "OpenRouter" }).click();
+    await expect(apiKey).toHaveValue("sk-or-test-key-0123456789");
+
+    await page.getByRole("button", { name: "Save for this session" }).click();
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(page.getByLabel(/Provider (setup|ready)/)).toHaveText(/Provider ready/);
+    // Signed in: the choice lands server-side without the key.
+    expect(savedBodies).toEqual([
+      { provider: "openrouter", model: "z-ai/glm-5.3-flash" },
+    ]);
   });
 
   test("saved config failure maps to the message table", async ({ page }) => {
@@ -259,7 +402,7 @@ test.describe("provider settings + preferences", () => {
     });
     await page.addInitScript(AUTH_SAVE);
     await page.goto("/settings");
-    await expect(page.getByRole("combobox", { name: "Provider" })).toHaveText(/openrouter/);
+    await expect(page.getByRole("combobox", { name: "Provider" })).toHaveText(/OpenRouter/);
     await page.getByRole("button", { name: "Save configuration" }).click();
     await expect(
       page.getByRole("region", { name: "Saved provider configuration" }).getByRole("alert"),
@@ -288,7 +431,11 @@ test.describe("dashboard", () => {
       page.getByRole("region", { name: "Usage totals" }).getByText("4,600"),
     ).toBeVisible();
     await expect(page.getByText("z-ai/glm-5.3-flash · openrouter")).toBeVisible();
-    await expect(page.getByText("run_1")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Recent runs" }).getByText("architecture")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Recent runs" }).getByText("succeeded")).toBeVisible();
+    // hashed ids never surface to users
+    await expect(page.getByText("run_1")).toHaveCount(0);
+    await expect(page.getByText("proj_1")).toHaveCount(0);
     // range switch refires with the new range
     await page.getByRole("button", { name: "Last 7 days" }).click();
     await expect(page.getByText("Last 7 days").first()).toBeVisible();
@@ -343,6 +490,43 @@ test.describe("unblocked path journeys", () => {
     await loadMore.click();
     await expect(page.getByText("Probe project two")).toBeVisible();
     await expect(loadMore).toBeHidden();
+  });
+
+  test("regenerate sends the saved provider and model (key stays a header)", async ({ page }) => {
+    const calls: Array<{ body: unknown; key: string | undefined }> = [];
+    interceptUserEndpoints(page);
+    page.route("**/api/projects/proj_1", oh(PROJECT));
+    page.route("**/api/projects/proj_1/architecture/regenerate", (route) => {
+      calls.push({
+        body: route.request().postDataJSON(),
+        key: route.request().headers()["x-provider-api-key"],
+      });
+      return oh({ runId: "run_regen" }, 202)(route);
+    });
+    await page.addInitScript(`
+      window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
+        user: ${JSON.stringify(USER)},
+        accessToken: "token_probe_001",
+        expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
+      }));
+      window.sessionStorage.setItem("sda:provider-setup", JSON.stringify({
+        provider: "groq",
+        model: "openai/gpt-oss-120b",
+        keys: { groq: "gsk_probe_key" },
+      }));
+    `);
+    await page.goto("/projects/proj_1/workspace");
+
+    await page.getByRole("button", { name: "Regenerate" }).click();
+    await page.getByRole("menuitem", { name: /LLD only/ }).click();
+
+    await expect.poll(() => calls.length).toBe(1);
+    expect(calls[0]?.body).toEqual({
+      scope: "lld",
+      provider: "groq",
+      model: "openai/gpt-oss-120b",
+    });
+    expect(calls[0]?.key).toBe("gsk_probe_key");
   });
 
   test("RUN_CONFLICT on run start maps to the wait message", async ({ page }) => {

@@ -166,7 +166,7 @@ export function buildLldScene(
   options?: { patternNamesByClassId?: Map<string, string[]> },
 ): LldScene {
   const graph = new dagre.graphlib.Graph({ multigraph: true, compound: false })
-    .setGraph({ rankdir: "BT", nodesep: 36, ranksep: 70, marginx: 24, marginy: 24 })
+    .setGraph({ rankdir: "BT", nodesep: 64, ranksep: 110, marginx: 40, marginy: 40 })
     .setDefaultEdgeLabel(() => ({}));
 
   const classes = [...model.classes].sort((a, b) => (a.id < b.id ? -1 : 1));

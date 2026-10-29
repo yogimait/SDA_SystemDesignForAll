@@ -3,15 +3,21 @@
 import Link from "next/link";
 import { LogOutIcon } from "lucide-react";
 import { ProviderDialog } from "./provider-dialog";
-import { Button } from "@/components/ui/button";
+import {
+  Button,
+} from "@/components/ui/button";
+import {
+  FLOATING_HEADER_CARD,
+  FLOATING_HEADER_SHELL,
+} from "@/components/ui/floating-header";
 import { useSession, signOut } from "@/hooks/use-session";
 
 export function SiteHeader() {
   const session = useSession();
 
   return (
-    <header className="border-border bg-card sticky top-0 z-40 w-full border-b border-solid">
-      <div className="mx-auto flex w-full max-w-[1100px] items-center justify-between px-6 py-3">
+    <header className={FLOATING_HEADER_SHELL}>
+      <div className={`${FLOATING_HEADER_CARD} mx-auto flex w-full max-w-[1100px] items-center justify-between px-6 py-3`}>
         <Link
           href="/"
           className="focus-visible:ring-ring group flex items-center gap-2 rounded focus-visible:ring-2 focus-visible:outline-1"
@@ -29,7 +35,7 @@ export function SiteHeader() {
             className="hidden items-center gap-6 md:flex"
           >
             <a
-              href="#what-you-get"
+              href="#how-it-works"
               className="text-secondary-foreground hover:text-foreground text-sm transition-colors"
             >
               How it works

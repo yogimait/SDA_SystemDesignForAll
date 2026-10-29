@@ -27,7 +27,13 @@ interface ModelProvider {
 - Otherwise, `provider` from the request (or `DEFAULT_PROVIDER`, default `openrouter`) must be `openrouter` or `groq`; anything else is `VALIDATION_ERROR` with the available provider list.
 - A real run without `x-provider-api-key` fails immediately with `PROVIDER_AUTH_FAILED`, unless the matching local `.env` key is set (development only).
 - `GET /api/providers` returns the registered provider metadata, the env defaults, and the mock flag. It never returns a key.
-- `DEFAULT_MODEL` is the active default model. `OPENROUTER_MODEL` and `GROQ_MODEL` are the per-provider model names shown by `GET /api/providers`. No generation module hardcodes a model slug.
+- `DEFAULT_MODEL` is the active default model when a request omits one. Each provider exposes a model catalog from configuration only — no provider API is called to discover models:
+  - `OPENROUTER_MODELS` (comma-separated) defaults to `z-ai/glm-5.3-flash` plus a small curated fallback list.
+  - `GROQ_MODELS` (comma-separated) defaults to the common Groq chat models used by the adapter.
+  - Values are trimmed, de-duplicated, and blank entries dropped; an empty catalog fails boot.
+- `MOCK_PROVIDER=1` still reports both providers with their full catalogs; only generation is mocked. No generation module hardcodes a model slug.
+- Migration: `OPENROUTER_MODEL` / `GROQ_MODEL` are renamed to `OPENROUTER_MODELS` / `GROQ_MODELS` (comma-separated). The singular names are ignored, so move an existing value into the plural variable.
+- Keep `DEFAULT_MODEL` inside the selected provider's catalog so the client dropdown shows the active default. This is a configuration convention, not a validated constraint: a model outside the catalog still runs when the key allows it.
 
 ## BYOK flow
 

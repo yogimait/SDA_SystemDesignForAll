@@ -13,8 +13,19 @@ describe("loadConfig", () => {
       MOCK_PROVIDER: false,
       DEFAULT_PROVIDER: "openrouter",
       DEFAULT_MODEL: "z-ai/glm-5.3-flash",
-      OPENROUTER_MODEL: "z-ai/glm-5.3-flash",
-      GROQ_MODEL: "openai/gpt-oss-120b",
+      OPENROUTER_MODELS: [
+        "z-ai/glm-5.3-flash",
+        "anthropic/claude-sonnet-4.5",
+        "openai/gpt-5",
+        "google/gemini-2.5-pro",
+        "deepseek/deepseek-chat",
+      ],
+      GROQ_MODELS: [
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+      ],
       OPENROUTER_REASONING_EFFORT: "low",
       GROQ_REASONING_EFFORT: "low",
     });
@@ -31,6 +42,21 @@ describe("loadConfig", () => {
     expect(config.MOCK_PROVIDER).toBe(true);
     expect(config.GENERATION_POLL_INTERVAL_MS).toBe(25);
     expect(config.THROTTLE_LIMIT).toBe(5);
+  });
+
+  it("parses comma-separated provider model catalogs", () => {
+    const config = loadConfig({
+      OPENROUTER_MODELS: " a/one , b/two ,, a/one ",
+      GROQ_MODELS: "openai/gpt-oss-20b",
+    } as NodeJS.ProcessEnv);
+    expect(config.OPENROUTER_MODELS).toEqual(["a/one", "b/two"]);
+    expect(config.GROQ_MODELS).toEqual(["openai/gpt-oss-20b"]);
+  });
+
+  it("rejects an empty model catalog", () => {
+    expect(() =>
+      loadConfig({ GROQ_MODELS: " , " } as NodeJS.ProcessEnv),
+    ).toThrow(/GROQ_MODELS/);
   });
 
   it("loads a local OpenRouter key and treats a blank value as unset", () => {

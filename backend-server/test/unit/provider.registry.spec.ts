@@ -11,8 +11,8 @@ const BASE_CONFIG = {
   MOCK_PROVIDER: false,
   DEFAULT_PROVIDER: "openrouter",
   DEFAULT_MODEL: "test/model",
-  OPENROUTER_MODEL: "test/openrouter-model",
-  GROQ_MODEL: "test/groq-model",
+  OPENROUTER_MODELS: ["test/openrouter-model", "test/openrouter-alt"],
+  GROQ_MODELS: ["test/groq-model"],
   OPENROUTER_API_KEY: undefined,
   GROQ_API_KEY: undefined,
 } as AppConfig;
@@ -81,5 +81,37 @@ describe("ProviderRegistry key resolution", () => {
 
     expect(() => registry.resolve("openrouter")).toThrow(/API key/);
     expect(() => registry.resolve("groq")).toThrow(/API key/);
+  });
+});
+
+describe("ProviderRegistry catalog", () => {
+  it("lists both providers with their configured model catalogs", () => {
+    const { registry } = makeRegistry();
+
+    expect(registry.list()).toEqual([
+      {
+        id: "openrouter",
+        models: ["test/openrouter-model", "test/openrouter-alt"],
+        supportsStructuredOutput: true,
+      },
+      {
+        id: "groq",
+        models: ["test/groq-model"],
+        supportsStructuredOutput: true,
+      },
+    ]);
+  });
+
+  it("keeps both catalogs in mock mode", () => {
+    const { registry } = makeRegistry({ MOCK_PROVIDER: true });
+
+    expect(registry.mockEnabled).toBe(true);
+    expect(registry.list().map((provider) => provider.id)).toEqual([
+      "openrouter",
+      "groq",
+    ]);
+    expect(registry.list().every((provider) => provider.models.length > 0)).toBe(
+      true,
+    );
   });
 });

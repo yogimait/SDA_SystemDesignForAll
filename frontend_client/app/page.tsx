@@ -1,4 +1,5 @@
 import { Capabilities } from "@/components/landing/capabilities";
+import { HowItWorks } from "@/components/landing/how-it-works";
 import { IdeaForm } from "@/components/landing/idea-form";
 import { SiteHeader } from "@/components/landing/site-header";
 
@@ -23,12 +24,16 @@ export default function LandingPage() {
         </div>
 
         <Capabilities />
+
+        <HowItWorks />
       </main>
       <footer className="border-border bg-card border-t border-solid">
         <div className="mx-auto w-full max-w-[1100px] px-6 py-8">
           <p className="text-muted-foreground text-xs">
-            Bring your own key. OpenRouter + GLM-5.3 Flash. Keys never leave
-            your browser and are never stored by us.
+            Bring your own key — OpenRouter or Groq, per-provider models. Keys
+            stay in this browser tab (sessionStorage) and are sent only with
+            generation requests via the x-provider-api-key header; they are
+            never persisted server-side.
           </p>
         </div>
       </footer>

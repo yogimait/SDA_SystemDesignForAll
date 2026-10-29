@@ -13,10 +13,18 @@ const POLL_INTERVAL_MS = 1200;
  * Polls GET /api/runs/:runId while the run is queued|running. Stage state is
  * whatever the backend persisted (no client-side simulation). The project
  * key is optional when the caller authorizes as the owner via Bearer.
+ * `enabled: false` parks the query — `useRunLive` keeps polling OFF while
+ * the live stream owns the run (never both at once).
  */
-export function useGenerationRun(runId: string, projectKey: string | null) {
+export function useGenerationRun(
+  runId: string,
+  projectKey: string | null,
+  options?: { enabled?: boolean },
+) {
+  const enabled = (options?.enabled ?? true) && runId !== "";
   const query = useQuery<GenerationRun>({
     queryKey: queryKeys.run(runId),
+    enabled,
     queryFn: () =>
       apiFetch(`/api/runs/${runId}`, {
         projectKey: projectKey ?? undefined,

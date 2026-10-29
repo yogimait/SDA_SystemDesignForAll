@@ -63,6 +63,17 @@ describe("serializeSvg", () => {
     expect(live.getAttribute("tabindex")).toBe("0");
     expect(live.getAttribute("width")).toBe("100%");
   });
+
+  it("resets the fitted viewport transform and sizes to the scene", () => {
+    const svg = makeSvg();
+    const root = svg.querySelector("g")!;
+    root.setAttribute("data-diagram-root", "");
+    const out = serializeSvg(svg, { width: 1047, height: 640 });
+    expect(out).toContain('viewBox="0 0 1047 640"');
+    expect(out).toContain('width="1047"');
+    expect(out).not.toContain("translate(10, 20)");
+    expect(out).not.toContain("data-diagram-root");
+  });
 });
 
 describe("svgFilename", () => {

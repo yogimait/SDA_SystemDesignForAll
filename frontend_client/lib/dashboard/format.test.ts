@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  bucketLabelStep,
+  bucketTickIndices,
   formatTokensCompact,
   rangeLabel,
   sortRunsNewestFirst,
@@ -52,5 +54,35 @@ describe("usageBarPercent", () => {
 
   it("is zero for empty usage", () => {
     expect(usageBarPercent(0, 0)).toBe(0);
+  });
+});
+
+describe("bucketLabelStep", () => {
+  it("labels weekly ranges daily and steps longer ranges", () => {
+    expect(bucketLabelStep(0)).toBe(1);
+    expect(bucketLabelStep(7)).toBe(1);
+    expect(bucketLabelStep(30)).toBe(5);
+    expect(bucketLabelStep(90)).toBe(15);
+    expect(bucketLabelStep(92)).toBe(15);
+  });
+});
+
+describe("bucketTickIndices", () => {
+  it("labels weekly ranges daily", () => {
+    expect(bucketTickIndices(7, 1)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it("steps 30-day ranges at 5 with the last day anchored", () => {
+    expect(bucketTickIndices(30, 5)).toEqual([0, 5, 10, 15, 20, 25, 29]);
+    expect(bucketTickIndices(29, 5)).toEqual([0, 5, 10, 15, 20, 25, 28]);
+  });
+
+  it("keeps the anchor when the last bucket is already ticked", () => {
+    expect(bucketTickIndices(7, 4)).toEqual([0, 4, 6]);
+  });
+
+  it("handles empty ranges", () => {
+    expect(bucketTickIndices(0, 5)).toEqual([]);
+    expect(bucketTickIndices(1, 5)).toEqual([0]);
   });
 });

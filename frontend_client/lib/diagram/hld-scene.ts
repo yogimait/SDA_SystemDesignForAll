@@ -193,10 +193,10 @@ export function buildHldScene(hld: HldModel): HldScene {
   const graph = new dagre.graphlib.Graph({ multigraph: true });
   graph.setGraph({
     rankdir: "LR",
-    nodesep: 30,
-    ranksep: 92,
-    marginx: 24,
-    marginy: 24,
+    nodesep: 60,
+    ranksep: 140,
+    marginx: 40,
+    marginy: 40,
   });
   graph.setDefaultEdgeLabel(() => ({}));
 

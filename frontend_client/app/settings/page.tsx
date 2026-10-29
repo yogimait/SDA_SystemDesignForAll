@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch, ApiError } from "@/lib/api/client";
+import { providerLabel } from "@/lib/providers/label";
 import { saveThemePreference } from "@/lib/theme/preferences";
 import { useHydrated, useSession } from "@/hooks/use-session";
 import { useRouter } from "next/navigation";
@@ -86,9 +87,10 @@ export function SettingsContent() {
           <section aria-label="Bring your own key" className="bg-card border-border rounded-xl border border-solid p-4">            <h2 className="text-foreground text-sm font-semibold tracking-tight">Bring your own key (BYOK)</h2>
             <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
               The saved configuration keeps <strong className="text-foreground">no API key</strong>.
-              Per-request BYOK keys live in the Provider dialog of each tab, travel only as the
-              <span className="font-mono text-[11px]"> x-provider-api-key</span> header for one run, and never
-              persist. Open provider setup from any workspace header when a new design session starts.
+              Per-request BYOK keys live in the Provider dialog on the landing page and in the
+              project library, travel only as the
+              <span className="font-mono text-[11px]"> x-provider-api-key</span> header for one run,
+              and never persist. Each provider keeps its own key in that tab.
             </p>
           </section>
         </div>
@@ -169,6 +171,10 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
   }
 
   const models = providers?.providers.find((info) => info.id === provider)?.models ?? [];
+  // Keep a saved model that the provider no longer lists, so loading settings
+  // never silently drops the user's configuration.
+  const modelOptions =
+    model !== "" && !models.includes(model) ? [model, ...models] : models;
 
   return (
     <section aria-label="Saved provider configuration" className="bg-card border-border rounded-xl border border-solid p-4">
@@ -239,14 +245,23 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
                     setModel("");
                   }
                 }}
+                disabled={providers === null}
               >
-                <SelectTrigger id="provider" aria-label="Provider" className="mt-1.5 font-mono text-xs">
-                  <SelectValue placeholder={providers === null ? "Provider list unreachable" : "Pick a provider"} />
+                <SelectTrigger id="provider" aria-label="Provider" className="mt-1.5 w-full">
+                  <SelectValue>
+                    {(value: string | null) =>
+                      value === null
+                        ? providers === null
+                          ? "Provider list unreachable"
+                          : "Pick a provider"
+                        : providerLabel(value)
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {(providers?.providers ?? []).map((info) => (
                     <SelectItem key={info.id} value={info.id}>
-                      {info.id}
+                      {providerLabel(info.id)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -256,19 +271,26 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
               <label htmlFor="model" className="text-foreground text-sm font-medium">
                 Model
               </label>
-              <Input
-                id="model"
-                value={model}
-                onChange={(event) => setModel(event.target.value)}
-                placeholder={models.length > 0 ? models.join(", ") : "provider/default-model"}
-                list="model-options"
-                className="mt-1.5 font-mono text-xs"
-              />
-              <datalist id="model-options">
-                {models.map((option) => (
-                  <option key={option} value={option} />
-                ))}
-              </datalist>
+              <Select
+                value={model === "" ? null : model}
+                onValueChange={(value: string | null) => {
+                  if (value !== null) setModel(value);
+                }}
+                disabled={provider === ""}
+              >
+                <SelectTrigger id="model" aria-label="Model" className="mt-1.5 w-full font-mono text-xs">
+                  <SelectValue
+                    placeholder={provider === "" ? "Pick a provider first" : "Pick a model"}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelOptions.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div>

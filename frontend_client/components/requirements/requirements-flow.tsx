@@ -15,10 +15,8 @@ import { JourneyShell } from "@/components/journey-shell";
 import { Button } from "@/components/ui/button";
 import { RunProgress } from "@/components/requirements/run-progress";
 import { SpecEditor } from "@/components/requirements/spec-editor";
-import {
-  useGenerationRun,
-  useRunTerminalEffect,
-} from "@/hooks/use-generation-run";
+import { useRunTerminalEffect } from "@/hooks/use-generation-run";
+import { useRunLive } from "@/hooks/use-run-stream";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 import {
@@ -124,6 +122,10 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
     try {
       const setup = loadProviderSetup();
       const options: GenerationOptions = {
+        // Provider and key must match: a Groq key on the default provider fails.
+        ...(setup === null || setup.provider === ""
+          ? {}
+          : { provider: setup.provider }),
         ...(setup === null || setup.model.trim() === ""
           ? {}
           : { model: setup.model.trim() }),
@@ -325,7 +327,7 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
         >
           <RunPhase
             runId={phase.runId}
-            projectKey={projectKey as string}
+            projectKey={projectKey}
             context={phase.context}
             onTerminal={handleTerminal}
             onRetry={() => withRun(phase.context)}
@@ -337,7 +339,7 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
         <div className="animate-fade-up">
           <SpecEditor
             projectId={projectId}
-            projectKey={projectKey as string}
+            projectKey={projectKey}
             spec={spec}
             setup={loadProviderSetup()}
             onArchitectureStarted={(runId) =>
@@ -398,7 +400,7 @@ function RunPhase({
   onRetry,
 }: {
   runId: string;
-  projectKey: string;
+  projectKey: string | null;
   context: "requirements" | "architecture";
   onTerminal: (
     outcome: "succeeded" | "failed" | "interrupted",
@@ -406,7 +408,7 @@ function RunPhase({
   ) => void;
   onRetry: () => void;
 }) {
-  const { run, isLoading, error } = useGenerationRun(runId, projectKey);
+  const { run, isLoading, error, connection } = useRunLive(runId, projectKey);
   useRunTerminalEffect(run, (outcome) => onTerminal(outcome, context));
 
   return (
@@ -417,6 +419,7 @@ function RunPhase({
         isLoading={isLoading}
         context={context}
         onRetry={onRetry}
+        connection={connection}
       />
     </div>
   );

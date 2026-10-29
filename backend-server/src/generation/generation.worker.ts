@@ -38,6 +38,7 @@ import {
   RUN_REPOSITORY,
   type RunRepository,
   type RunRow,
+  type StagePatch,
 } from "../database/repositories/run.repository.js";
 import type { ModelProvider } from "../providers/model-provider.js";
 import {
@@ -48,9 +49,15 @@ import {
   addUsage,
   RequirementsGenerator,
 } from "./requirements.generator.js";
+import {
+  RunEventsService,
+  toRunStreamRunEvent,
+  toRunStreamStageEvent,
+} from "./run-events.service.js";
 
 interface RunState {
   stage?: string;
+  stageStartedAt?: Date;
   usage: TokenUsage;
 }
 
@@ -74,6 +81,7 @@ export class GenerationWorker
     private readonly architectures: ArchitectureRepository,
     private readonly requirementsGenerator: RequirementsGenerator,
     private readonly architectureGenerator: ArchitectureGenerator,
+    private readonly events: RunEventsService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -131,11 +139,14 @@ export class GenerationWorker
   }
 
   private async processRun(run: RunRow): Promise<void> {
+    const state: RunState = { usage: emptyUsage() };
+    this.events.publish(run.id, toRunStreamRunEvent(run, state.usage));
+
     const provider = this.providers.get(run.id);
     if (!provider) {
       await this.failRun(
         run,
-        { usage: emptyUsage() },
+        state,
         new AppError(
           "PROVIDER_AUTH_FAILED",
           "Provider credentials are no longer available. Start the run again.",
@@ -144,7 +155,6 @@ export class GenerationWorker
       return;
     }
 
-    const state: RunState = { usage: emptyUsage() };
     try {
       if (run.type === "requirements") {
         await this.processRequirements(run, provider, state);
@@ -175,9 +185,10 @@ export class GenerationWorker
       provider,
       run.model,
       project.idea,
+      (attempt) => this.emitRepairAttempt(run, state, "analyze_idea", attempt),
     );
     addUsage(state.usage, generated.usage);
-    await this.runs.updateStage(run.id, "analyze_idea", {
+    await this.updateStage(run, state, "analyze_idea", {
       status: "succeeded",
       finishedAt: new Date(),
       attempt: generated.attempts,
@@ -192,7 +203,7 @@ export class GenerationWorker
       requirementsConfirmedAt: null,
       requirementsSnapshot: null,
     });
-    await this.runs.updateStage(run.id, "persist", {
+    await this.updateStage(run, state, "persist", {
       status: "succeeded",
       finishedAt: new Date(),
       attempt: 0,
@@ -220,9 +231,15 @@ export class GenerationWorker
     }
 
     await this.beginStage(run, "hld_model", state);
-    const hld = await this.loadOrGenerateHld(run, provider, project.idea, requirements);
+    const hld = await this.loadOrGenerateHld(
+      run,
+      provider,
+      project.idea,
+      requirements,
+      state,
+    );
     addUsage(state.usage, hld.usage);
-    await this.runs.updateStage(run.id, "hld_model", {
+    await this.updateStage(run, state, "hld_model", {
       status: "succeeded",
       finishedAt: new Date(),
       attempt: hld.attempts,
@@ -238,9 +255,11 @@ export class GenerationWorker
       project.idea,
       requirements,
       hld.hld,
+      (attempt) =>
+        this.emitRepairAttempt(run, state, "lld_dsa_model", attempt),
     );
     addUsage(state.usage, lldDsa.usage);
-    await this.runs.updateStage(run.id, "lld_dsa_model", {
+    await this.updateStage(run, state, "lld_dsa_model", {
       status: "succeeded",
       finishedAt: new Date(),
       attempt: lldDsa.attempts,
@@ -264,7 +283,7 @@ export class GenerationWorker
       );
     }
     const report = toValidationReport(validation);
-    await this.runs.updateStage(run.id, "validate", {
+    await this.updateStage(run, state, "validate", {
       status: "succeeded",
       finishedAt: new Date(),
       attempt: 0,
@@ -335,9 +354,10 @@ export class GenerationWorker
       current.model,
       run.scope,
       summarizeRequirementsDiff(current.requirementsSnapshot, requirements),
+      (attempt) => this.emitRepairAttempt(run, state, stageName, attempt),
     );
     addUsage(state.usage, generated.usage);
-    await this.runs.updateStage(run.id, stageName, {
+    await this.updateStage(run, state, stageName, {
       status: "succeeded",
       finishedAt: new Date(),
       attempt: generated.attempts,
@@ -347,7 +367,7 @@ export class GenerationWorker
     });
 
     await this.beginStage(run, "validate", state);
-    await this.runs.updateStage(run.id, "validate", {
+    await this.updateStage(run, state, "validate", {
       status: "succeeded",
       finishedAt: new Date(),
       attempt: 0,
@@ -370,6 +390,7 @@ export class GenerationWorker
     provider: ModelProvider,
     idea: string,
     requirements: ConfirmedRequirements,
+    state: RunState,
   ): Promise<{ hld: HldModel; usage: TokenUsage; attempts: number }> {
     const reusable = await this.runs.findReusableHld(
       run.projectId,
@@ -394,6 +415,7 @@ export class GenerationWorker
       run.model,
       idea,
       requirements,
+      (attempt) => this.emitRepairAttempt(run, state, "hld_model", attempt),
     );
     return generated;
   }
@@ -421,7 +443,7 @@ export class GenerationWorker
       status: "architecture_ready",
       currentArchitectureVersion: version,
     });
-    await this.runs.updateStage(run.id, "persist", {
+    await this.updateStage(run, state, "persist", {
       status: "succeeded",
       finishedAt: new Date(),
       attempt: 0,
@@ -434,10 +456,45 @@ export class GenerationWorker
     state: RunState,
   ): Promise<void> {
     state.stage = stage;
-    await this.runs.updateStage(run.id, stage, {
+    state.stageStartedAt = new Date();
+    await this.updateStage(run, state, stage, {
       status: "running",
-      startedAt: new Date(),
+      startedAt: state.stageStartedAt,
     });
+  }
+
+  private async updateStage(
+    run: RunRow,
+    state: RunState,
+    stage: string,
+    patch: StagePatch,
+  ): Promise<void> {
+    await this.runs.updateStage(run.id, stage, patch);
+    this.events.publish(
+      run.id,
+      toRunStreamStageEvent(stage, patch, state.stageStartedAt),
+    );
+  }
+
+  private emitRepairAttempt(
+    run: RunRow,
+    state: RunState,
+    stage: string,
+    attempt: number,
+  ): void {
+    if (attempt <= 1) return;
+    this.events.publish(
+      run.id,
+      toRunStreamStageEvent(
+        stage,
+        {
+          status: "running",
+          attempt,
+          startedAt: state.stageStartedAt,
+        },
+        state.stageStartedAt,
+      ),
+    );
   }
 
   private async completeRun(
@@ -445,13 +502,19 @@ export class GenerationWorker
     state: RunState,
     retryCount: number,
   ): Promise<void> {
-    await this.runs.updateRun(run.id, {
+    const updated = await this.runs.updateRun(run.id, {
       status: "succeeded",
       finishedAt: new Date(),
       usagePromptTokens: state.usage.promptTokens,
       usageCompletionTokens: state.usage.completionTokens,
       retryCount: Math.max(0, retryCount),
     });
+    if (updated) {
+      this.events.publish(
+        run.id,
+        toRunStreamRunEvent(updated, state.usage),
+      );
+    }
   }
 
   private async failRun(
@@ -464,7 +527,7 @@ export class GenerationWorker
         ? error
         : new AppError("INTERNAL_ERROR", "Generation failed unexpectedly.");
     if (state.stage) {
-      await this.runs.updateStage(run.id, state.stage, {
+      await this.updateStage(run, state, state.stage, {
         status: "failed",
         finishedAt: new Date(),
         errorCode: appError.code,
@@ -472,7 +535,7 @@ export class GenerationWorker
         errorDetails: appError.details ?? null,
       });
     }
-    await this.runs.updateRun(run.id, {
+    const updated = await this.runs.updateRun(run.id, {
       status: "failed",
       finishedAt: new Date(),
       errorCode: appError.code,
@@ -481,6 +544,12 @@ export class GenerationWorker
       usagePromptTokens: state.usage.promptTokens,
       usageCompletionTokens: state.usage.completionTokens,
     });
+    if (updated) {
+      this.events.publish(
+        run.id,
+        toRunStreamRunEvent(updated, state.usage),
+      );
+    }
     this.logger.warn(`Run ${run.id} failed with ${appError.code}.`);
   }
 }

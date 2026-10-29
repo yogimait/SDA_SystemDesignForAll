@@ -19,6 +19,7 @@ import {
   layerLabel,
   tradeOffText,
 } from "@/lib/dsa/format";
+import { requirementRefLabels } from "@/lib/format";
 import { cn } from "cn";
 
 const SPAN_THRESHOLD = 3;
@@ -37,6 +38,7 @@ export function WorkspaceDsa({
   const guided = guidedStep !== undefined && guidedStep !== null;
   const recommended = (id: string): boolean => guidedStep?.recommendationIds.includes(id) ?? false;
   const recommendations = model.dsa.recommendations;
+  const refLabels = requirementRefLabels(model.requirements.spec);
 
   return (
     <div ref={scrollRef} className={cn("flex h-full min-h-0 flex-col overflow-y-auto pr-1", className)}>
@@ -126,14 +128,18 @@ export function WorkspaceDsa({
 
                 {rec.requirementRefs.length > 0 ? (
                   <div className="mt-3 flex flex-wrap gap-1.5">
-                    {rec.requirementRefs.map((ref) => (
-                      <span
-                        key={ref}
-                        className="text-muted-foreground border-border/60 rounded border border-solid px-1.5 py-0.5 font-mono text-[10px]"
-                      >
-                        {ref}
-                      </span>
-                    ))}
+                    {rec.requirementRefs.map((ref) => {
+                      const label = refLabels.get(ref);
+                      if (label === undefined) return null;
+                      return (
+                        <span
+                          key={ref}
+                          className="text-muted-foreground border-border/60 rounded border border-solid px-1.5 py-0.5 font-mono text-[10px]"
+                        >
+                          {label}
+                        </span>
+                      );
+                    })}
                   </div>
                 ) : null}
               </article>

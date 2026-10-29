@@ -24,7 +24,7 @@
 
 ## Rules
 
-- **Secrets**: `providerKey` → `x-provider-api-key`, `projectKey` → `x-project-key`. Header-only; never in URLs, never logged. The client deliberately has no console logging.
+- **Secrets**: `providerKey` → `x-provider-api-key`, `projectKey` → `x-project-key`. Header-only; never in URLs, never logged. A `null`/empty `projectKey` skips the header (owner-Bearer-only flows); the client deliberately has no console logging.
 - `message` = raw server message; `userMessage` = actionable copy from `USER_MESSAGES` (one entry per registered code — test enforces full coverage).
 - No retries here. TanStack Query owns retry policy (`Providers`: queries `retry: false` by default — real progress only; per-query opt-in for polling).
 

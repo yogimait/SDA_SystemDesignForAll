@@ -180,16 +180,19 @@ describe("ArchitectureGenerator repair path", () => {
     const hld = await mockHld();
     const provider = new ScriptedProvider([invalidJson(), hld]);
     const generator = new ArchitectureGenerator();
+    const attempts: number[] = [];
 
     const result = await generator.generateHld(
       provider,
       "test/model",
       "An idea.",
       requirements,
+      (attempt) => attempts.push(attempt),
     );
     expect(result.attempts).toBe(2);
     expect(result.hld).toEqual(hld);
     expect(result.usage.totalTokens).toBe(3);
+    expect(attempts).toEqual([1, 2]);
   });
 
   it("normalizes deterministic relationship mistakes and drops invalid learning refs", async () => {

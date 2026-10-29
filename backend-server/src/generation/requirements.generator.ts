@@ -19,6 +19,7 @@ import {
   requirementsUserPrompt,
 } from "../providers/prompts/index.js";
 import { randomUUID } from "node:crypto";
+import type { GenerationAttemptListener } from "./attempt-listener.js";
 
 const MAX_ATTEMPTS = 2;
 const TIMEOUT_MS = 90_000;
@@ -37,6 +38,7 @@ export class RequirementsGenerator {
     provider: ModelProvider,
     model: string,
     idea: string,
+    onAttempt?: GenerationAttemptListener,
   ): Promise<GeneratedRequirements> {
     const system = requirementsSystemPrompt();
     const jsonSchema = zodToJsonSchema(RequirementsAnalysisOutputSchema);
@@ -51,6 +53,7 @@ export class RequirementsGenerator {
 
     let lastIssues: ValidationIssue[] = [];
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      onAttempt?.(attempt);
       let result: GeneratedStructured;
       try {
         result = await provider.generateStructured({

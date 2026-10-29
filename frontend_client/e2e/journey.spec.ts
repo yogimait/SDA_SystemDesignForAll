@@ -6,6 +6,7 @@
  * of the planner's viewport sweep; manual sweeps stay in the planner).
  */
 import { expect, test, type Page } from "@playwright/test";
+import { fillAuthForm } from "./helpers";
 
 const IDE_TEXT =
   "Design a distributed rate limiter for a public API with sliding windows and a Redis backing store.";
@@ -15,9 +16,7 @@ async function registerViaUI(page: Page): Promise<void> {
   const email = `journey_${Date.now().toString(36)}@example.com`;
   await page.goto("/login");
   await page.getByRole("tab", { name: "Create account" }).click();
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill("supersecret123");
-  await page.getByLabel("Confirm password").fill("supersecret123");
+  await fillAuthForm(page, email, "supersecret123", { confirm: true, mode: "register" });
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL(/\/library$/);
 }

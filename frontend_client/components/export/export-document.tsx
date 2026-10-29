@@ -73,9 +73,13 @@ export function ExportDocument({
     [version.model.hld],
   );
 
-  function saveDiagram(wrap: HTMLDivElement | null, suffix: string) {
+  function saveDiagram(
+    wrap: HTMLDivElement | null,
+    suffix: string,
+    size: { width: number; height: number },
+  ) {
     const svg = wrap?.querySelector("svg");
-    if (svg) downloadSvg(svgFilename(cover.title, suffix), svg as SVGSVGElement);
+    if (svg) downloadSvg(svgFilename(cover.title, suffix), svg as SVGSVGElement, size);
   }
 
   return (
@@ -86,10 +90,16 @@ export function ExportDocument({
           {version.model.hld.components.length} components ·{" "}
           {version.model.lld.classes.length} classes
         </p>
-        <Button onClick={() => window.print()}>
-          <PrinterIcon />
-          Print / Save as PDF
-        </Button>
+        <div className="text-right">
+          <Button onClick={() => window.print()}>
+            <PrinterIcon />
+            Print / Save as PDF
+          </Button>
+          <p className="text-muted-foreground mt-1 text-[11px]">
+            Diagrams print fit-to-page. Download the SVG in each design section
+            for full resolution.
+          </p>
+        </div>
       </div>
 
       {/* Cover */}
@@ -160,15 +170,20 @@ export function ExportDocument({
         ) : null}
       </section>
 
-      {/* HLD */}
-      <section className="export-section" aria-label="High-level design">
+      {/* HLD diagram: prints on its own landscape page (see .export-diagram-page) */}
+      <section className="export-section export-diagram-page" aria-label="High-level design">
         <div className="flex items-center justify-between gap-3">
           <h2>High-level design</h2>
           <Button
             variant="outline"
             size="sm"
             className="no-print"
-            onClick={() => saveDiagram(hldWrap.current, "hld")}
+            onClick={() =>
+              saveDiagram(hldWrap.current, "hld", {
+                width: hldScene.width,
+                height: hldScene.height,
+              })
+            }
           >
             <DownloadIcon />
             SVG
@@ -177,7 +192,10 @@ export function ExportDocument({
         <div ref={hldWrap} className="export-diagram" aria-label="HLD diagram for print">
           <HldCanvas scene={hldScene} selection={null} onSelect={() => undefined} />
         </div>
-        <h3>Components</h3>
+      </section>
+
+      <section className="export-section" aria-label="Components and flows">
+        <h2>Components</h2>
         <dl className="export-defs">
           {version.model.hld.components.map((component) => (
             <div key={component.id}>
@@ -209,15 +227,20 @@ export function ExportDocument({
         ) : null}
       </section>
 
-      {/* LLD */}
-      <section className="export-section" aria-label="Low-level design">
+      {/* LLD diagram: its own landscape page, same as HLD. */}
+      <section className="export-section export-diagram-page" aria-label="Low-level design">
         <div className="flex items-center justify-between gap-3">
           <h2>Low-level design</h2>
           <Button
             variant="outline"
             size="sm"
             className="no-print"
-            onClick={() => saveDiagram(lldWrap.current, "lld")}
+            onClick={() =>
+              saveDiagram(lldWrap.current, "lld", {
+                width: lldScene.width,
+                height: lldScene.height,
+              })
+            }
           >
             <DownloadIcon />
             SVG
@@ -232,7 +255,10 @@ export function ExportDocument({
             className="pointer-events-none"
           />
         </div>
-        <h3>Classes</h3>
+      </section>
+
+      <section className="export-section" aria-label="Classes and patterns">
+        <h2>Classes</h2>
         <dl className="export-defs">
           {version.model.lld.classes.map((cls) => (
             <div key={cls.id}>

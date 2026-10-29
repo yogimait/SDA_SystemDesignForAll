@@ -38,7 +38,7 @@ Each e2e file builds its own Nest app with `configureApp()` and `app.init()`, so
 
 | File | Focus |
 | --- | --- |
-| `config.spec.ts` | Defaults, coercion, invalid port, Postgres URL requirement. |
+| `config.spec.ts` | Defaults, coercion, model-catalog parsing (trim/dedupe/empty rejection), invalid port, Postgres URL requirement. |
 | `access-key.spec.ts` | Key format, hash verification, wrong key, malformed hash. |
 | `redact.spec.ts` | Key/value formats and bearer tokens; ordinary prose unchanged. |
 | `redacting.logger.spec.ts` | Secrets are redacted before they reach the real log stream. |
@@ -54,6 +54,8 @@ Each e2e file builds its own Nest app with `configureApp()` and `app.init()`, so
 | `password.service.spec.ts` | scrypt hash/verify, fresh salt, plaintext absence, valid dummy timing hash. |
 | `plan.service.spec.ts` | Free project/run/token limits, Pro scoped-regeneration gate, anonymous no-op. |
 | `dashboard.service.spec.ts` | Totals, daily buckets, top models, recent-run ordering. |
+| `run-events.service.spec.ts` | Event-bus filtering/order, stable frame ids, persisted snapshot ordering, Last-Event-ID replay, terminal statuses, stale live-event suppression. |
+| `run-stream-heartbeat.spec.ts` | SSE comment heartbeat cadence between frames, terminal close, no heartbeat on an already-terminal run. |
 | `database.reopen.spec.ts` | File-backed PGlite reopen, idempotent migration re-run, and boot-time reconciliation of an interrupted run. |
 
 The repository suite uses a real Drizzle + PGlite database, not mocks. It exercises the generated SQL migrations.
@@ -62,7 +64,7 @@ The repository suite uses a real Drizzle + PGlite database, not mocks. It exerci
 
 `test/app.e2e-spec.ts` runs the public HTTP surface with supertest. `test/auth.e2e-spec.ts` covers register/login/me/logout, normalized email, duplicate/invalid credentials, project ownership and listing cursor/status, anonymous legacy access, provider config without keys, preference merge, plan limits/upgrade-required, dashboard aggregation/validation, owner reopening a project with the Bearer token alone, complete client-export payloads and owner/key access, 404 envelopes for malformed project/run ids, cross-project requirement-id conflicts, and strict rejection of an `apiKey` in the provider-config save. Manual mock-mode verification uses `MOCK_PROVIDER=1` and the same HTTP surface.
 
-- health and provider metadata envelopes;
+- health and provider metadata envelopes, including both provider model catalogs and their schema shape;
 - security headers and unknown-route `ROUTE_NOT_FOUND`;
 - project creation, validation error, payload limit, missing/wrong access key;
 - requirements generation, persisted stages, usage, spec, confirmation;
@@ -70,6 +72,7 @@ The repository suite uses a real Drizzle + PGlite database, not mocks. It exerci
 - scoped DSA regeneration, version 2, untouched HLD/LLD byte-identical serialized JSON;
 - architecture start before confirmation;
 - run polling guard and unknown run;
+- SSE replay/live stage frames, terminal frame and close, Last-Event-ID replay, polling/stream stage parity, and stream auth failures;
 - `RUN_CONFLICT` for a second run and for two simultaneous starts;
 - exhausted schema repair and exhausted invalid-JSON repair;
 - per-IP throttle returning `QUOTA_EXCEEDED`.

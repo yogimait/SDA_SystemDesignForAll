@@ -15,9 +15,9 @@ Post-[[Workspace-LLD]] round: accounts, project library, provider preferences, a
 
 | Route | Data | Notes |
 | --- | --- | --- |
-| `/library` | `GET /api/projects?status&limit&cursor` | Status filter (4 statuses + all), cursor pagination (Load more), workspace link per project. |
-| `/dashboard` | `GET /api/dashboard?range` | Range switch (7/30/90), usage totals, token buckets, top models, recent runs (`sortRunsNewestFirst`), empty state, plan-gate card for `PLAN_*` codes. Formatting: `lib/dashboard/format.ts`. |
-| `/settings` | `GET/PUT /api/users/me/provider-config` + `GET/PUT /api/users/me/preferences` | Saved provider/model defaults (**no API key stored**) + theme/default provider/model preferences. BYOK stays request-scoped in the existing provider dialog. |
+| `/library` | `GET /api/projects?status&limit&cursor` | Status filter (4 statuses + all), cursor pagination (Load more), workspace link per project, **provider setup trigger** (BYOK lives on the landing + library pages only). |
+| `/dashboard` | `GET /api/dashboard?range` | Range switch (7/30/90), usage totals, token buckets, top models, recent runs (`sortRunsNewestFirst`), empty state, plan-gate card for `PLAN_*` codes. Formatting: `lib/dashboard/format.ts`. Range switches keep the previous content with a subtle `aria-busy` + "Updating…" status — skeletons only on first load (QA D3). Chart ticks are edge-anchored and evenly spread (`bucketTickIndices`) so they never clip (QA D4). |
+| `/settings` | `GET/PUT /api/users/me/provider-config` + `GET/PUT /api/users/me/preferences` | Saved provider/model defaults (**no API key stored**) + theme/default provider/model preferences. Provider and model are dropdowns fed by `GET /api/providers` (provider names, not raw ids; model disabled until a provider is picked). BYOK stays request-scoped in the provider dialog on the landing + library pages. |
 
 ## Theme preference plumbing (D7)
 

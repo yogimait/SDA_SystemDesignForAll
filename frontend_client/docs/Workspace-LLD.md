@@ -4,9 +4,17 @@ The exploration workspace for a persisted architecture.
 Route `app/projects/[id]/workspace/` (PPR shell + client `WorkspaceFlow`),
 built on the canonical `ArchitectureModel` from `@sda/contracts` only.
 
-- `components/workspace/workspace-flow.tsx` — access gate, project +\n  architecture queries, header (validation badge, regenerate menu, focus\n  mode, provider dialog), view tabs, resizable layout, regeneration overlay.
+- `components/workspace/workspace-flow.tsx` — access gate, project +
+  architecture queries, header (validation badge, guided/annotate, focus
+  mode, regenerate menu with **Edit requirements…**, export), view tabs,
+  layout, regeneration overlay. Provider setup lives on the landing and
+  library pages only.
 - `components/workspace/workspace-sidebar.tsx` — shared outline sidebar\n  (search + named groups, used by the LLD and HLD views).
-- `components/workspace/workspace-details.tsx` — per-element reference panels:\n  `WorkspaceDetails` (LLD class/relationship/pattern) and `HldDetails`\n  (component/connection/flow/scalability/failure/technology).
+- `components/workspace/workspace-details.tsx` — per-element reference panels:
+  `WorkspaceDetails` (LLD class/relationship/pattern) and `HldDetails`
+  (component/connection/flow/scalability/failure/technology). Requirement
+  references render as numbered labels (`FR 2`, `NFR 1`) via
+  `lib/format.ts#requirementRefLabels`; contract ids stay keys only.
 - `components/workspace/workspace-dsa.tsx` — DSA recommendation cards,\n  algorithmic patterns, comparison table.
 - `components/diagram/diagram-canvas.tsx` — LLD SVG canvas: pan/zoom,\n  selection, highlights, marker defs, shape legend.
 - `components/diagram/hld-canvas.tsx` — HLD SVG canvas (F4): component\n  boxes with type glyphs, sync/async/data line styles, flow step-order\n  badges, legend.
@@ -287,9 +295,11 @@ layout that shares these fragments.
 ## Regeneration
 
 Header Regenerate menu → `POST /api/projects/:id/architecture/regenerate`
-with `{ scope: "lld" | "hld" | "dsa" }` (+ saved model + `x-provider-api-key`
-from the provider dialog). The run is polled with the shared
-`useGenerationRun` hook in an overlay; success invalidates architecture/
+with `{ scope: "lld" | "hld" | "dsa" }` (+ saved provider + model + `x-provider-api-key`
+saved from the landing/library provider dialog; provider and model travel together so a
+non-default provider key is not sent to the default provider). The same menu holds
+**Edit requirements…**. The run streams through the shared
+`useRunLive` hook in an overlay (live SSE stream with polling fallback, see [[Requirements-Flow]]); success invalidates architecture/
 project queries and closes (fresh scene); failure keeps the run card open
 with Retry and Close. Guided mode arrives with F5 (no layout work happens
 on its reveal — the scene is memoized per model identity).

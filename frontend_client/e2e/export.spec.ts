@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { fillAuthForm } from "./helpers";
 
 const USER = {
   id: "usr_export01",
@@ -164,6 +165,12 @@ test("export renders the document, prints light, and hides app chrome", async ({
   await expect(page.getByRole("region", { name: "Learning steps" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Validation notes" })).toBeVisible();
   await expect(page.getByText("One requirement is not referenced.")).toBeVisible();
+  // Back to the workspace resolves the route id (not a params-promise cast).
+  await expect(page.getByRole("link", { name: "Back to workspace" })).toHaveAttribute(
+    "href",
+    "/projects/proj_1/workspace",
+  );
+  await expect(page.getByText(/Download the SVG in each design section/)).toBeVisible();
   // Raw contract ids never print (fr_/nfr_/q_/asm_/step_ refs are UI keys only).
   await expect(page.getByText(/fr_/)).toHaveCount(0);
   await expect(page.getByText(/nfr_/)).toHaveCount(0);
@@ -172,7 +179,24 @@ test("export renders the document, prints light, and hides app chrome", async ({
   await page.screenshot({ path: "test-results/export-light-check.png", fullPage: true });
 });
 
-test("print media hides chrome and PDF buffer is non-empty", async ({ page }) => {
+test("document stays overflow-free across breakpoints", async ({ page }) => {
+  interceptExport(page);
+  await page.addInitScript(AUTH_SEED);
+  await page.goto("/projects/proj_1/export");
+  await expect(page.getByRole("heading", { name: "Rate Limiter" })).toBeVisible();
+
+  for (const width of [1440, 1280, 834, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow, `export overflows by ${overflow}px at ${width}px`).toBeLessThanOrEqual(0);
+    await expect(page.getByRole("link", { name: "Back to workspace" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Print / Save as PDF" })).toBeVisible();
+  }
+});
+
+test("print media hides chrome and every diagram fits one landscape page", async ({ page }) => {
   interceptExport(page);
   await page.addInitScript(AUTH_SEED);
   await page.goto("/projects/proj_1/export");
@@ -183,10 +207,36 @@ test("print media hides chrome and PDF buffer is non-empty", async ({ page }) =>
   await expect(page.getByRole("banner")).toBeHidden();
   await expect(page.getByRole("heading", { name: "Rate Limiter" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Low-level design" })).toBeVisible();
+  // Canvas zoom controls are interaction chrome, never printed.
+  await expect(page.getByLabel("Zoom in").first()).toBeHidden();
 
-  const pdf = await page.pdf({ format: "A4", printBackground: true });
+  // Each diagram section must fit the landscape A4 printable height, else the
+  // browser splits it onto a second page and clips the drawing (QA D1).
+  const printableMm = await page.evaluate(() => {
+    const pxPerMm = 96 / 25.4;
+    return Array.from(document.querySelectorAll(".export-diagram-page")).map(
+      (section) => section.getBoundingClientRect().height / pxPerMm,
+    );
+  });
+  expect(printableMm).toHaveLength(2);
+  for (const heightMm of printableMm) {
+    // A4 landscape 210mm minus 2 × 10mm page margin = 190mm.
+    expect(heightMm).toBeLessThanOrEqual(190);
+  }
+
+  // `preferCSSPageSize` uses the named @page sizes (portrait document pages,
+  // landscape diagram pages).
+  const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
   expect(pdf.byteLength).toBeGreaterThan(1_000);
   expect(pdf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  const raw = pdf.toString("latin1");
+  const boxes = [...raw.matchAll(/\/MediaBox\s*\[([^\]]+)\]/g)].map((match) =>
+    match[1].split(/\s+/).map(Number),
+  );
+  const landscape = boxes.filter((box) => (box[2] ?? 0) > (box[3] ?? 0));
+  // Exactly the two diagram pages, one page each — no split, no clipping.
+  expect(landscape).toHaveLength(2);
+  expect(boxes.length).toBeGreaterThan(landscape.length);
   const out = path.join("test-results", "export-smoke.pdf");
   fs.writeFileSync(out, pdf);
   await page.emulateMedia({ media: "screen" });
@@ -210,6 +260,9 @@ test("per-diagram Download SVG emits a standalone file", async ({ page }) => {
   expect(content).toContain("<?xml");
   expect(content).toContain("http://www.w3.org/2000/svg");
   expect(content).toContain("marker-end");
+  // Full resolution: the fitted on-screen transform is stripped.
+  expect(content).toMatch(/viewBox="0 0 \d+ \d+"/);
+  expect(content).not.toContain("data-diagram-root");
 });
 
 test("missing architecture shows an error card, never a blank sheet", async ({ page }) => {
@@ -282,8 +335,7 @@ test("?next= round-trip: signing in returns to the requested page", async ({ pag
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/\/login\?next=/);
 
-  await page.getByLabel("Email").fill("export@example.com");
-  await page.getByLabel("Password", { exact: true }).fill("supersecret1");
+  await fillAuthForm(page, "export@example.com", "supersecret1");
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);

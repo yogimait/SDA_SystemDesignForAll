@@ -298,6 +298,40 @@ Verified: lint clean · **108/108 unit** · build green · **29/29 e2e** (journe
 
 Status: Done (2026-10-28). Skipped deliberately: one-click PDF (needs a PDF lib or server rendering), rank-paginated diagrams, SVG export of DSA (tables have no SVG).
 
+---
+
+## Live run streaming round (2026-10-28, SSE + polling fallback)
+
+Replaces blind 1.2s polling with a live event stream, polling kept as fallback (frontend-only; backend untouched — it serves no `/events` endpoint yet, so the 404 falls back instantly and live journeys pay zero delay):
+
+- [x] **`lib/run-stream.ts`** (pure, 11 tests): `SseParser` (partial frames across chunks, multiple frames per chunk, comment heartbeats, event-only/malformed/CRLF frames, EOF flush), `backoffDelayMs` (deterministic 500ms→1s→2s, cap 4s), `classifyFailure` (401/403/404 + definitive 4xx → fallback instantly; network/timeout/429/5xx → retry up to 3 attempts then fallback), `isTerminalStatus`.
+- [x] **`hooks/use-run-stream.ts`**: `fetch()` streaming of `GET /api/runs/:runId/events` with `Authorization` (when signed in) + `x-project-key` (EventSource can't send headers); frames validated against `GenerationRunSchema` — same DTO shape polling returns; connection states `connecting | live | reconnecting | closed`; 6s connect / 20s idle timeouts; reconnect with backoff; closes on terminal or unmount (abort + reader cancel, no leaks, AbortError silent).
+- [x] **`useRunLive`** orchestrates stream-or-poll: polling is gated by a new `enabled` option on `useGenerationRun` — never both for one run; consumers see one `run`/`error`/`isLoading` plus a `connection` of `live|reconnecting|connecting|polling` (closed on terminal).
+- [x] **`run-progress.tsx`**: connection indicator (dot + word, `role=status`, hidden once terminal), running-stage emphasis (`aria-current="step"` + warning tint — text/color still carries meaning), attempt counts + live token usage ride the same streamed DTO, error copy de-pollified ("Run status unavailable"), stages list named `Run stages` (a11y + tests).
+- [x] **Consumers**: requirements `RunPhase` and workspace `RegenRunPhase` both use `useRunLive`; `projectKey` widened to `string | null` through `SpecEditor`/`RunPhase`/`ApiFetchOptions` with a truthy `x-project-key` guard (a null-cast key can no longer travel as literal "null" — latent D2 edge fixed in passing).
+- [x] **Playwright** (`e2e/run-stream.spec.ts`, 2 journeys): 3-wave SSE fixture proves stages update without a page reload (running→done→failed windows asserted), terminal failed state renders with attempt count/banner/retry (success swaps the phase to the editor — failed is the terminal state users see), **zero poll requests while streaming**, ≥3 stream requests; abort journey: 3 backoff retries ≈ 3.5s → `polling` indicator → polling drives the run to terminal, ≥2 polls; both assert zero `pageerror`s.
+- [x] Docs: `[[Requirements-Flow]]` run section rewritten (stream + fallback + protocol), `API-Client` header rule (null key skips header), `Workspace-LLD` overlay line.
+
+Verified: lint clean · **119/119 unit** · build green · **31/31 e2e** (journey 2 incl. real-backend 404 fallback + user 20 + export 7 + stream 2).
+
+Status: Done (2026-10-28). Skipped deliberately: backend `/events` endpoint (out of scope), EventSource (can't send auth headers), per-frame incremental patching (full snapshots are simpler and identical to the polled shape).
+
+---
+
+## QA live-streaming hardening round (2026-10-28)
+
+QA audited the streaming round against the real backend, which **now ships** `GET /api/runs/:runId/events` (the earlier "backend has no /events yet" note is superseded). Suites were green but the feature was dead in the UI: the client rejected every real frame.
+
+- [x] **D1 (blocker) — protocol mismatch fixed**: real frames are `RunStreamEvent` (`id:` + `event: run|stage` + `data: {type:"run"|"stage"|"heartbeat",…}`), not the polling DTO. `hooks/use-run-stream.ts` now bootstraps the full `GenerationRun` ONCE via `GET /api/runs/:runId`, then merges frames with `applyRunStreamEvent` (`lib/run-stream.ts`: stage rows patched in place keeping order, run frames patch status/error/usage, heartbeats no-ops). Regression: 8 new unit tests (real-shape parse incl. rejection of full-DTO frames, merge identity/order, unknown-stage append, `?lastEventId=` URL) and `e2e/run-stream.spec.ts` rewritten to fire REAL `stage`/`run` frames — stages advance, terminal renders, exactly one bootstrap GET, zero interval polls.
+- [x] **D2/D3 — 390px overflow**: workspace header wraps (`min-h-14 flex-wrap`) with icon-only action cluster below `sm` (labels hidden, aria-labels kept, title hidden on phones) — was 316px over; requirements editor action row wraps so the Confirm button no longer bleeds — was 34px over. New `e2e/responsive-overflow.spec.ts` pins workspace/requirements/landing at 390×844.
+- [x] **D4 — run-read errors**: mapped `userMessage` + raw technical detail; `AUTH_REQUIRED` renders a Sign in link back to the current route, other errors a Retry (e2e 401 journey asserts copy + link).
+- [x] **D5/D9 — regeneration overlay**: `role="dialog"` + `aria-modal` + focus moves into the overlay and returns on close + Escape closes (same path as Close); footer states "Runs keep going server-side — closing leaves this view, not the run."
+- [x] **D6 — indicator reachability**: connection chip renders while connecting/reconnecting even before the first run row (was gated on `run !== null`).
+- [x] **D7 — heartbeat margin + resume**: idle timeout 35s vs the backend's 20s heartbeat; every frame `id:` is remembered and reconnects send `?lastEventId=` (query fallback — no CORS preflight needed).
+- [x] **D8 — docs/tests truth**: `[[Requirements-Flow]]` rewritten to the real protocol (bootstrap + merge + replay + resume); fixtures use real frames; stale "frontend-owned protocol / no backend endpoint" notes corrected here and in the DevVault hub.
+- [x] **D10 — duplicate Email label flake**: shared `e2e/helpers.ts#fillAuthForm` fills only the visible tabpanel's fields (SSR can render both panels; unscoped locators matched the hidden duplicate).
+- B1/B2 (backend: failed-stage `attempt: 0` after repairs, event ids not run-scoped) — backend-owned; frontend impact none (attempt ≤1 is not rendered, `id:` values are opaque resume tokens). Report-only.
+
 - [x] **Export polish (2026-10-28, user screenshots)**: two-step fix per user feedback — (a) removed raw contract ids from every printed section (numbered lists instead of `fr_/nfr_/q_/asm_`, no learning-step refs, no validation rule/path; ids stay React keys only), (b) after a first attempt whitewashed the page (rejected), the final state **keeps the dark brand background on screen** and fixes visibility by painting the document surface from the active tokens (`background-color`/`color`) — headings/meta/diagrams all contrast properly; light returns only under `@media print`. E2e asserts no `fr_/nfr_/asm_` text; screenshot evidence `test-results/export-light-check.png`.
 
 ---

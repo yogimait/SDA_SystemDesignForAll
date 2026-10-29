@@ -91,7 +91,7 @@ function ProviderNote({ setup }: { setup: ProviderSetup | null }) {
     return (
       <span className="text-warning flex items-center gap-1.5 font-mono text-[11px]">
         <CircleAlertIcon className="size-3" />
-        no provider key set — generation will ask for one
+        no provider key set — add one from the library
       </span>
     );
   }
@@ -116,7 +116,7 @@ export function SpecEditor({
   onSpecSynced,
 }: {
   projectId: string;
-  projectKey: string;
+  projectKey: string | null;
   spec: RequirementsSpec;
   setup: ProviderSetup | null;
   onArchitectureStarted: (runId: string) => void;
@@ -484,7 +484,8 @@ export function SpecEditor({
             <p className="text-warning text-xs">Fill every line (or delete it) before saving.</p>
           ) : null}
         </div>
-        <div className="flex items-center gap-3">
+        {/* Wraps on narrow screens so the confirm button never overflows (D3). */}
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <Button
             variant="outline"
             onClick={() => void save(false)}
