@@ -34,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { apiFetch, ApiError } from "@/lib/api/client";
+import { apiFetch, ApiError, requiresEmailVerification } from "@/lib/api/client";
 import {
   addFunctionalRow,
   addNonFunctionalRow,
@@ -211,7 +211,13 @@ export function SpecEditor({
       });
       onArchitectureStarted(started.runId);
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (requiresEmailVerification(error)) {
+        setBanner({
+          user: "Verify your email before generating the architecture.",
+          detail:
+            "Open the verification link we emailed you — the resend button is in the banner above.",
+        });
+      } else if (error instanceof ApiError) {
         setBanner({ user: error.userMessage, detail: error.message });
       } else {
         setBanner({

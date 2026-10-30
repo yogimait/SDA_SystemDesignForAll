@@ -8,21 +8,18 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { fillAuthForm } from "./helpers";
+import { fillAuthForm, mockAuthRoutes } from "./helpers";
 
 const USER = {
   id: "usr_export01",
   email: "export@example.com",
   planTier: "pro",
+  emailVerifiedAt: "2026-01-01T00:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 const AUTH_SEED = `
-  window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
-    user: ${JSON.stringify(USER)},
-    accessToken: "token_export_001",
-    expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
-  }));
+  window.sessionStorage.setItem("sda:auth:user", JSON.stringify({ user: ${JSON.stringify(USER)} }));
 `;
 
 const PROJECT = {
@@ -148,6 +145,7 @@ function interceptExport(page: Page, overrides: { arch?: unknown } = {}): void {
       body: JSON.stringify(envelope(PROJECT)),
     }),
   );
+  mockAuthRoutes(page, USER);
 }
 
 test("export renders the document, prints light, and hides app chrome", async ({ page }) => {

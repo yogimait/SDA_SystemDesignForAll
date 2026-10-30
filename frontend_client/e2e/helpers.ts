@@ -29,6 +29,37 @@ export async function fillAuthForm(
 }
 
 /**
+ * Mocks the hardened auth endpoints for specs that intercept the API instead of
+ * running the real backend: a reload has no in-memory token, so the app refreshes
+ * from the (mocked) cookie. `me` keeps identity refreshes deterministic.
+ */
+export function mockAuthRoutes(
+  page: Page,
+  user: Record<string, unknown>,
+): void {
+  const auth = {
+    user,
+    accessToken: "token_e2e_refresh",
+    tokenType: "Bearer",
+    expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+  };
+  void page.route("**/api/auth/refresh", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: true, statusCode: 200, data: auth }),
+    }),
+  );
+  void page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: true, statusCode: 200, data: user }),
+    }),
+  );
+}
+
+/**
  * Tab-local BYOK setup required by the requirements gate: provider + model +
  * that provider's key. Anonymous runs use this the same way a signed-in user's
  * dialog save does. Add it with `page.addInitScript` before the first goto.

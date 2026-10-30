@@ -60,6 +60,8 @@ export * from "./runs.js";
 export * from "./providers.js";
 export * from "./architecture.js";
 export * from "./analytics.js";
+export * from "./plans.js";
+export * from "./billing.js";
 
 // Zod surface re-exported: contracts is the single validation surface for both
 // apps — consumers import `z` / types from here, never from "zod" directly.

@@ -27,6 +27,53 @@ const ModelListSchema = (fallback: string) =>
       message: "At least one model slug is required.",
     });
 
+const DURATION_UNITS_MS = {
+  s: 1_000,
+  m: 60_000,
+  h: 3_600_000,
+  d: 86_400_000,
+} as const;
+
+/** Accepts `15m`, `30d`, `3600s`, `12h`; returns milliseconds or null. */
+export function parseDurationMs(value: string): number | null {
+  const match = /^(\d+)([smhd])$/.exec(value.trim());
+  if (!match) return null;
+  const amount = Number(match[1]);
+  const unit = DURATION_UNITS_MS[match[2] as keyof typeof DURATION_UNITS_MS];
+  return amount * unit;
+}
+
+/** Token lifetimes are configured as durations and used as milliseconds. */
+const DurationSchema = (fallback: string) =>
+  z
+    .string()
+    .trim()
+    .default(fallback)
+    .transform((value, ctx) => {
+      const ms = parseDurationMs(value);
+      if (ms === null) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Use a duration such as 15m, 12h, or 30d.",
+        });
+        return z.NEVER;
+      }
+      if (ms < 1_000) {
+        ctx.addIssue({
+          code: "custom",
+          message: "The duration must be at least 1s.",
+        });
+        return z.NEVER;
+      }
+      return ms;
+    });
+
+const OPTIONAL_SECRET = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => (value ? value : undefined));
+
 export const EnvSchema = z
   .object({
     NODE_ENV: z
@@ -69,6 +116,18 @@ export const EnvSchema = z
     MAX_REQUEST_BYTES: z.coerce.number().int().min(1024).default(1_000_000),
     THROTTLE_LIMIT: z.coerce.number().int().min(1).default(10),
     THROTTLE_TTL_MS: z.coerce.number().int().min(1000).default(3_600_000),
+    // Auth: short-lived Bearer sessions plus a rotating refresh cookie.
+    ACCESS_TOKEN_TTL: DurationSchema("15m"),
+    REFRESH_TOKEN_TTL: DurationSchema("30d"),
+    REQUIRE_EMAIL_VERIFICATION: BooleanFlagSchema,
+    APP_BASE_URL: z.string().trim().url().default("http://localhost:3000"),
+    CSRF_SECRET: OPTIONAL_SECRET,
+    AUTH_THROTTLE_LIMIT: z.coerce.number().int().min(1).default(5),
+    AUTH_THROTTLE_TTL_MS: z.coerce.number().int().min(1000).default(60_000),
+    // Stripe is optional. Without a secret key the local stub provider is used.
+    STRIPE_SECRET_KEY: OPTIONAL_SECRET,
+    STRIPE_WEBHOOK_SECRET: OPTIONAL_SECRET,
+    STRIPE_PRICE_PRO: OPTIONAL_SECRET,
   })
   .superRefine((value, ctx) => {
     if (value.DATABASE_DRIVER === "postgres" && !value.DATABASE_URL) {

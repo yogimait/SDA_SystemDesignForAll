@@ -19,6 +19,7 @@ import {
   GaugeIcon,
   ListChecksIcon,
   LockIcon,
+  SparklesIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,6 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PortalHeader } from "@/components/portal/portal-header";
+import { VerifyEmailBanner } from "@/components/portal/verify-email-banner";
 import { apiFetch, ApiError, USER_MESSAGES } from "@/lib/api/client";
 import {
   bucketLabelStep,
@@ -40,7 +42,7 @@ import {
   sortRunsNewestFirst,
   usageBarPercent,
 } from "@/lib/dashboard/format";
-import { useHydrated, useSession } from "@/hooks/use-session";
+import { useAuthBootSettled, useHydrated, useSession } from "@/hooks/use-session";
 import type { RunStatus } from "@sda/contracts";
 
 /** Status label color; status is always spelled out — color never alone. */
@@ -65,11 +67,12 @@ export function DashboardContent() {
   // Hold route-guard redirects until hydrated: during the hydration commit
   // the session still reads as the server snapshot (null).
   const hydrated = useHydrated();
+  const bootSettled = useAuthBootSettled();
   useEffect(() => {
-    if (hydrated && session === null) {
+    if (hydrated && bootSettled && session === null) {
       router.replace("/login?next=/dashboard");
     }
-  }, [hydrated, session, router]);
+  }, [hydrated, bootSettled, session, router]);
 
   useEffect(() => {
     if (session === null) return;
@@ -114,6 +117,7 @@ export function DashboardContent() {
     <div className="flex min-h-screen flex-col">
       <PortalHeader current="dashboard" />
       <main className="mx-auto w-full max-w-[1100px] flex-1 px-6 py-8">
+        <VerifyEmailBanner />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-foreground text-xl font-medium tracking-tight">Dashboard</h1>
@@ -421,16 +425,12 @@ function PlanGateCard({ code }: { code: import("@sda/contracts").ErrorCode }) {
       </p>
       <p className="text-muted-foreground mt-2 text-sm leading-relaxed">{USER_MESSAGES[code]}</p>
       <p className="text-muted-foreground mt-1 font-mono text-[11px]">code: {code}</p>
-      <Button
-        variant="outline"
-        size="sm"
-        className="mt-4"
-        tabIndex={-1}
-        aria-disabled="true"
-        onClick={(event: React.MouseEvent<HTMLButtonElement>) => event.preventDefault()}
-      >
-        Upgrade to Pro (backend pending)
-      </Button>
+      <Link href="/pricing" className="mt-4 inline-block">
+        <Button size="sm">
+          <SparklesIcon />
+          Compare plans &amp; upgrade
+        </Button>
+      </Link>
     </div>
   );
 }

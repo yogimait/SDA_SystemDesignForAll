@@ -52,6 +52,20 @@ Unknown API routes return a 404 envelope with `ROUTE_NOT_FOUND`. Responses set `
 | `PUT` | `/api/provider-config` | 200 | Save provider/model/reasoning selection; rejects API keys. |
 | `GET` | `/api/preferences` | 200 | Theme and default provider/model preferences. |
 | `PUT` | `/api/preferences` | 200 | Merge user preferences. |
+| `GET` | `/api/billing/plans` | 200 | Plan catalogue and active billing provider. |
+| `GET` | `/api/billing/subscription` | 200 | Current subscription and plan tier. |
+| `POST` | `/api/billing/checkout` | 201 | Start a Pro checkout (Stub or Stripe). |
+| `POST` | `/api/billing/checkout/:id/complete` | 200 | Stub-only development completion. |
+| `POST` | `/api/billing/portal` | 200 | Billing portal URL. |
+| `POST` | `/api/billing/cancel` | 200 | Cancel the subscription. |
+| `POST` | `/api/billing/webhook` | 200 | Stripe webhook; signature verified, idempotent. |
+| `POST` | `/api/auth/verify-email` | 200 | Consume an email verification token. |
+| `POST` | `/api/auth/resend-verification` | 200 | Issue a new verification token. |
+| `POST` | `/api/auth/forgot-password` | 200 | Always 200; queues a reset link. |
+| `POST` | `/api/auth/reset-password` | 200 | Consume a reset token; revoke sessions. |
+| `POST` | `/api/auth/refresh` | 200 | Rotate the refresh cookie; new Bearer session. |
+| `DELETE` | `/api/users/me` | 200 | Password-confirmed account deletion. |
+| `GET` | `/api/dev/outbox` | 200 | Development-only email links; 404 in production. |
 | `GET` | `/api/dashboard` | 200 | Usage totals, daily buckets, top models, recent runs. |
 | `POST` | `/api/projects/:id/requirements` | 202 | Start a requirements generation run. |
 | `GET` | `/api/projects/:id/requirements` | 200 | Current editable spec + confirmation timestamp. |
@@ -149,16 +163,34 @@ Returns:
     "id": "usr_...",
     "email": "user@example.com",
     "planTier": "free",
+    "emailVerifiedAt": null,
     "createdAt": "2026-10-27T00:00:00.000Z",
     "updatedAt": "2026-10-27T00:00:00.000Z"
   },
   "accessToken": "opaque-session-token",
   "tokenType": "Bearer",
-  "expiresAt": "2026-11-26T00:00:00.000Z"
+  "expiresAt": "2026-10-27T00:15:00.000Z"
 }
 ```
 
-Send `Authorization: Bearer <accessToken>` to `GET /api/auth/me`, `POST /api/auth/logout`, project list/owner access, provider config, preferences, and dashboard. Passwords are stored as scrypt hashes with per-password salt; session tokens are stored only as SHA-256 hashes. Unknown-email login performs a dummy scrypt verification so timing does not reveal whether the account exists.
+The response also sets two cookies: `sda_refresh` (httpOnly, `SameSite=Strict`, `Secure` in production, `path=/api/auth`) and `sda_csrf` (readable, double-submit nonce). Access tokens are short lived (`ACCESS_TOKEN_TTL`, default 15m); the refresh token lasts `REFRESH_TOKEN_TTL` (default 30d). See [[Auth]] for the full flow.
+
+Send `Authorization: Bearer <accessToken>` to `GET /api/auth/me`, `POST /api/auth/logout`, project list/owner access, provider config, preferences, dashboard, and billing routes. Passwords are stored as scrypt hashes with per-password salt; access, refresh, verification, and reset tokens are stored only as SHA-256 hashes. Unknown-email login performs a dummy scrypt verification so timing does not reveal whether the account exists.
+
+### Refresh, CSRF, and token flows
+
+- `POST /api/auth/refresh` has no body: it reads the refresh cookie, checks `Origin` against `CORS_ORIGIN` and `x-csrf-token` against the CSRF cookie, rotates the refresh token, and returns a new `AuthResponse`. Reusing a rotated cookie revokes the whole family and returns 401 `AUTH_INVALID_CREDENTIALS` with `details.reason = "reuse"`.
+- `POST /api/auth/logout` deletes the access session and revokes the refresh family, then clears both cookies. A Bearer token, or a refresh cookie plus `x-csrf-token`, is enough; a request with neither is 401. The dev outbox stores usable links outside production; in production the link is stored without its token and the route is a 404.
+- `POST /api/auth/verify-email { token }` consumes a single-use token; `POST /api/auth/resend-verification` (Bearer) issues a new one.
+- `POST /api/auth/forgot-password { email }` always returns 200. `POST /api/auth/reset-password { token, password }` consumes the token, replaces the hash, and deletes all sessions and refresh tokens for the user.
+- CSRF or Origin failures are `400 VALIDATION_ERROR` with `details.reason = "csrf_invalid"` or `"origin_not_allowed"`. Auth-throttle rejections are `429 QUOTA_EXCEEDED` with a `Retry-After` header.
+- Without SMTP, links land in the development outbox: `GET /api/dev/outbox` lists the last 50 messages. The route is a 404 in production.
+- `REQUIRE_EMAIL_VERIFICATION=1` makes project creation and every run start return 401 `AUTH_REQUIRED` with `details.reason = "email_not_verified"` until the address is confirmed.
+- `DELETE /api/users/me { password }` deletes the account. Owned projects keep working through their `x-project-key` with `ownerId: null`; sessions, tokens, configs, preferences, subscriptions, and billing events cascade.
+
+### Billing
+
+`GET /api/billing/plans` is public. The remaining billing routes need a Bearer token; the webhook needs a valid Stripe signature. `POST /api/billing/checkout { "plan": "pro" }` returns `{ checkoutId, url, provider }`. With the default stub provider, `POST /api/billing/checkout/:id/complete` (non-production only) activates Pro locally. With `STRIPE_SECRET_KEY` set, Stripe hosts checkout and the portal, and `POST /api/billing/webhook` applies subscription events exactly once. `POST /api/billing/cancel` downgrades immediately on the stub and sets `cancel_at_period_end` on Stripe. Production with the stub provider reports `checkoutCompletable: false` and `POST /api/billing/checkout` returns 502 `PROVIDER_UNAVAILABLE`. See [[Billing]].
 
 `POST /api/projects` requires a Bearer session and always sets `ownerId`. Pre-existing anonymous rows (if any) remain accessible with their `x-project-key`. An owner can use a Bearer token without the project key. A valid Bearer session for a non-owner gets the same `PROJECT_NOT_FOUND` 404 as an unknown project.
 
@@ -293,7 +325,7 @@ GET /api/runs/:runId
 x-project-key: <key>
 ```
 
-Stages are ordered and reflect persisted `generation_stages` rows only. No stage is simulated.
+Stages are ordered and reflect persisted `generation_stages` rows only. No stage is simulated. Usage reported for a failed run includes tokens consumed by the failed provider call, so plan accounting and dashboard totals count failed generation attempts.
 
 ```json
 {
@@ -363,14 +395,14 @@ data: {"type":"run","status":"succeeded","error":null,"usage":{"promptTokens":12
 | `ROUTE_NOT_FOUND` | 404 | Unknown route. |
 | `PROJECT_NOT_FOUND` | 404 | Project does not exist. |
 | `PROJECT_ACCESS_DENIED` | 403 | Missing/wrong project key. |
-| `AUTH_REQUIRED` | 401 | Missing, invalid, expired, or revoked Bearer session. |
-| `AUTH_INVALID_CREDENTIALS` | 401 | Login email/password mismatch. |
+| `AUTH_REQUIRED` | 401 | Missing, invalid, expired, or revoked Bearer session; also the unverified-email gate. |
+| `AUTH_INVALID_CREDENTIALS` | 401 | Login email/password mismatch; also invalid, expired, or reused tokens. |
 | `AUTH_EMAIL_TAKEN` | 409 | Registration email already exists. |
 | `USER_NOT_FOUND` | 404 | Requested user does not exist. |
 | `RUN_NOT_FOUND` | 404 | Run does not exist. |
 | `RUN_CONFLICT` | 409 | A run is already queued or running for the project. |
 | `PAYLOAD_TOO_LARGE` | 413 | JSON body exceeds `MAX_REQUEST_BYTES`. |
-| `QUOTA_EXCEEDED` | 429 | Per-IP run-start throttle hit. |
+| `QUOTA_EXCEEDED` | 429 | Per-IP run-start or auth throttle hit. |
 | `PLAN_LIMIT_EXCEEDED` | 402 | Project/run/token allowance exceeded. |
 | `PLAN_UPGRADE_REQUIRED` | 402 | Feature requires Pro. |
 | `PROVIDER_CONFIG_NOT_FOUND` | 404 | No saved provider configuration. |
@@ -384,6 +416,6 @@ data: {"type":"run","status":"succeeded","error":null,"usage":{"promptTokens":12
 | `DATABASE_UNAVAILABLE` | 503 | Database connection failure translated at the HTTP boundary. |
 | `INTERNAL_ERROR` | 500 | Unexpected server failure; details are hidden. |
 
-Codes are registered once in `packages/contracts/src/envelope.ts`; do not invent codes in controllers.
+Codes are registered once in `packages/contracts/src/envelope.ts`; do not invent codes in controllers. Auth, CSRF, and billing failures carry a stable `error.details.reason` (`reuse`, `token_invalid`, `verification_invalid`, `reset_invalid`, `csrf_invalid`, `origin_not_allowed`, `email_not_verified`, `webhook_invalid`) so clients can distinguish causes without new codes.
 
-Related: [[Home]] · [[Architecture]] · [[Generation]] · [[Data-Model]] · [[Providers]] · [[Testing]]
+Related: [[Home]] · [[Architecture]] · [[Generation]] · [[Data-Model]] · [[Providers]] · [[Auth]] · [[Billing]] · [[Testing]]

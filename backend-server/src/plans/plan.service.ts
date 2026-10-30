@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { PlanTier } from "@sda/contracts";
+import { PLAN_CATALOG } from "@sda/contracts";
+import type { PlanLimits, PlanTier } from "@sda/contracts";
 import { AppError } from "../common/errors/app-error.js";
 import {
   ANALYTICS_REPOSITORY,
@@ -14,21 +15,10 @@ import type { UserRow } from "../database/repositories/user.repository.js";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
-export const PLAN_LIMITS: Record<
-  PlanTier,
-  { projects: number; runsPer30Days: number; tokensPer30Days: number }
-> = {
-  free: {
-    projects: 3,
-    runsPer30Days: 50,
-    tokensPer30Days: 500_000,
-  },
-  pro: {
-    projects: 100,
-    runsPer30Days: 1_000,
-    tokensPer30Days: 10_000_000,
-  },
-};
+/** Enforcement reads the same catalogue that `GET /api/billing/plans` serves. */
+export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = Object.fromEntries(
+  PLAN_CATALOG.map((plan) => [plan.id, plan.limits]),
+) as Record<PlanTier, PlanLimits>;
 
 @Injectable()
 export class PlanService {

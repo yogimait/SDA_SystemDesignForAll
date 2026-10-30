@@ -56,6 +56,7 @@ export function SiteHeader() {
               links={[
                 { href: "/#how-it-works", label: "How it works" },
                 { href: "/#idea-capture", label: "Examples" },
+                { href: "/pricing", label: "Plans & pricing" },
                 ...(session !== null
                   ? [
                       { href: "/library", label: "Library" },
@@ -84,6 +85,12 @@ export function SiteHeader() {
             >
               Examples
             </a>
+            <Link
+              href="/pricing"
+              className="text-secondary-foreground hover:text-foreground text-sm transition-colors"
+            >
+              Plans
+            </Link>
             {session !== null ? (
               <>
                 <Link

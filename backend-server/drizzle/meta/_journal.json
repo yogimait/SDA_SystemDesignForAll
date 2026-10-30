@@ -22,6 +22,20 @@
       "when": 1793118577555,
       "tag": "0002_faulty_the_captain",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793298249471,
+      "tag": "0003_omniscient_bloodaxe",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793306299886,
+      "tag": "0004_long_toxin",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@
  * intercepted with contract-shaped fixtures.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { mockAuthRoutes } from "./helpers";
 
 test.use({ viewport: { width: 390, height: 844 } });
 
@@ -12,15 +13,12 @@ const USER = {
   id: "usr_fit01",
   email: "fit@example.com",
   planTier: "free",
+  emailVerifiedAt: "2026-01-01T00:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 const AUTH_SEED = `
-  window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
-    user: ${JSON.stringify(USER)},
-    accessToken: "token_fit_001",
-    expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
-  }));
+  window.sessionStorage.setItem("sda:auth:user", JSON.stringify({ user: ${JSON.stringify(USER)} }));
   window.sessionStorage.setItem("sda:project:proj_1:access-key", "projkey_fit");
 `;
 
@@ -146,6 +144,7 @@ function intercept(page: Page, projectStatus: string, requirements: unknown): vo
       body: JSON.stringify(envelope({ ...PROJECT, status: projectStatus })),
     }),
   );
+  mockAuthRoutes(page, USER);
 }
 
 async function expectOverflowFree(page: Page, label: string): Promise<void> {
@@ -200,6 +199,7 @@ test("library header fits 390px and provider setup lives in the menu", async ({ 
       body: JSON.stringify(envelope({ projects: [], nextCursor: null })),
     }),
   );
+  mockAuthRoutes(page, USER);
   await page.addInitScript(AUTH_SEED);
   await page.goto("/library");
   await expect(page.getByRole("heading", { name: "Project library" })).toBeVisible();

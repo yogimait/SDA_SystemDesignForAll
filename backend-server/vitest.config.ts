@@ -10,6 +10,8 @@ export default defineConfig({
     root: './',
     include: ['**/*.spec.ts'],
     testTimeout: 20_000,
-    hookTimeout: 20_000,
+    // PGlite boots a WASM Postgres per worker; under a full parallel run the
+    // beforeAll hook can exceed 20s on slower machines.
+    hookTimeout: 60_000,
   },
 });

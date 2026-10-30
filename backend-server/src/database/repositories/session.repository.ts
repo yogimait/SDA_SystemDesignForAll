@@ -16,6 +16,7 @@ export interface SessionRepository {
     now: Date,
   ): Promise<SessionRow | null>;
   revokeByTokenHash(tokenHash: string): Promise<void>;
+  deleteAllForUser(userId: string): Promise<void>;
 }
 
 export const SESSION_REPOSITORY = Symbol("SESSION_REPOSITORY");

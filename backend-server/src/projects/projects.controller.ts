@@ -18,6 +18,7 @@ import { CreateProjectRequestSchema } from "@sda/contracts";
 import {
   AuthGuard,
 } from "../common/access/auth.guard.js";
+import { RequireVerifiedEmailGuard } from "../common/access/verified-email.guard.js";
 import {
   requireUser,
   type AuthRequest,
@@ -36,7 +37,7 @@ export class ProjectsController {
 
   @Post()
   @HttpCode(201)
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RequireVerifiedEmailGuard)
   create(
     @Req() request: AuthRequest,
     @Body(new ZodValidationPipe(CreateProjectRequestSchema))

@@ -20,6 +20,9 @@ import { DrizzleUserRepository } from "../../src/database/repositories/drizzle-u
 import { DrizzleSessionRepository } from "../../src/database/repositories/drizzle-session.repository.js";
 import { DrizzleAccountRepository } from "../../src/database/repositories/drizzle-account.repository.js";
 import { DrizzleAnalyticsRepository } from "../../src/database/repositories/drizzle-analytics.repository.js";
+import { DrizzleTokenRepository } from "../../src/database/repositories/drizzle-token.repository.js";
+import { DrizzleBillingRepository } from "../../src/database/repositories/drizzle-billing.repository.js";
+import { DrizzleOutboxRepository } from "../../src/database/repositories/drizzle-outbox.repository.js";
 
 const spec: RequirementsSpec = {
   functional: [
@@ -102,6 +105,9 @@ describe("Drizzle repositories on in-memory PGlite", () => {
   let sessions: DrizzleSessionRepository;
   let account: DrizzleAccountRepository;
   let analytics: DrizzleAnalyticsRepository;
+  let tokens: DrizzleTokenRepository;
+  let billing: DrizzleBillingRepository;
+  let outbox: DrizzleOutboxRepository;
 
   beforeAll(async () => {
     database = new DatabaseService(
@@ -119,6 +125,9 @@ describe("Drizzle repositories on in-memory PGlite", () => {
     sessions = new DrizzleSessionRepository(database);
     account = new DrizzleAccountRepository(database);
     analytics = new DrizzleAnalyticsRepository(database);
+    tokens = new DrizzleTokenRepository(database);
+    billing = new DrizzleBillingRepository(database);
+    outbox = new DrizzleOutboxRepository(database);
   });
 
   afterAll(async () => {
@@ -432,5 +441,168 @@ describe("Drizzle repositories on in-memory PGlite", () => {
     expect(
       await users.updatePlanTier(userId, "pro"),
     ).toMatchObject({ planTier: "pro" });
+  });
+
+  it("rotates refresh tokens, consumes single-use tokens, and isolates billing events", async () => {
+    const userId = `usr_${randomUUID().replaceAll("-", "")}`;
+    await users.create({
+      id: userId,
+      email: `${userId}@example.com`,
+      passwordHash: "scrypt$test",
+      planTier: "free",
+    });
+
+    const familyId = randomUUID();
+    const firstRefresh = randomUUID();
+    await tokens.createRefresh({
+      id: firstRefresh,
+      userId,
+      tokenHash: `refresh_${firstRefresh}`,
+      familyId,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const secondRefresh = randomUUID();
+    expect(
+      await tokens.rotateRefresh(firstRefresh, secondRefresh, new Date()),
+    ).toBe(true);
+    expect(
+      await tokens.rotateRefresh(firstRefresh, randomUUID(), new Date()),
+    ).toBe(false);
+    await tokens.revokeRefreshFamily(familyId, new Date());
+    expect(
+      (await tokens.findRefreshByTokenHash(`refresh_${firstRefresh}`))
+        ?.revokedAt,
+    ).not.toBeNull();
+
+    const verificationId = randomUUID();
+    await tokens.createEmailVerification({
+      id: verificationId,
+      userId,
+      tokenHash: `verify_${verificationId}`,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    expect(
+      await tokens.consumeEmailVerification(`verify_${verificationId}`, new Date()),
+    ).toMatchObject({ userId });
+    expect(
+      await tokens.consumeEmailVerification(`verify_${verificationId}`, new Date()),
+    ).toBeNull();
+
+    const expiredResetId = randomUUID();
+    await tokens.createPasswordReset({
+      id: expiredResetId,
+      userId,
+      tokenHash: `reset_${expiredResetId}`,
+      expiresAt: new Date(Date.now() - 1_000),
+    });
+    expect(
+      await tokens.consumePasswordReset(`reset_${expiredResetId}`, new Date()),
+    ).toBeNull();
+
+    expect(await billing.getSubscription(userId)).toBeNull();
+    const subscription = await billing.upsertSubscription({
+      id: randomUUID(),
+      userId,
+      plan: "pro",
+      status: "active",
+      provider: "stub",
+      currentPeriodEnd: new Date(Date.now() + 86_400_000),
+      cancelAtPeriodEnd: false,
+      now: new Date(),
+    });
+    expect(subscription).toMatchObject({ userId, plan: "pro", status: "active" });
+
+    const updated = await billing.upsertSubscription({
+      id: randomUUID(),
+      userId,
+      plan: "pro",
+      status: "canceled",
+      provider: "stub",
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      cancelAtPeriodEnd: true,
+      now: new Date(),
+    });
+    // One subscription row per user: the upsert keeps the original id.
+    expect(updated.id).toBe(subscription.id);
+    expect(updated.cancelAtPeriodEnd).toBe(true);
+
+    expect(await billing.findEvent("evt_once")).toBeNull();
+    const event = await billing.recordEvent({
+      id: randomUUID(),
+      userId,
+      provider: "stub",
+      idempotencyKey: "evt_once",
+      type: "checkout.session.completed",
+      payload: { id: "evt_once" },
+      processedAt: null,
+    });
+    expect(event?.userId).toBe(userId);
+    await billing.markEventProcessed(event!.id, new Date());
+    expect((await billing.findEvent("evt_once"))?.processedAt).not.toBeNull();
+    // A duplicate insert is acknowledged as a no-op, not an error.
+    await expect(
+      billing.recordEvent({
+        id: randomUUID(),
+        userId,
+        provider: "stub",
+        idempotencyKey: "evt_once",
+        type: "checkout.session.completed",
+        payload: {},
+        processedAt: null,
+      }),
+    ).resolves.toBeNull();
+
+    const message = await outbox.create({
+      id: randomUUID(),
+      kind: "password_reset",
+      recipient: `${userId}@example.com`,
+      link: "http://localhost:3000/reset-password?token=dev",
+    });
+    expect((await outbox.listRecent(5))[0]).toMatchObject({ id: message.id });
+  });
+
+  it("nulls project ownership and cascades auth rows when a user is deleted", async () => {
+    const userId = `usr_${randomUUID().replaceAll("-", "")}`;
+    await users.create({
+      id: userId,
+      email: `${userId}@example.com`,
+      passwordHash: "scrypt$test",
+      planTier: "free",
+    });
+    const projectId = randomUUID();
+    await projects.create({
+      id: projectId,
+      ownerId: userId,
+      idea: "Owned project",
+      accessKeyHash: new AccessKeyService().hash("key"),
+    });
+    await account.savePreferences(userId, { theme: "dark" });
+    const sessionId = randomUUID();
+    await sessions.create({
+      id: sessionId,
+      userId,
+      tokenHash: `session_${sessionId}`,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await billing.recordEvent({
+      id: randomUUID(),
+      userId,
+      provider: "stub",
+      idempotencyKey: "evt_delete",
+      type: "checkout.session.completed",
+      payload: {},
+      processedAt: null,
+    });
+
+    await users.delete(userId);
+
+    expect(await users.findById(userId)).toBeNull();
+    expect((await projects.findById(projectId))?.ownerId).toBeNull();
+    expect(await account.getPreferences(userId)).toBeNull();
+    expect(
+      await sessions.findActiveByTokenHash(`session_${sessionId}`, new Date()),
+    ).toBeNull();
+    // billing_events.user_id cascades with the user row.
+    expect(await billing.findEvent("evt_delete")).toBeNull();
   });
 });

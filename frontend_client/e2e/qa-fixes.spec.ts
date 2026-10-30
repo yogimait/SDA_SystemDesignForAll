@@ -45,8 +45,9 @@ test("portal header: menu sheet at 390, direct links ≥768, no overlap/overflow
   await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
-  // Secondary identity details are hidden on phones (D2).
-  await expect(page.getByText("@example.com")).toBeHidden();
+  // Secondary identity details are hidden in the header on phones (D2). The
+  // verification banner may still name the address — scope to the header.
+  await expect(page.locator("header").getByText("@example.com")).toBeHidden();
   await expect(
     page.locator("header span").filter({ hasText: /FREE|PRO/i }),
   ).toBeHidden();

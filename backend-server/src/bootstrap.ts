@@ -12,6 +12,11 @@ import { RedactingLogger } from "./common/logging/redacting.logger.js";
 import { APP_CONFIG } from "./config/config.module.js";
 import type { AppConfig } from "./config/env.js";
 
+/** Raw request body kept for provider webhook signature verification. */
+export interface RawBodyRequest extends Request {
+  rawBody?: Buffer;
+}
+
 /**
  * Shared by main.ts and e2e tests so HTTP behavior cannot drift between them.
  * Body parsing is registered once here; Nest's built-in parser stays disabled.
@@ -41,17 +46,26 @@ export function configureApp(app: INestApplication): void {
   });
   app.enableCors({
     origin: origins,
-    methods: ["GET", "POST", "PUT", "OPTIONS"],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: [
       "content-type",
       "authorization",
       "x-provider-api-key",
       "x-project-key",
+      "x-csrf-token",
     ],
   });
   app.useLogger(new RedactingLogger());
 
-  app.use(json({ limit: config.MAX_REQUEST_BYTES }));
+  app.use(
+    json({
+      limit: config.MAX_REQUEST_BYTES,
+      verify: (request, _response, buffer) => {
+        (request as RawBodyRequest).rawBody = Buffer.from(buffer);
+      },
+    }),
+  );
   app.use(
     (
       error: unknown,

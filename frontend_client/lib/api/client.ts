@@ -3,19 +3,49 @@
  *   success: { status: true,  statusCode, data }
  *   failure: { status: false, statusCode, message, error: { code, details } }
  *
- * Contracts (`@sda/contracts`) are the single source for envelope/schema types;
- * payloads are validated at runtime. Secrets travel by header only
- * (`x-provider-api-key`, `x-project-key`) — never in URLs or storage.
+ * Auth hardening:
+ * - every request sends cookies (`credentials: "include"`); the refresh token
+ *   is an httpOnly cookie, the access token is memory-only.
+ * - `auth: true` ensures a live access token first (`ensureAccessToken`), and a
+ *   401 `AUTH_REQUIRED` triggers exactly ONE refresh + retry. A failed refresh
+ *   clears the session and redirects to `/login?next=…`.
+ * - state-changing requests carry `x-csrf-token` from the readable `sda_csrf`
+ *   cookie (double-submit; same-site origin).
+ * Secrets travel by header only (`x-provider-api-key`, `x-project-key`) —
+ * never in URLs or storage.
  */
 import {
   ApiEnvelopeSchema,
+  AuthResponseSchema,
   type ErrorCode,
   type ZodType,
 } from "@sda/contracts";
-import { handleAuthRequired, loadSession, LOGOUT_PATH } from "../session/auth";
+import {
+  LOGOUT_PATH,
+  clearSession,
+  handleAuthRequired,
+  hasRefreshHint,
+  loadSession,
+  readCsrfToken,
+  saveSession,
+  sessionEpoch,
+} from "../session/auth";
 
 /** Public API base — exported for the run-stream hook (SSE fetch, not envelope). */
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+export const REFRESH_PATH = "/api/auth/refresh";
+
+/** Endpoints that must never start a refresh loop. */
+const AUTH_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/register",
+  REFRESH_PATH,
+  LOGOUT_PATH,
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/verify-email",
+]);
 
 /**
  * Client-local codes produced by this client only. The backend never sends
@@ -76,8 +106,7 @@ export const USER_MESSAGES: Record<ApiErrorCode, string> = {
     "The server sent a malformed response. Retry shortly.",
 };
 
-export class ApiError extends Error {
-  readonly code: ApiErrorCode;
+export class ApiError extends Error {  readonly code: ApiErrorCode;
   /** HTTP status when a response existed; null on network failure. */
   readonly statusCode: number | null;
   readonly details: Record<string, unknown> | undefined;
@@ -103,8 +132,16 @@ export class ApiError extends Error {
   }
 }
 
-export type ApiFetchOptions<T> = Omit<RequestInit, "headers"> & {
-  /** Zod schema validating the `data` payload at runtime (trust boundary). */
+/** The verification gate reuses AUTH_REQUIRED; the UI gives it its own action. */
+export function requiresEmailVerification(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.code === "AUTH_REQUIRED" &&
+    error.details?.reason === "email_not_verified"
+  );
+}
+
+export type ApiFetchOptions<T> = Omit<RequestInit, "headers"> & {  /** Zod schema validating the `data` payload at runtime (trust boundary). */
   dataSchema?: ZodType<T>;
   /** BYOK model-provider key, sent as `x-provider-api-key`. Never part of the URL. */
   providerKey?: string;
@@ -114,7 +151,92 @@ export type ApiFetchOptions<T> = Omit<RequestInit, "headers"> & {
   /** Attach the authenticated session's access token as a Bearer header. */
   auth?: boolean;
   headers?: HeadersInit;
+  /** Internal: one retry after a refresh; never set by callers. */
+  retried?: boolean;
 };
+
+function withCsrf(headers: Record<string, string>): Record<string, string> {
+  const token = readCsrfToken();
+  if (token !== null) headers["x-csrf-token"] = token;
+  return headers;
+}
+
+function accessTokenIsFresh(session: { accessToken: string; expiresAt: string }): boolean {
+  if (session.accessToken === "" || session.expiresAt === "") return false;
+  const expires = new Date(session.expiresAt).getTime();
+  return !Number.isNaN(expires) && expires > Date.now() + 5_000;
+}
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+/**
+ * Rotates the refresh cookie into a new access token (single-flight: concurrent
+ * callers share one request). Returns null when the cookie is missing/revoked;
+ * the caller decides whether that means "signed out".
+ */
+export function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight !== null) return refreshInFlight;
+  const startedEpoch = sessionEpoch();
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}${REFRESH_PATH}`, {
+        method: "POST",
+        credentials: "include",
+        headers: withCsrf({}),
+      });
+      const body: unknown = await res.json();
+      const envelope = ApiEnvelopeSchema.safeParse(body);
+      if (!envelope.success || !envelope.data.status) return null;
+      const auth = AuthResponseSchema.safeParse(envelope.data.data);
+      if (!auth.success) return null;
+      // A concurrent sign-out (401 handler) may have cleared the tab while this
+      // request was in flight; never resurrect a session that was just dropped.
+      if (sessionEpoch() !== startedEpoch) return null;
+      saveSession(auth.data);
+      return auth.data.accessToken;
+    } catch {
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+/**
+ * Returns a usable access token: the in-memory one when fresh, otherwise a
+ * refreshed one.
+ *
+ * A refresh is also attempted when **no identity snapshot exists** but the
+ * cookie pair hints at a refresh credential (new tab / cleared sessionStorage):
+ * the identity is restored from `AuthResponse.user` on success. A failed refresh
+ * signs the tab out only when an identity existed; a stale cookie on an
+ * anonymous visit is ignored (no redirect bounce).
+ */
+export async function ensureAccessToken(): Promise<string | null> {
+  const session = loadSession();
+  if (session !== null && accessTokenIsFresh(session)) return session.accessToken;
+  if (session === null && !hasRefreshHint()) return null;
+  const token = await refreshAccessToken();
+  if (token === null && session !== null) {
+    clearSession();
+    handleAuthRequired();
+  }
+  return token;
+}
+
+async function readEnvelope(res: Response): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch (cause) {
+    throw new ApiError("INVALID_RESPONSE", {
+      userMessage: USER_MESSAGES.INVALID_RESPONSE,
+      message: `HTTP ${res.status} with a non-JSON body`,
+      statusCode: res.status,
+      cause,
+    });
+  }
+}
 
 /**
  * Fetch a backend endpoint and return the unwrapped `data`.
@@ -124,24 +246,38 @@ export async function apiFetch<T = unknown>(
   path: string,
   options: ApiFetchOptions<T> = {},
 ): Promise<T> {
-  const { dataSchema, providerKey, projectKey, auth, headers, ...init } = options;
+  const {
+    dataSchema,
+    providerKey,
+    projectKey,
+    auth,
+    headers,
+    retried = false,
+    ...init
+  } = options;
 
+  const method = (init.method ?? "GET").toUpperCase();
   const requestHeaders: Record<string, string> = {
     ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
   };
   if (providerKey !== undefined) requestHeaders["x-provider-api-key"] = providerKey;
   // Truthy guard: a null-cast key must never travel as a literal "null".
   if (projectKey) requestHeaders["x-project-key"] = projectKey;
+  // Cookie-authenticated mutations need the double-submit nonce.
+  if (method !== "GET" && method !== "HEAD") withCsrf(requestHeaders);
+
+  let token: string | null = null;
   if (auth === true) {
+    token = await ensureAccessToken();
     // The access token travels by header only — never in URLs, queries, or logs.
-    const session = loadSession();
-    if (session !== null) requestHeaders.authorization = `Bearer ${session.accessToken}`;
+    if (token !== null) requestHeaders.authorization = `Bearer ${token}`;
   }
 
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
+      credentials: "include",
       headers: {
         ...requestHeaders,
         ...headers,
@@ -154,18 +290,7 @@ export async function apiFetch<T = unknown>(
     });
   }
 
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch (cause) {
-    throw new ApiError("INVALID_RESPONSE", {
-      userMessage: USER_MESSAGES.INVALID_RESPONSE,
-      message: `HTTP ${res.status} with a non-JSON body`,
-      statusCode: res.status,
-      cause,
-    });
-  }
-
+  const body = await readEnvelope(res);
   const parsed = ApiEnvelopeSchema.safeParse(body);
   if (!parsed.success) {
     throw new ApiError("INVALID_RESPONSE", {
@@ -177,14 +302,22 @@ export async function apiFetch<T = unknown>(
 
   const envelope = parsed.data;
   if (!envelope.status) {
-    // An authenticated call rejected as unauthenticated means the server no
-    // longer honours the token: drop it and sign in again (real progress —
-    // never keep a header identity the API refuses).
-    if (
+    const reason = envelope.error.details?.reason;
+    const authRejected =
       envelope.error.code === "AUTH_REQUIRED" &&
       auth === true &&
-      path !== LOGOUT_PATH
-    ) {
+      !AUTH_PATHS.has(path) &&
+      // The verification gate reuses AUTH_REQUIRED; that is not a dead token.
+      reason !== "email_not_verified";
+    if (authRejected && !retried) {
+      // Expired in-memory token: refresh once, then retry this exact request.
+      // If the tab was already signed out (concurrent 401), never re-mint.
+      const refreshed = loadSession() === null ? null : await refreshAccessToken();
+      if (refreshed !== null) {
+        return apiFetch<T>(path, { ...options, retried: true });
+      }
+      handleAuthRequired();
+    } else if (authRejected && retried) {
       handleAuthRequired();
     }
     throw new ApiError(envelope.error.code, {

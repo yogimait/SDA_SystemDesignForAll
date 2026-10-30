@@ -195,6 +195,50 @@ describe("ArchitectureGenerator repair path", () => {
     expect(attempts).toEqual([1, 2]);
   });
 
+  it("retries a truncated HLD with a compact prompt at the raised budget", async () => {
+    const hld = await mockHld();
+    const provider = new ScriptedProvider([truncatedOutput(), hld]);
+    const generator = new ArchitectureGenerator();
+
+    const result = await generator.generateHld(
+      provider,
+      "test/model",
+      "A small idea.",
+      requirements,
+    );
+
+    expect(result.attempts).toBe(2);
+    expect(result.hld).toEqual(hld);
+    expect(provider.calls).toHaveLength(2);
+    expect(provider.calls[0]?.maxOutputTokens).toBe(64_000);
+    expect(provider.calls[1]?.maxOutputTokens).toBe(64_000);
+    expect(provider.calls[1]?.messages.at(-1)?.content).toContain(
+      "more compact HLD",
+    );
+  });
+
+  it("fails boundedly when every HLD attempt is truncated", async () => {
+    const provider = new ScriptedProvider([
+      truncatedOutput(),
+      truncatedOutput(),
+      truncatedOutput(),
+    ]);
+    const generator = new ArchitectureGenerator();
+
+    await expect(
+      generator.generateHld(provider, "test/model", "An idea.", requirements),
+    ).rejects.toMatchObject({
+      code: "GENERATION_REPAIR_FAILED",
+      details: {
+        stage: "hld_model",
+        attempts: 3,
+        issues: [{ rule: "truncated_output" }],
+        providerOutput: { usage: { completionTokens: 64_000 } },
+      },
+    });
+    expect(provider.calls).toHaveLength(3);
+  });
+
   it("normalizes deterministic relationship mistakes and drops invalid learning refs", async () => {
     const hld = await mockHld();
     const section = await mockLldDsa();

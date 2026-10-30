@@ -2,15 +2,18 @@ import type {
   ArchitectureModel,
   ConfirmedRequirements,
   ErrorCode,
+  PlanTier,
   ProjectStatus,
   RegenerateScope,
   RunStatus,
   RunType,
   StageStatus,
+  SubscriptionStatus,
   ValidationReport,
 } from "@sda/contracts";
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -33,6 +36,7 @@ export const users = pgTable(
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
     planTier: text("plan_tier").$type<"free" | "pro">().notNull().default("free"),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -61,6 +65,85 @@ export const authSessions = pgTable(
     index("auth_sessions_user_idx").on(table.userId),
     index("auth_sessions_expiry_idx").on(table.expiresAt),
   ],
+);
+
+export const emailVerificationTokens = pgTable(
+  "email_verification_tokens",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("email_verification_token_unique").on(table.tokenHash),
+    index("email_verification_user_idx").on(table.userId),
+  ],
+);
+
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("password_reset_token_unique").on(table.tokenHash),
+    index("password_reset_user_idx").on(table.userId),
+  ],
+);
+
+export const refreshTokens = pgTable(
+  "refresh_tokens",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    familyId: uuid("family_id").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    replacedBy: uuid("replaced_by"),
+    userAgent: text("user_agent"),
+    ip: text("ip"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("refresh_tokens_token_unique").on(table.tokenHash),
+    index("refresh_tokens_user_idx").on(table.userId),
+    index("refresh_tokens_family_idx").on(table.familyId),
+  ],
+);
+
+export const devOutbox = pgTable(
+  "dev_outbox",
+  {
+    id: uuid("id").primaryKey(),
+    kind: text("kind").$type<"email_verification" | "password_reset">().notNull(),
+    recipient: text("recipient").notNull(),
+    link: text("link").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("dev_outbox_created_idx").on(table.createdAt)],
 );
 
 export const providerConfigs = pgTable("provider_configs", {
@@ -276,11 +359,66 @@ export const architectureVersions = pgTable(
   ],
 );
 
+export const billingSubscriptions = pgTable(
+  "billing_subscriptions",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    plan: text("plan").$type<PlanTier>().notNull(),
+    status: text("status").$type<SubscriptionStatus>().notNull(),
+    provider: text("provider").$type<"stub" | "stripe">().notNull(),
+    customerId: text("customer_id"),
+    subscriptionId: text("subscription_id"),
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("billing_subscriptions_user_unique").on(table.userId),
+    index("billing_subscriptions_external_idx").on(table.subscriptionId),
+  ],
+);
+
+export const billingEvents = pgTable(
+  "billing_events",
+  {
+    id: uuid("id").primaryKey(),
+    /** Nullable: provider events may not identify a local user. */
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").$type<"stub" | "stripe">().notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    type: text("type").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("billing_events_idempotency_unique").on(table.idempotencyKey),
+    index("billing_events_created_idx").on(table.createdAt),
+    index("billing_events_user_idx").on(table.userId),
+  ],
+);
+
 export const schema = {
   users,
   authSessions,
+  emailVerificationTokens,
+  passwordResetTokens,
+  refreshTokens,
+  devOutbox,
   providerConfigs,
   userPreferences,
+  billingSubscriptions,
+  billingEvents,
   projects,
   projectAccess,
   requirements,

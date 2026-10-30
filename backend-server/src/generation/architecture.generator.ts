@@ -20,7 +20,11 @@ import {
   LldModelSchema,
 } from "@sda/contracts";
 import { AppError } from "../common/errors/app-error.js";
-import { invalidOutputRepair } from "./output-issues.js";
+import {
+  invalidOutputIssue,
+  invalidOutputRepair,
+  isTruncatedOutput,
+} from "./output-issues.js";
 import type { GenerationAttemptListener } from "./attempt-listener.js";
 import type {
   ChatMessage,
@@ -55,10 +59,19 @@ import { addUsage } from "./requirements.generator.js";
 const MAX_ATTEMPTS = 3; // initial call + 2 bounded repairs
 // Large structured generations can legitimately take several minutes; the
 // timeout must cover body streaming, not just response headers.
-const HLD_TIMEOUT_MS = 600_000;
+const HLD_TIMEOUT_MS = 900_000;
 const LLD_DSA_TIMEOUT_MS = 900_000;
-const HLD_MAX_TOKENS = 32_000;
+// GLM-5.3 Flash truncated the HLD at 32k (finish_reason=length) on small ideas,
+// so the HLD budget now matches the LLD/DSA budget.
+const HLD_MAX_TOKENS = 64_000;
 const LLD_DSA_MAX_TOKENS = 64_000;
+
+/** Truncation retry: same budget, smaller expected output. */
+const HLD_TRUNCATION_RETRY = [
+  "Your previous response was cut off before the JSON object closed.",
+  "Return a more compact HLD: at most 8 components, 10 connections, 1-2 flows,",
+  "one-sentence summaries, and no optional prose. Keep the same JSON schema.",
+].join(" ");
 
 const HLD_SCHEMA = zodToJsonSchema(HldModelSchema);
 const LLD_DSA_SCHEMA = zodToJsonSchema(LldDsaOutputSchema);
@@ -146,6 +159,24 @@ export class ArchitectureGenerator {
           error instanceof AppError &&
           error.code === "INVALID_MODEL_OUTPUT"
         ) {
+          if (isTruncatedOutput(error)) {
+            const issue = invalidOutputIssue(error);
+            issues = [issue];
+            if (attempt < MAX_ATTEMPTS) {
+              messages.push({ role: "user", content: HLD_TRUNCATION_RETRY });
+              continue;
+            }
+            throw new AppError(
+              "GENERATION_REPAIR_FAILED",
+              "The HLD response stayed truncated after the compact retry. Lower reasoning effort or raise the output budget.",
+              {
+                stage: stageName,
+                attempts: attempt,
+                issues: [issue],
+                providerOutput: error.details,
+              },
+            );
+          }
           const failure = invalidOutputRepair(error, stageName, attempt);
           issues = [failure.issue];
           if (attempt < MAX_ATTEMPTS) {

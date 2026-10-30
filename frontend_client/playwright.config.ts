@@ -31,7 +31,16 @@ export default defineConfig({
       reuseExistingServer: true,
       timeout: 180_000,
       cwd: "../backend-server",
-      env: { MOCK_PROVIDER: "1", PORT: "3001", THROTTLE_LIMIT: "1000" },
+      // Live specs register accounts repeatedly; the per-IP auth throttle is
+      // 5/60s by default and would flake the full suite. Run starts keep the
+      // separate THROTTLE_LIMIT budget.
+      env: {
+        MOCK_PROVIDER: "1",
+        PORT: "3001",
+        THROTTLE_LIMIT: "1000",
+        AUTH_THROTTLE_LIMIT: "1000",
+        AUTH_THROTTLE_TTL_MS: "60000",
+      },
     },
   ],
 });

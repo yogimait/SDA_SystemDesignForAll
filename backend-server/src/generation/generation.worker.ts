@@ -49,6 +49,7 @@ import {
   addUsage,
   RequirementsGenerator,
 } from "./requirements.generator.js";
+import { failureUsage } from "./failure-usage.js";
 import {
   RunEventsService,
   toRunStreamRunEvent,
@@ -526,6 +527,12 @@ export class GenerationWorker
       error instanceof AppError
         ? error
         : new AppError("INTERNAL_ERROR", "Generation failed unexpectedly.");
+    // A failed provider call still burned tokens; count them for plan limits
+    // and analytics instead of reporting zero.
+    const failedUsage = failureUsage(appError);
+    if (failedUsage) {
+      addUsage(state.usage, failedUsage);
+    }
     if (state.stage) {
       await this.updateStage(run, state, state.stage, {
         status: "failed",
@@ -533,6 +540,12 @@ export class GenerationWorker
         errorCode: appError.code,
         errorMessage: appError.message,
         errorDetails: appError.details ?? null,
+        ...(failedUsage
+          ? {
+              usagePromptTokens: failedUsage.promptTokens,
+              usageCompletionTokens: failedUsage.completionTokens,
+            }
+          : {}),
       });
     }
     const updated = await this.runs.updateRun(run.id, {

@@ -5,6 +5,7 @@ import { ArchitectureModule } from "./architecture/architecture.module.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { AccountModule } from "./account/account.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
+import { BillingModule } from "./billing/billing.module.js";
 import { CommonModule } from "./common/common.module.js";
 import { ApiResponseInterceptor } from "./common/envelope/api-response.interceptor.js";
 import { AllExceptionsFilter } from "./common/errors/all-exceptions.filter.js";
@@ -42,6 +43,7 @@ import { RequirementsModule } from "./requirements/requirements.module.js";
     AuthModule,
     AccountModule,
     AnalyticsModule,
+    BillingModule,
   ],
   controllers: [HealthController],
   providers: [

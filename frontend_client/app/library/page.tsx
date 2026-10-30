@@ -14,11 +14,12 @@ import type { ProjectStatus } from "@sda/contracts";
 import { ListProjectsResponseSchema } from "@sda/contracts";
 import { ArrowUpRightIcon, ChevronsDownIcon, CircleAlertIcon } from "lucide-react";
 import { PortalHeader } from "@/components/portal/portal-header";
+import { VerifyEmailBanner } from "@/components/portal/verify-email-banner";
 import { ProviderDialog } from "@/components/landing/provider-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch, ApiError } from "@/lib/api/client";
-import { useHydrated, useSession } from "@/hooks/use-session";
+import { useAuthBootSettled, useHydrated, useSession } from "@/hooks/use-session";
 
 type StatusOption = ProjectStatus | null;
 type ListedProject = import("@sda/contracts").ProjectSummary;
@@ -52,11 +53,12 @@ export function LibraryContent() {
   // hydration the session reads as null (server snapshot), so hold the
   // redirect until hydrated to avoid signing real users out.
   const hydrated = useHydrated();
+  const bootSettled = useAuthBootSettled();
   useEffect(() => {
-    if (hydrated && session === null) {
+    if (hydrated && bootSettled && session === null) {
       router.replace("/login?next=/library");
     }
-  }, [hydrated, session, router]);
+  }, [hydrated, bootSettled, session, router]);
 
   const load = useCallback(
     async (cursor: string | null, replace: boolean) => {
@@ -116,6 +118,7 @@ export function LibraryContent() {
     <div className="flex min-h-screen flex-col">
       <PortalHeader current="library" />
       <main className="mx-auto w-full max-w-[1100px] flex-1 px-6 py-8">
+        <VerifyEmailBanner />
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-foreground text-xl font-medium tracking-tight">Project library</h1>

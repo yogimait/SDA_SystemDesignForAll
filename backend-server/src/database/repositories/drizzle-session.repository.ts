@@ -42,4 +42,10 @@ export class DrizzleSessionRepository implements SessionRepository {
       .delete(authSessions)
       .where(eq(authSessions.tokenHash, tokenHash));
   }
+
+  async deleteAllForUser(userId: string): Promise<void> {
+    await this.database.db
+      .delete(authSessions)
+      .where(eq(authSessions.userId, userId));
+  }
 }

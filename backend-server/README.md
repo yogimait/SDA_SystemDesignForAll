@@ -55,6 +55,16 @@ Configuration is Zod-validated at boot; invalid values stop the process with a r
 | `MAX_REQUEST_BYTES` | `1000000` | JSON body limit. |
 | `THROTTLE_LIMIT` | `10` | Run-start requests per IP per window. |
 | `THROTTLE_TTL_MS` | `3600000` | Throttle window. |
+| `ACCESS_TOKEN_TTL` | `15m` | Bearer session lifetime (duration: `15m`, `12h`, `30d`; minimum `1s`). |
+| `REFRESH_TOKEN_TTL` | `30d` | Refresh cookie and rotation lifetime. |
+| `REQUIRE_EMAIL_VERIFICATION` | `0` | When `1`, project creation and generation need a verified email. |
+| `APP_BASE_URL` | `http://localhost:3000` | Frontend base URL used in email links and stub checkout URLs. |
+| `CSRF_SECRET` | — | Optional HMAC key for the double-submit CSRF cookie; set in production. |
+| `AUTH_THROTTLE_LIMIT` | `5` | Per-IP budget for login/register/verify/reset. |
+| `AUTH_THROTTLE_TTL_MS` | `60000` | Auth throttle window. |
+| `STRIPE_SECRET_KEY` | — | Enables the Stripe billing provider. Empty uses the local stub. |
+| `STRIPE_WEBHOOK_SECRET` | — | Verifies `Stripe-Signature` on `POST /api/billing/webhook`. |
+| `STRIPE_PRICE_PRO` | — | Stripe price id for the Pro plan; required with a Stripe key. |
 
 ## Real provider runs
 
@@ -80,7 +90,14 @@ The response contains a one-time `accessKey`; send it as `x-project-key` on ever
 | `POST` | `/api/auth/register` | Create account; returns Bearer session. |
 | `POST` | `/api/auth/login` | Authenticate; returns Bearer session. |
 | `GET` | `/api/auth/me` | Current user. |
-| `POST` | `/api/auth/logout` | Revoke current session. |
+| `POST` | `/api/auth/logout` | Revoke session and refresh family; clears cookies. |
+| `POST` | `/api/auth/refresh` | Rotate the refresh cookie; new Bearer session. |
+| `POST` | `/api/auth/verify-email` | Consume an email verification token. |
+| `POST` | `/api/auth/resend-verification` | Issue a new verification token. |
+| `POST` | `/api/auth/forgot-password` | Always 200; queues a reset link. |
+| `POST` | `/api/auth/reset-password` | Consume a reset token; revoke sessions. |
+| `DELETE` | `/api/users/me` | Password-confirmed account deletion; projects become anonymous. |
+| `GET` | `/api/dev/outbox` | Development-only email links; hidden in production. |
 | `POST` | `/api/projects` | Create project; owner when authenticated; access key once. |
 | `GET` | `/api/projects` | List owned projects with cursor/limit/status. |
 | `GET` | `/api/projects/:id` | Project state. |
@@ -94,6 +111,13 @@ The response contains a one-time `accessKey`; send it as `x-project-key` on ever
 | `GET` | `/api/projects/:id/architecture` | Current version + validation report. |
 | `GET` | `/api/runs/:runId` | Poll run status, stages, usage, errors. |
 | `GET` | `/api/runs/:runId/events` | SSE replay/live run and stage events. |
+| `GET` | `/api/billing/plans` | Plan catalogue and active billing provider. |
+| `GET` | `/api/billing/subscription` | Current subscription and plan tier. |
+| `POST` | `/api/billing/checkout` | Start a Pro checkout (Stripe or local stub). |
+| `POST` | `/api/billing/checkout/:id/complete` | Stub-only development completion. |
+| `POST` | `/api/billing/portal` | Billing portal URL. |
+| `POST` | `/api/billing/cancel` | Cancel and downgrade (stub) or cancel at period end (Stripe). |
+| `POST` | `/api/billing/webhook` | Stripe webhook; signature verified, idempotent. |
 
 SSE responses are `text/event-stream`, not JSON envelopes; polling remains available. A comment heartbeat is sent every 10 seconds and a terminal run frame closes the stream.
 

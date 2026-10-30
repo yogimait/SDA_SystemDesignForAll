@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeApplier } from "@/components/theme/theme-applier";
+import { SessionBootstrap } from "@/components/session/session-bootstrap";
 
 /**
  * Root client providers. One QueryClient per browser session;
@@ -27,6 +28,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <SessionBootstrap />
       <ThemeApplier>
         <TooltipProvider>{children}</TooltipProvider>
       </ThemeApplier>

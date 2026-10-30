@@ -95,7 +95,8 @@ A capability error in a non-final mode moves down the ladder. A capability error
 | Context length message | `PROVIDER_UNSUPPORTED_CAPABILITY` | `details.reason = "context_length"`. |
 | Capability rejection of `response_format` | ladder fallback | Only for 400/404/422 with matching message. |
 | Other 5xx | `PROVIDER_UNAVAILABLE` | Generic retryable message. |
-| Malformed envelope, empty content, invalid JSON, or output above 1,000,000 characters | `INVALID_MODEL_OUTPUT` | Oversized output is rejected (`reason = "output_too_large"`), never stored. Truncation (`reason = "truncated_output"`/`"truncated_json"` or `finish_reason = "length"`) fails fast as `GENERATION_REPAIR_FAILED` because retrying with the same budget cannot help. Other invalid JSON may be repaired. |
+| Malformed envelope, empty content, invalid JSON, or output above 1,000,000 characters | `INVALID_MODEL_OUTPUT` | Oversized output is rejected (`reason = "output_too_large"`), never stored. Truncation (`reason = "truncated_output"`/`"truncated_json"` or `finish_reason = "length"`) gets one compact-prompt retry in the HLD phase; other stages and repeated truncation fail as `GENERATION_REPAIR_FAILED`. Other invalid JSON is repaired within the attempt budget. |
+| 400 schema mismatch (`Generated JSON does not match the expected schema`, `json_validate_failed`) | ladder fallback, then `INVALID_MODEL_OUTPUT` | `json_schema` falls back to `json_object`, then prompt mode. A mismatch in prompt mode is `INVALID_MODEL_OUTPUT` (`reason = "schema_mismatch"`) so the bounded repair loop runs. |
 | Other 4xx | `PROVIDER_UNSUPPORTED_CAPABILITY` | Redacted provider message capped at 300 chars. |
 | Network failure | `PROVIDER_UNAVAILABLE` | The key is not echoed. |
 
@@ -115,17 +116,19 @@ Zod still validates the real payload. Provider-side schema hints are best-effort
 | Stage | Schema name | Max output tokens | Timeout |
 | --- | --- | --- | --- |
 | Requirements | `requirements_analysis` | 4,000 | 90 s |
-| HLD | `hld_model` | 32,000 | 600 s |
+| HLD | `hld_model` | 64,000 | 900 s |
 | LLD + DSA + learning | `lld_dsa_model` | 64,000 | 900 s |
-| Scoped HLD/LLD/DSA | `hld_model` / `lld_model` / `dsa_model` | 32,000 / 64,000 / 64,000 | 900 s |
+| Scoped HLD/LLD/DSA | `hld_model` / `lld_model` / `dsa_model` | 64,000 / 64,000 / 64,000 | 900 s |
 
 System prompts and repair prompts live in `src/providers/prompts/index.ts`. Temperature is fixed at 0.2 in the adapter.
 
-GLM-5.3 Flash mandates reasoning. OpenRouter maps `effort: "low"` to roughly 20% of `max_tokens`, so the 32k HLD budget leaves about 26k visible and the 64k LLD/DSA budget about 51k. A 12k HLD budget truncated on a real run; the concise HLD prompt now targets 6-12 components, 8-16 connections, and 1-2 flows. Truncation errors record completion and reasoning token counts.
+GLM-5.3 Flash mandates reasoning. OpenRouter maps `effort: "low"` to roughly 20% of `max_tokens`, so the 64k budgets leave roughly 51k visible. The HLD budget was raised from 32k to 64k after a live run ended with `finish_reason: length`; the HLD phase now also retries a truncated response once with a compact-output instruction before failing. Truncation errors record completion and reasoning token counts, and their usage is counted against the run/plan even when the stage fails.
 
 ## Groq adapter
 
 Request: `POST https://api.groq.com/openai/v1/chat/completions` with `Authorization: Bearer <key>`, `max_completion_tokens` from the stage budget, and `reasoning_effort` from `GROQ_REASONING_EFFORT` (default `low`). No OpenRouter `provider` routing or `X-Title` header is sent. GPT-OSS 120B supports strict `json_schema`; the shared ladder falls back to `json_object` then prompt-only if needed.
+
+Groq can answer a strict-schema request with `400 Generated JSON does not match the expected schema` (`json_validate_failed`). This is treated as a format failure, not a capability failure: `json_schema` downgrades to `json_object`, then prompt mode, and a prompt-mode mismatch returns `INVALID_MODEL_OUTPUT` (`reason = "schema_mismatch"`) so the generator's bounded repair loop runs.
 
 The current free-plan key is limited to **30 RPM, 1,000 RPD, 8,000 TPM, 200,000 TPD** for `openai/gpt-oss-120b`. A 64k LLD/DSA request cannot fit the 8k TPM budget. Use OpenRouter for the full 64k generation, upgrade the Groq plan, or split LLD/DSA into multiple Groq calls (not implemented yet). The adapter maps Groq `429` responses to `PROVIDER_RATE_LIMITED` with `retryAfterSeconds`.
 
@@ -148,6 +151,8 @@ The slug was verified against OpenRouter's model list. It is a default only: cli
 | Free-plan limits | 30 RPM, 1,000 RPD, 8,000 TPM, 200,000 TPD |
 
 The Groq model and strict schema path were verified with a live probe. Free-plan TPM is the blocker for the 64k LLD/DSA stage. A full live architecture smoke passed on OpenRouter: HLD reused, LLD/DSA succeeded on attempt 3 with 64,230 tokens, 14 classes, 19 relationships, 3 patterns, 10 components, 12 connections, and 0 warnings.
+
+A later live smoke with the 64k HLD budget (2026-10-30) completed on the default model: requirements 701 tokens in 1 attempt; architecture 28,690 tokens (HLD 4,188 on attempt 1; LLD/DSA 24,502 on attempt 2), 81.5 s total, version 1 valid with 0 errors/0 warnings, 11 components, 16 connections, 13 classes, 5 DSA recommendations, and 8 learning steps. The same smoke ran Groq requirements successfully: 1,093 tokens in 1 attempt.
 
 ## Mock provider
 

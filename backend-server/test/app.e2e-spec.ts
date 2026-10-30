@@ -153,6 +153,8 @@ function setEnv(overrides: Record<string, string>): void {
     GENERATION_POLL_INTERVAL_MS: "10",
     THROTTLE_LIMIT: "1000",
     THROTTLE_TTL_MS: "60000",
+    AUTH_THROTTLE_LIMIT: "1000",
+    AUTH_THROTTLE_TTL_MS: "60000",
     MAX_REQUEST_BYTES: "2048",
     ...overrides,
   });
@@ -255,7 +257,8 @@ async function startRequirements(
 class ControlledProvider implements ModelProvider {
   readonly id = "mock";
   private readonly mock = new MockProvider();
-  private mode: "normal" | "invalid" | "invalid_json" | "block" = "normal";
+  private mode: "normal" | "invalid" | "invalid_json" | "truncated" | "block" =
+    "normal";
   private gate: Promise<void> = Promise.resolve();
   private releaseGate: () => void = () => undefined;
   private started: Promise<void> = Promise.resolve();
@@ -280,6 +283,10 @@ class ControlledProvider implements ModelProvider {
     this.mode = "invalid_json";
   }
 
+  truncate(): void {
+    this.mode = "truncated";
+  }
+
   async generateStructured(
     input: GenerateStructuredInput,
   ): Promise<GeneratedStructured> {
@@ -290,6 +297,22 @@ class ControlledProvider implements ModelProvider {
       throw new AppError(
         "INVALID_MODEL_OUTPUT",
         "The model returned invalid JSON.",
+      );
+    }
+    if (this.mode === "truncated") {
+      throw new AppError(
+        "INVALID_MODEL_OUTPUT",
+        "The model response was truncated before completion.",
+        {
+          reason: "truncated_output",
+          finishReason: "length",
+          maxOutputTokens: 4_000,
+          usage: {
+            promptTokens: 1_200,
+            completionTokens: 4_000,
+            totalTokens: 5_200,
+          },
+        },
       );
     }
     if (this.mode === "block") {
@@ -856,6 +879,32 @@ describe("API (e2e)", () => {
       expect(run.error).toMatchObject({
         code: "GENERATION_REPAIR_FAILED",
         details: { attempts: 2 },
+      });
+    });
+
+    it("persists provider usage from a failed call on the run and stage", async () => {
+      const created = await createProject(server);
+      provider.truncate();
+      const runId = await startRequirements(
+        server,
+        created.project.id,
+        created.accessKey,
+      );
+      const run = await waitForRun(server, runId, created.accessKey);
+
+      expect(run.status).toBe("failed");
+      expect(run.error?.code).toBe("GENERATION_REPAIR_FAILED");
+      expect(run.usage).toMatchObject({
+        promptTokens: 1_200,
+        completionTokens: 4_000,
+        totalTokens: 5_200,
+      });
+      const failedStage = run.stages.find(
+        (stage) => stage.name === "analyze_idea",
+      );
+      expect(failedStage?.usage).toMatchObject({
+        promptTokens: 1_200,
+        completionTokens: 4_000,
       });
     });
   });

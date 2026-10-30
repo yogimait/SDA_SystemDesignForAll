@@ -19,6 +19,9 @@ import {
 } from "@sda/contracts";
 import { CheckIcon } from "lucide-react";
 import { PortalHeader } from "@/components/portal/portal-header";
+import { VerifyEmailBanner } from "@/components/portal/verify-email-banner";
+import { AccountCard } from "@/components/settings/account-card";
+import { BillingCard } from "@/components/settings/billing-card";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -30,7 +33,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { providerLabel } from "@/lib/providers/label";
-import { useHydrated, useSession } from "@/hooks/use-session";
+import { useAuthBootSettled, useHydrated, useSession } from "@/hooks/use-session";
 import { useRouter } from "next/navigation";
 
 type ProvidersInfo = import("@sda/contracts").ProvidersResponse;
@@ -43,11 +46,12 @@ export function SettingsContent() {
   // Hold route-guard redirects until hydrated: during the hydration commit
   // the session still reads as the server snapshot (null).
   const hydrated = useHydrated();
+  const bootSettled = useAuthBootSettled();
   useEffect(() => {
-    if (hydrated && session === null) {
+    if (hydrated && bootSettled && session === null) {
       router.replace("/login?next=/settings");
     }
-  }, [hydrated, session, router]);
+  }, [hydrated, bootSettled, session, router]);
 
   useEffect(() => {
     if (session === null) return;
@@ -83,7 +87,10 @@ export function SettingsContent() {
         </div>
 
         <div className="mt-6 grid gap-4">
+          <VerifyEmailBanner />
           <ProviderConfigCard providers={providers} />
+          <BillingCard />
+          <AccountCard />
           <section aria-label="How settings apply" className="bg-card border-border rounded-xl border border-solid p-4">
             <h2 className="text-foreground text-sm font-semibold tracking-tight">
               How these settings apply

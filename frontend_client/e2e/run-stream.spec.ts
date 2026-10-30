@@ -7,20 +7,18 @@
  * and the QA audit.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { mockAuthRoutes } from "./helpers";
 
 const USER = {
   id: "usr_stream01",
   email: "stream@example.com",
   planTier: "pro",
+  emailVerifiedAt: "2026-01-01T00:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 const AUTH_SEED = `
-  window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
-    user: ${JSON.stringify(USER)},
-    accessToken: "token_stream_001",
-    expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
-  }));
+  window.sessionStorage.setItem("sda:auth:user", JSON.stringify({ user: ${JSON.stringify(USER)} }));
   window.sessionStorage.setItem("sda:provider-setup", JSON.stringify({
     provider: "openrouter",
     model: "z-ai/glm-5.3-flash",
@@ -136,6 +134,8 @@ async function interceptProject(page: Page): Promise<void> {
       body: JSON.stringify(envelope(PROJECT)),
     }),
   );
+  // Reloads have no in-memory token: the app refreshes from the mocked cookie.
+  mockAuthRoutes(page, USER);
 }
 
 async function startRun(page: Page): Promise<void> {
@@ -335,11 +335,7 @@ test("run-status 401 is treated as signed out: redirect to login, session cleare
   await page.addInitScript(`
     if (window.sessionStorage.getItem("sda:stream:seeded") === null) {
       window.sessionStorage.setItem("sda:stream:seeded", "1");
-      window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
-        user: ${JSON.stringify(USER)},
-        accessToken: "token_stream_001",
-        expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
-      }));
+      window.sessionStorage.setItem("sda:auth:user", JSON.stringify({ user: ${JSON.stringify(USER)} }));
       window.sessionStorage.setItem("sda:provider-setup", JSON.stringify({
         provider: "openrouter",
         model: "z-ai/glm-5.3-flash",
@@ -357,7 +353,7 @@ test("run-status 401 is treated as signed out: redirect to login, session cleare
     { timeout: 20_000 },
   );
   await expect
-    .poll(() => page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")))
+    .poll(() => page.evaluate(() => window.sessionStorage.getItem("sda:auth:user")))
     .toBeNull();
   await expect(page.getByRole("tab", { name: "Sign in" })).toBeVisible();
   await expect(

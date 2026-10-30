@@ -17,6 +17,7 @@ flowchart TB
     RNC[Run polling]
     SSE[Run SSE]
     PRC[Providers]
+    BIL[Billing]
   end
 
   subgraph Common
@@ -63,11 +64,14 @@ flowchart TB
 | `src/providers/` | `ModelProvider` boundary, registry, OpenRouter adapter, mock provider, schema sanitizer, prompts. |
 | `src/generation/` | Run service, DB-backed worker, requirements and architecture generators, run DTO mapping, process-local run event bus, SSE framing. |
 | `src/projects/`, `src/requirements/`, `src/architecture/` | HTTP controllers and domain services. |
-| `src/auth/` | Register/login/logout, scrypt password hashing, opaque session issuance. |
+| `src/auth/` | Register/login/refresh/logout, scrypt password hashing, opaque access sessions, rotating refresh cookies, CSRF/Origin checks, email verification and reset tokens, dev outbox, account deletion. |
+| `src/billing/` | Plan catalogue endpoint, subscription state, stub and Stripe providers, idempotent webhook handling. |
 | `src/account/` | Saved provider config and user preferences. |
 | `src/analytics/` | Dashboard range aggregation. |
-| `src/plans/` | Free/Pro limits and scoped-regeneration gate. |
+| `src/plans/` | Free/Pro limits (from `PLAN_CATALOG`) and scoped-regeneration gate. |
 | `src/common/access/auth-context.service.ts` + `auth.guard.ts` | Bearer resolution, required/optional auth guards, request user context. |
+| `src/common/access/auth-throttler.guard.ts` | Config-driven per-IP throttle for auth endpoints. |
+| `src/common/access/verified-email.guard.ts` | Optional email-verification gate for project creation and run starts. |
 | `src/architecture/validator.ts` | Structural and semantic validation of the merged canonical model. |
 | `packages/contracts/` | Zod schemas, DTO types, error-code registry, envelope helpers. |
 
@@ -128,6 +132,14 @@ Run SSE uses the same guard. The controller writes raw `text/event-stream` frame
 | `MAX_REQUEST_BYTES` | `1000000` | JSON body limit. |
 | `THROTTLE_LIMIT` | `10` | Run-start requests per IP per window. |
 | `THROTTLE_TTL_MS` | `3600000` | Throttle window. |
+| `ACCESS_TOKEN_TTL` | `15m` | Bearer session lifetime. |
+| `REFRESH_TOKEN_TTL` | `30d` | Refresh cookie rotation lifetime. |
+| `REQUIRE_EMAIL_VERIFICATION` | `0` | Gate project creation and generation on a verified email. |
+| `APP_BASE_URL` | `http://localhost:3000` | Email links and stub billing URLs. |
+| `CSRF_SECRET` | — | Optional HMAC key for the CSRF cookie. |
+| `AUTH_THROTTLE_LIMIT` | `5` | Auth endpoint budget per window. |
+| `AUTH_THROTTLE_TTL_MS` | `60000` | Auth throttle window. |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_PRO` | — | Enable the Stripe billing provider; empty means the local stub. |
 
 No `.env` loader is installed: set environment variables in the shell or the process manager. This keeps secrets out of the repository and makes deployment configuration explicit.
 
@@ -140,4 +152,4 @@ No `.env` loader is installed: set environment variables in the shell or the pro
 - The Express adapter is constructed explicitly in `main.ts` so production boot does not depend on Nest's optional platform discovery under npm workspace hoisting.
 - The mock provider is active only when `MOCK_PROVIDER=1` is explicitly set.
 
-Related: [[Home]] · [[API]] · [[Data-Model]] · [[Generation]] · [[Providers]] · [[Testing]]
+Related: [[Home]] · [[API]] · [[Data-Model]] · [[Generation]] · [[Providers]] · [[Auth]] · [[Billing]] · [[Testing]]

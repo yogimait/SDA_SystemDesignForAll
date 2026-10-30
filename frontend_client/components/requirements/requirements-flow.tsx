@@ -15,10 +15,11 @@ import { ProviderDialog } from "@/components/landing/provider-dialog";
 import { Button } from "@/components/ui/button";
 import { RunProgress } from "@/components/requirements/run-progress";
 import { SpecEditor } from "@/components/requirements/spec-editor";
+import { VerifyEmailBanner } from "@/components/portal/verify-email-banner";
 import { useRunTerminalEffect } from "@/hooks/use-generation-run";
 import { useRunLive } from "@/hooks/use-run-stream";
-import { useSession } from "@/hooks/use-session";
-import { apiFetch, ApiError } from "@/lib/api/client";
+import { useAuthBootSettled, useSession } from "@/hooks/use-session";
+import { apiFetch, ApiError, requiresEmailVerification } from "@/lib/api/client";
 import {
   PROVIDER_GAP_LABELS,
   providerSetupMessage,
@@ -48,6 +49,7 @@ type Phase =
 export function RequirementsFlow({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
   const session = useSession();
+  const bootSettled = useAuthBootSettled();
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [projectKey, setProjectKey] = useState<string | null>(null);
   const [spec, setSpec] = useState<RequirementsSpec | null>(null);
@@ -71,8 +73,10 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
   }, []);
 
   // Initial load: access key (creator's tab) OR owner Bearer → project →
-  // requirements. Single gate, single error path.
+  // requirements. Single gate, single error path. Waits for the boot refresh so
+  // a new tab with only the refresh cookie is not treated as anonymous.
   useEffect(() => {
+    if (!bootSettled) return;
     let cancelled = false;
     void (async () => {
       const session = loadSession();
@@ -133,8 +137,8 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
     return () => {
       cancelled = true;
     };
-    // Intentionally runs once per mount.
-  }, [projectId]);
+    // Re-runs once when the boot refresh settles (identity may have appeared).
+  }, [projectId, bootSettled]);
 
   async function startRunOnce(context: "requirements" | "architecture"): Promise<string | null> {
     if (projectKey === null && loadSession() === null) return null;
@@ -176,7 +180,13 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
       );
       return started.runId;
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (requiresEmailVerification(error)) {
+        setStartError({
+          user: "Verify your email before generating.",
+          detail:
+            "Open the verification link we emailed you — or resend it from the banner on this page.",
+        });
+      } else if (error instanceof ApiError) {
         setStartError({ user: error.userMessage, detail: error.message });
       } else {
         setStartError({
@@ -250,6 +260,7 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-6">
+      <VerifyEmailBanner />
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href={session !== null ? "/library" : "/"}

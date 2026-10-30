@@ -8,12 +8,13 @@
  */
 
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { fillAuthForm, PROVIDER_SETUP_SEED } from "./helpers";
+import { fillAuthForm, mockAuthRoutes, PROVIDER_SETUP_SEED } from "./helpers";
 
 const USER = {
   id: "usr_probe001",
   email: "probe@example.com",
   planTier: "pro",
+  emailVerifiedAt: "2026-01-01T00:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -177,33 +178,40 @@ function interceptUserEndpoints(
   page.route("**/api/projects?*", overrides.projects ?? oh(LIBRARY_PAGE));
   page.route("**/api/providers", oh(PROVIDERS));
   page.route("**/api/users/me/provider-config", oh({ config: { provider: "openrouter", model: "z-ai/glm-5.3-flash", updatedAt: "t" } }));
-  page.route("**/api/users/me/preferences", oh({ preferences: { theme: "dark", defaultProvider: "openrouter", defaultModel: "z-ai/glm-5.3-flash" } }));
+  page.route("**/api/users/me/preferences", oh({ preferences: { theme: "dark" } }));
+  page.route("**/api/billing/plans", oh({ plans: [], provider: "stub", checkoutCompletable: true }));
+  page.route("**/api/billing/subscription", oh({ subscription: null, planTier: "free" }));
+  page.route("**/api/auth/resend-verification", oh({}));
   page.route("**/api/projects/proj_1/architecture", oh(MODEL_FIXTURE));
   page.route("**/api/projects/proj_2/architecture", oh(MODEL_FIXTURE));
+  mockAuthRoutes(page, USER);
 }
 
 const AUTH_SAVE = `
-  window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
-    user: ${JSON.stringify(USER)},
-    accessToken: "token_probe_001",
-    expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
-  }));
+  window.sessionStorage.setItem("sda:auth:user", JSON.stringify({ user: ${JSON.stringify(USER)} }));
 `;
 
 /** Seeds once: a later navigation (e.g. the 401 redirect) must not re-create
- *  the session that the app just discarded. */
+ *  the identity that the app just discarded. */
 const AUTH_SAVE_ONCE = `
   if (window.sessionStorage.getItem("sda:auth:seeded") === null) {
     window.sessionStorage.setItem("sda:auth:seeded", "1");
-    window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
-      user: ${JSON.stringify(USER)},
-      accessToken: "token_probe_001",
-      expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
-    }));
+    window.sessionStorage.setItem("sda:auth:user", JSON.stringify({ user: ${JSON.stringify(USER)} }));
   }
 `;
 
 test.describe("register / login / logout / restore", () => {
+  test("login throttle shows neutral copy, not the generation message", async ({ page }) => {
+    interceptUserEndpoints(page, { login: ofail("QUOTA_EXCEEDED", "Too many attempts", 429) });
+    await page.goto("/login");
+    await fillAuthForm(page, "probe@example.com", "supersecret1");
+    await page.getByRole("button", { name: "Sign in" }).click();
+
+    const alert = page.getByRole("main").getByRole("alert");
+    await expect(alert).toContainText("Too many requests. Wait a moment and try again.");
+    await expect(alert).not.toContainText("Generation limit");
+  });
+
   test("register lands on the library with the Bearer header attached", async ({ page }) => {
     const authHeaders: string[] = [];
     page.on("request", (request) => {
@@ -211,7 +219,7 @@ test.describe("register / login / logout / restore", () => {
       if (header !== undefined) authHeaders.push(header);
     });
     interceptUserEndpoints(page);
-    await page.addInitScript(AUTH_SAVE.replace("sda:auth:session", "sda:none")); // keep storage empty pre-login
+    await page.addInitScript(AUTH_SAVE.replace("sda:auth:user", "sda:none")); // keep storage empty pre-login
     await page.goto("/login");
     await page.getByRole("tab", { name: "Create account" }).click();
     await fillAuthForm(page, "probe@example.com", "supersecret1", { confirm: true, mode: "register" });
@@ -316,28 +324,35 @@ test.describe("session restore + project library", () => {
     await expect(page).toHaveURL(/\/login\?next=(\/|%2F)library$/);
   });
 
-  test("expired session is never restored and drops back to login", async ({ page, context }) => {
-    await context.addInitScript(`
-      window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
-        user: ${JSON.stringify(USER)},
-        accessToken: "expired", expiresAt: new Date(Date.now() - 1000).toISOString(),
-      }));
-    `);
+  test("failed refresh signs the tab out and returns to login", async ({ page }) => {
     interceptUserEndpoints(page);
+    // Registered after the shared mocks so this 401 wins the route match.
+    await page.route("**/api/auth/refresh", (route) =>
+      route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: false,
+          statusCode: 401,
+          message: "Refresh token reuse detected.",
+          error: { code: "AUTH_INVALID_CREDENTIALS", details: { reason: "reuse" } },
+        }),
+      }),
+    );
+    await page.addInitScript(AUTH_SAVE);
     await page.goto("/library");
     await expect(page).toHaveURL(/\/login/);
-    // Dropped at the source on read, not merely ignored by the header.
     await expect
       .poll(() =>
-        page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")),
+        page.evaluate(() => window.sessionStorage.getItem("sda:auth:user")),
       )
       .toBeNull();
   });
 
-  test("invalid stored session shape is not restored", async ({ page, context }) => {
+  test("invalid stored identity is not restored", async ({ page, context }) => {
     await context.addInitScript(`
-      window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
-        user: { id: "usr_broken" }, accessToken: "t", expiresAt: "2099-01-01T00:00:00.000Z",
+      window.sessionStorage.setItem("sda:auth:user", JSON.stringify({
+        user: { id: "usr_broken" },
       }));
     `);
     interceptUserEndpoints(page);
@@ -345,7 +360,7 @@ test.describe("session restore + project library", () => {
     await expect(page).toHaveURL(/\/login/);
     await expect
       .poll(() =>
-        page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")),
+        page.evaluate(() => window.sessionStorage.getItem("sda:auth:user")),
       )
       .toBeNull();
   });
@@ -629,7 +644,7 @@ test.describe("dashboard", () => {
     await expect(page).toHaveURL(/\/login\?next=%2Fdashboard$/);
     await expect
       .poll(() =>
-        page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")),
+        page.evaluate(() => window.sessionStorage.getItem("sda:auth:user")),
       )
       .toBeNull();
     await expect(page.getByText("probe@example.com")).toHaveCount(0);
@@ -644,7 +659,7 @@ test.describe("dashboard", () => {
     await expect(page).toHaveURL(/\/login\?next=%2Flibrary$/);
     await expect
       .poll(() =>
-        page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")),
+        page.evaluate(() => window.sessionStorage.getItem("sda:auth:user")),
       )
       .toBeNull();
     await expect(page.getByText("probe@example.com")).toHaveCount(0);
@@ -659,7 +674,7 @@ test.describe("dashboard", () => {
     await expect(page).toHaveURL(/\/login\?next=%2Fsettings$/);
     await expect
       .poll(() =>
-        page.evaluate(() => window.sessionStorage.getItem("sda:auth:session")),
+        page.evaluate(() => window.sessionStorage.getItem("sda:auth:user")),
       )
       .toBeNull();
     await expect(page.getByText("probe@example.com")).toHaveCount(0);
@@ -702,7 +717,7 @@ test.describe("unblocked path journeys", () => {
       return oh({ runId: "run_regen" }, 202)(route);
     });
     await page.addInitScript(`
-      window.sessionStorage.setItem("sda:auth:session", JSON.stringify({
+      window.sessionStorage.setItem("sda:auth:user", JSON.stringify({
         user: ${JSON.stringify(USER)},
         accessToken: "token_probe_001",
         expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),

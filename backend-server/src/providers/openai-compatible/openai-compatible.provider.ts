@@ -295,6 +295,25 @@ export class OpenAiCompatibleProvider {
       );
     }
 
+    // Groq rejects strict json_schema output with a 400 schema-mismatch message.
+    // Treat it as a format failure: downgrade the mode when possible, and let
+    // the bounded repair loop handle it once prompt mode is the last resort.
+    if (
+      [400, 422].includes(status) &&
+      /does not match the expected schema|json_validate_failed|schema validation|failed to validate.{0,40}schema|does not conform to.{0,40}schema|generated json/i.test(
+        providerMessage,
+      )
+    ) {
+      if (mode !== "prompt") {
+        return { kind: "capability" };
+      }
+      throw new AppError(
+        "INVALID_MODEL_OUTPUT",
+        "The model output did not match the required schema.",
+        { providerStatus: status, reason: "schema_mismatch", model },
+      );
+    }
+
     const capabilityFailure =
       [400, 404, 422].includes(status) &&
       /response_format|json_schema|structured|unsupported|require_parameters|no endpoints/i.test(

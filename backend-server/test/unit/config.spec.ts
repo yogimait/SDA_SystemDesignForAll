@@ -28,7 +28,33 @@ describe("loadConfig", () => {
       ],
       OPENROUTER_REASONING_EFFORT: "low",
       GROQ_REASONING_EFFORT: "low",
+      ACCESS_TOKEN_TTL: 15 * 60 * 1000,
+      REFRESH_TOKEN_TTL: 30 * 24 * 60 * 60 * 1000,
+      REQUIRE_EMAIL_VERIFICATION: false,
+      APP_BASE_URL: "http://localhost:3000",
+      AUTH_THROTTLE_LIMIT: 5,
+      AUTH_THROTTLE_TTL_MS: 60_000,
     });
+    expect(config.CSRF_SECRET).toBeUndefined();
+    expect(config.STRIPE_SECRET_KEY).toBeUndefined();
+  });
+
+  it("parses token durations and rejects malformed ones", () => {
+    const config = loadConfig({
+      ACCESS_TOKEN_TTL: "45m",
+      REFRESH_TOKEN_TTL: "14d",
+      REQUIRE_EMAIL_VERIFICATION: "1",
+    } as NodeJS.ProcessEnv);
+    expect(config.ACCESS_TOKEN_TTL).toBe(45 * 60 * 1000);
+    expect(config.REFRESH_TOKEN_TTL).toBe(14 * 24 * 60 * 60 * 1000);
+    expect(config.REQUIRE_EMAIL_VERIFICATION).toBe(true);
+
+    expect(() =>
+      loadConfig({ ACCESS_TOKEN_TTL: "15" } as NodeJS.ProcessEnv),
+    ).toThrow(/ACCESS_TOKEN_TTL/);
+    expect(() =>
+      loadConfig({ ACCESS_TOKEN_TTL: "0s" } as NodeJS.ProcessEnv),
+    ).toThrow(/ACCESS_TOKEN_TTL/);
   });
 
   it("coerces numbers and boolean flags", () => {

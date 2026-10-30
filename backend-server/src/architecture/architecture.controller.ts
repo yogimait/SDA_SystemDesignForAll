@@ -23,6 +23,7 @@ import {
   requireProject,
   type ProjectRequest,
 } from "../common/access/project-access.guard.js";
+import { RequireVerifiedEmailGuard } from "../common/access/verified-email.guard.js";
 import { readProviderKey } from "../common/http/headers.js";
 import { ZodValidationPipe } from "../common/validation/zod-validation.pipe.js";
 import { RunService } from "../generation/run.service.js";
@@ -38,7 +39,7 @@ export class ArchitectureController {
 
   @Post()
   @HttpCode(202)
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(ThrottlerGuard, RequireVerifiedEmailGuard)
   start(
     @Req() request: ProjectRequest,
     @Body(new ZodValidationPipe(GenerationOptionsSchema.default({})))
@@ -54,7 +55,7 @@ export class ArchitectureController {
 
   @Post("regenerate")
   @HttpCode(202)
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(ThrottlerGuard, RequireVerifiedEmailGuard)
   regenerate(
     @Req() request: ProjectRequest,
     @Body(new ZodValidationPipe(RegenerateArchitectureRequestSchema))

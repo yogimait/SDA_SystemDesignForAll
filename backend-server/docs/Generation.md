@@ -93,8 +93,8 @@ flowchart LR
   FV -->|warnings only| V[Persist architecture version]
 ```
 
-- Phase A (`hld_model`) generates components, connections, flows, technology decisions, scalability notes, and failure scenarios. Budget: 32k output tokens, 600s. The prompt targets 6-12 components, 8-16 connections, and 1-2 flows; every component must appear in a connection.
-- Phase B (`lld_dsa_model`) generates classes, relationships, patterns, DSA recommendations, learning steps, and model metadata, with the HLD pinned as context. Budget: 64k output tokens, 900s. The prompt targets 8-14 classes, 10-20 relationships, 2-5 patterns, 3-5 DSA recommendations, and 4-8 learning steps. Reasoning effort defaults to `low` on OpenRouter, but reasoning tokens still share the output budget; GLM-5.3 Flash uses a large share even at low. A truncated response fails fast instead of repeating the same over-budget repair.
+- Phase A (`hld_model`) generates components, connections, flows, technology decisions, scalability notes, and failure scenarios. Budget: 64k output tokens, 900s. The prompt targets 6-12 components, 8-16 connections, and 1-2 flows; every component must appear in a connection. A `finish_reason: length` truncation is retried once with a compact-output instruction (≤8 components, ≤10 connections, 1-2 flows); repeated truncation fails with `GENERATION_REPAIR_FAILED`.
+- Phase B (`lld_dsa_model`) generates classes, relationships, patterns, DSA recommendations, learning steps, and model metadata, with the HLD pinned as context. Budget: 64k output tokens, 900s. The prompt targets 8-14 classes, 10-20 relationships, 2-5 patterns, 3-5 DSA recommendations, and 4-8 learning steps. Reasoning effort defaults to `low` on OpenRouter, but reasoning tokens still share the output budget. A truncated response fails fast instead of repeating the same over-budget repair.
 - Each phase gets at most 3 attempts: initial + 2 repairs. Repairs include the exact validation issue list and the previous output.
 - A failed Phase B leaves the successful Phase A stage row intact.
 - `findReusableHld()` can reuse a validated HLD from an earlier failed/interrupted full run with the same requirements hash and valid structure. This avoids paying for Phase A twice.
@@ -116,7 +116,7 @@ Only requirements, HLD, and LLD/DSA call the model. Validation and persistence a
 | LLD + DSA + learning | 1 + up to 2 repairs = 1–3 | One combined `lld_dsa_model` stage. |
 | Validation + persistence | 0 | Local code. |
 
-A full architecture from an idea is therefore **3–8 model calls** including requirements. A retry with HLD reuse is **2–5 calls**. Each repair is another full model request with the previous output and the failing issues; calls run sequentially, never in parallel. In a local sample of successful runs, requirements used 1 call, HLD used 3 (when newly generated), and LLD/DSA used 3; the latest run reused HLD and used 3 LLD/DSA calls, totaling 64,230 tokens.
+A full architecture from an idea is therefore **3–8 model calls** including requirements. A retry with HLD reuse is **2–5 calls**. Each repair is another full model request with the previous output and the failing issues; calls run sequentially, never in parallel. In a local sample of successful runs, requirements used 1 call, HLD used 3 (when newly generated), and LLD/DSA used 3; the latest run reused HLD and used 3 LLD/DSA calls, totaling 64,230 tokens. A 2026-10-30 smoke with the 64k HLD budget completed in 81.5 s: requirements 701 tokens (1 call), HLD 4,188 tokens (1 call), LLD/DSA 24,502 tokens (2 attempts), 28,690 tokens total, valid version 1 with 0 errors and 0 warnings.
 
 ### Token optimizations
 
@@ -150,11 +150,11 @@ DSA regeneration does not touch `hld` or `lld`; the e2e suite asserts the untouc
 | Provider network / 5xx | `PROVIDER_UNAVAILABLE` |
 | Context length or capability rejection | `PROVIDER_UNSUPPORTED_CAPABILITY` |
 | Invalid JSON / empty / oversized output | Repaired when parseable; oversized output is rejected. If still failing after attempts, `GENERATION_REPAIR_FAILED`. |
-| Truncated output (`finish_reason: length` or incomplete JSON) | Fails fast with `GENERATION_REPAIR_FAILED`; retrying with the same output budget cannot help. Issue rule `truncated_output` preserves the provider reason. |
+| Truncated output (`finish_reason: length` or incomplete JSON) | HLD: one compact retry, then `GENERATION_REPAIR_FAILED`. Other stages: `GENERATION_REPAIR_FAILED` immediately. Issue rule `truncated_output` preserves the provider reason. |
 | Schema or validator errors after repairs | `GENERATION_REPAIR_FAILED` |
 | Unexpected exception | `INTERNAL_ERROR` |
 
-`failRun()` marks the currently running stage failed, then the run failed, with the same code/message/details. Usage accumulated before the failure is retained.
+`failRun()` marks the currently running stage failed, then the run failed, with the same code/message/details. Usage accumulated before the failure is retained, and usage attached to the provider failure (`error.details.usage`, including the nested `providerOutput` of a repair-exhausted error) is added to the run and stored on the failed stage. Failed calls therefore count toward plan tokens and dashboard analytics.
 
 ## Live run stream (SSE)
 

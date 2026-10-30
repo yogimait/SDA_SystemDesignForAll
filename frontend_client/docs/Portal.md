@@ -17,7 +17,7 @@ Post-[[Workspace-LLD]] round: accounts, project library, provider preferences, a
 | --- | --- | --- |
 | `/library` | `GET /api/projects?status&limit&cursor` | Status filter (4 statuses + all, horizontal scroll row on phones with 44px hit targets), cursor pagination (Load more), workspace link per project, **provider setup trigger kept visibly labeled at every width** (`labeled-provider` rule in globals.css; BYOK lives on the landing + library pages only). |
 | `/dashboard` | `GET /api/dashboard?range` | Range switch (7/30/90), usage totals, token buckets, top models, recent runs (`sortRunsNewestFirst`), empty state, plan-gate card for `PLAN_*` codes. Formatting: `lib/dashboard/format.ts`. Range switches keep the previous content with a subtle `aria-busy` + "Updating…" status — skeletons only on first load (QA D3). Chart ticks are edge-anchored and evenly spread (`bucketTickIndices`) so they never clip (QA D4). |
-| `/settings` | `GET/PUT /api/users/me/provider-config` | Saved generation defaults (**provider + model, no API key**). The provider and model are dropdowns fed by `GET /api/providers` (provider names, not raw ids; model disabled until a provider is picked). This is the **single source**: the provider dialog pre-fills from it and writes it back on save, so a run uses the choice shown here once its key is in the tab. |
+| `/settings` | `GET/PUT /api/users/me/provider-config` + `GET /api/billing/subscription` + `DELETE /api/users/me` | Generation defaults (**provider + model, no API key**), Billing (plan, renewal, cancel, provider portal), Account (verification status + resend, password-confirmed delete). One provider/model source shared with the dialog; see [[Billing]] and [[Auth-Flows]]. |
 
 ## Settings: one source of truth
 

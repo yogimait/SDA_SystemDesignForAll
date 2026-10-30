@@ -76,4 +76,65 @@ describe("GroqProvider", () => {
       "Bearer gsk-test",
     );
   });
+
+  it("downgrades strict json_schema when Groq reports a schema mismatch", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const fetchImpl = (async (_url, init) => {
+      if (typeof init?.body !== "string") {
+        throw new Error("Expected a JSON body.");
+      }
+      bodies.push(JSON.parse(init.body) as Record<string, unknown>);
+      if (bodies.length === 1) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "Generated JSON does not match the expected schema",
+              type: "invalid_request_error",
+              code: "json_validate_failed",
+            },
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+      return response();
+    }) as FetchLike;
+    const provider = new GroqProvider(fetchImpl, {
+      GROQ_REASONING_EFFORT: "low",
+    });
+
+    const result = await provider.bind("gsk-test").generateStructured(input());
+
+    expect(result.data).toEqual({ ok: true });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]?.response_format).toMatchObject({ type: "json_schema" });
+    expect(bodies[1]?.response_format).toEqual({ type: "json_object" });
+  });
+
+  it("classifies a schema mismatch in prompt mode as repairable invalid output", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: "Generated JSON does not match the expected schema",
+            code: "json_validate_failed",
+          },
+        }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      );
+    }) as FetchLike;
+    const provider = new GroqProvider(fetchImpl, {
+      GROQ_REASONING_EFFORT: "low",
+    });
+
+    await expect(
+      provider.bind("gsk-test").generateStructured(input()),
+    ).rejects.toMatchObject({
+      code: "INVALID_MODEL_OUTPUT",
+      details: { reason: "schema_mismatch" },
+    });
+    // json_schema → json_object → prompt, then the error is repairable.
+    expect(calls).toBe(3);
+  });
 });

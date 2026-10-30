@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiFetch, ApiError } from "@/lib/api/client";
+import { authRateLimitCopy } from "@/lib/auth/messages";
 import { saveSession } from "@/lib/session/auth";
 import {
   FLOATING_HEADER_CARD,
@@ -59,7 +60,10 @@ function AuthForms() {
       router.push(next);
     } catch (caught) {
       if (caught instanceof ApiError) {
-        setError({ user: caught.userMessage, detail: caught.message });
+        setError({
+          user: authRateLimitCopy(caught) ?? caught.userMessage,
+          detail: caught.message,
+        });
       } else {
         setError({
           user: "Signing in failed unexpectedly.",
@@ -104,9 +108,19 @@ function AuthForms() {
                 />
               </div>
               <div>
-                <label htmlFor={`password-${mode}`} className="text-foreground text-sm font-medium">
-                  Password
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor={`password-${mode}`} className="text-foreground text-sm font-medium">
+                    Password
+                  </label>
+                  {mode === "login" ? (
+                    <Link
+                      href="/forgot-password"
+                      className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
+                  ) : null}
+                </div>
                 <Input
                   id={`password-${mode}`}
                   type="password"
@@ -192,8 +206,9 @@ function LoginContent() {
       </div>
       <AuthForms />
       <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
-        Your access token lives in this browser tab only (sessionStorage). Project
-        access keys stay per-project and are required to open a workspace.
+        Access tokens last 15 minutes and are refreshed automatically in this
+        tab; the refresh credential is an httpOnly cookie. Project access keys
+        stay per-project and are required to open a workspace.
       </p>
       <Link
         href="/"

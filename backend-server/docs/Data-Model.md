@@ -7,6 +7,10 @@ One Drizzle schema drives both PGlite (local/test) and Postgres (production). En
 ```mermaid
 erDiagram
   USERS ||--o{ AUTH_SESSIONS : "has sessions"
+  USERS ||--o{ EMAIL_VERIFICATION_TOKENS : "verifies"
+  USERS ||--o{ PASSWORD_RESET_TOKENS : "resets"
+  USERS ||--o{ REFRESH_TOKENS : "refreshes"
+  USERS ||--o| BILLING_SUBSCRIPTIONS : "bills"
   USERS ||--o{ PROVIDER_CONFIGS : "saves"
   USERS ||--o{ USER_PREFERENCES : "has"
   USERS ||--o{ PROJECTS : "owns"
@@ -35,6 +39,7 @@ erDiagram
     text email
     text password_hash
     text plan_tier
+    timestamptz email_verified_at
     timestamptz created_at
     timestamptz updated_at
   }
@@ -44,6 +49,48 @@ erDiagram
     text token_hash
     timestamptz expires_at
     timestamptz created_at
+  }
+  REFRESH_TOKENS {
+    uuid id PK
+    text user_id FK
+    text token_hash
+    uuid family_id
+    timestamptz expires_at
+    timestamptz revoked_at
+    uuid replaced_by
+  }
+  EMAIL_VERIFICATION_TOKENS {
+    uuid id PK
+    text user_id FK
+    text token_hash
+    timestamptz expires_at
+    timestamptz consumed_at
+  }
+  PASSWORD_RESET_TOKENS {
+    uuid id PK
+    text user_id FK
+    text token_hash
+    timestamptz expires_at
+    timestamptz consumed_at
+  }
+  BILLING_SUBSCRIPTIONS {
+    uuid id PK
+    text user_id FK
+    text plan
+    text status
+    text provider
+    text customer_id
+    text subscription_id
+    timestamptz current_period_end
+    boolean cancel_at_period_end
+  }
+  BILLING_EVENTS {
+    uuid id PK
+    text provider
+    text idempotency_key
+    text type
+    jsonb payload
+    timestamptz processed_at
   }
   PROVIDER_CONFIGS {
     text user_id PK
@@ -116,8 +163,14 @@ erDiagram
 
 | Table | Key constraints and indexes |
 | --- | --- |
-| `users` | Text primary key (`usr_`), unique normalized email, scrypt password hash, `free`/`pro` plan, timestamps. |
-| `auth_sessions` | UUID primary key, user FK cascade, unique SHA-256 token hash, expiry, created timestamp. Logout deletes the row. |
+| `users` | Text primary key (`usr_`), unique normalized email, scrypt password hash, `free`/`pro` plan, nullable `email_verified_at`, timestamps. |
+| `auth_sessions` | UUID primary key, user FK cascade, unique SHA-256 token hash, expiry (`ACCESS_TOKEN_TTL`), created timestamp. Logout deletes the row. |
+| `email_verification_tokens` | UUID primary key, user FK cascade, unique token hash, 24 h expiry, `consumed_at` for single use. |
+| `password_reset_tokens` | UUID primary key, user FK cascade, unique token hash, 1 h expiry, `consumed_at` for single use. |
+| `refresh_tokens` | UUID primary key, user FK cascade, unique token hash, rotation `family_id`, expiry, `revoked_at`, `replaced_by`, optional user agent/IP. Reuse revokes the family. |
+| `dev_outbox` | Development-only email ledger: kind, recipient, link, created timestamp. Links carry raw tokens only outside production; production stores `<redacted>` placeholders. |
+| `billing_subscriptions` | One row per user (unique `user_id`, FK cascade): plan, status, provider, customer/subscription ids, period end, `cancel_at_period_end`, timestamps. |
+| `billing_events` | Webhook ledger: unique `idempotency_key`, optional nullable `user_id` FK (cascade on user delete), provider, type, JSONB payload, `processed_at`. |
 | `provider_configs` | User primary key/FK, provider, model, optional reasoning effort, updated timestamp. There is no API-key column. |
 | `user_preferences` | User primary key/FK, optional theme/default provider/model/reasoning effort, updated timestamp. |
 | `projects` | UUID primary key; nullable `owner_id` FK set null on user delete; status union; snapshot JSONB; indexes on `created_at` and `(owner_id, created_at)`. |
@@ -157,7 +210,7 @@ Requirement ids are server-assigned on first generation and preserved by clients
 ## Migrations
 
 - Schema source: `src/database/schema.ts`.
-- Generated SQL: `drizzle/0000_first_lyja.sql` (initial tables), `drizzle/0001_loving_nick_fury.sql` (active-run partial unique index), and `drizzle/0002_faulty_the_captain.sql` (users, sessions, provider configs, preferences, nullable project owner), with metadata under `drizzle/meta/`.
+- Generated SQL: `drizzle/0000_first_lyja.sql` (initial tables), `drizzle/0001_loving_nick_fury.sql` (active-run partial unique index), `drizzle/0002_faulty_the_captain.sql` (users, sessions, provider configs, preferences, nullable project owner), `drizzle/0003_omniscient_bloodaxe.sql` (email verification, password reset, refresh token, dev outbox, billing subscription and event tables, `users.email_verified_at`), and `drizzle/0004_long_toxin.sql` (`billing_events.user_id` FK), with metadata under `drizzle/meta/`.
 - Generate after schema edits: `npm run db:generate` (drizzle-kit, generate-only config).
 - Apply: `DatabaseService.onModuleInit()` runs the appropriate Drizzle migrator on boot. Migrations are idempotent and recorded in Drizzle's migrations table.
 - The migrations folder is resolved relative to the compiled/source database service, so both `src` and `dist` execution find `backend-server/drizzle`.
@@ -184,4 +237,8 @@ flowchart LR
 
 The raw key is returned only by project creation. `AccessKeyService` hashes it with SHA-256 and the guard compares hashes with `timingSafeEqual`. A database leak therefore does not expose usable keys, and the 256-bit random space makes brute force infeasible.
 
-Related: [[Home]] · [[Architecture]] · [[Generation]] · [[API]] · [[Providers]] · [[Testing]]
+## Deletion and cascade behavior
+
+Deleting a user row cascades sessions, email/reset/refresh tokens, provider config, preferences, subscriptions, and billing events. `projects.owner_id` is `ON DELETE SET NULL`, so an owned project survives its owner and stays reachable through its `x-project-key`; `ownerId` is then `null` in API responses.
+
+Related: [[Home]] · [[Architecture]] · [[Generation]] · [[API]] · [[Providers]] · [[Auth]] · [[Billing]] · [[Testing]]

@@ -49,4 +49,24 @@ export class DrizzleUserRepository implements UserRepository {
       .returning();
     return user ?? null;
   }
+
+  async markEmailVerified(id: string, at: Date): Promise<UserRow | null> {
+    const [user] = await this.database.db
+      .update(users)
+      .set({ emailVerifiedAt: at, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user ?? null;
+  }
+
+  async updatePasswordHash(id: string, passwordHash: string): Promise<void> {
+    await this.database.db
+      .update(users)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(eq(users.id, id));
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.database.db.delete(users).where(eq(users.id, id));
+  }
 }

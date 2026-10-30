@@ -13,6 +13,7 @@ import {
   type StoredSession,
   clearSession,
   loadSession,
+  sessionBootSettled,
 } from "@/lib/session/auth";
 import { apiFetch } from "@/lib/api/client";
 
@@ -42,6 +43,18 @@ function getServerSnapshot(): null {
 export function useSession(): StoredSession | null {
   const session = useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
   return session;
+}
+
+/**
+ * True once the boot refresh attempt finished. Route guards wait for this so a
+ * new tab with only the refresh cookie is restored instead of bounced to login.
+ */
+export function useAuthBootSettled(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => sessionBootSettled(),
+    () => false,
+  );
 }
 
 /**
