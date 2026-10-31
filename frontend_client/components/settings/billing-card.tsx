@@ -102,6 +102,11 @@ export function BillingCard() {
         dataSchema: BillingPortalResponseSchema,
       });
       const target = checkoutTarget(portal, window.location.origin);
+      if (target.kind === "invalid") {
+        setActionError("The billing portal returned an unsafe redirect.");
+        setBusy(null);
+        return;
+      }
       window.location.assign(target.url);
     } catch (caught) {
       setActionError(
@@ -147,7 +152,7 @@ export function BillingCard() {
             Plan, renewal, and the provider portal.
           </p>
         </div>
-        <span className="text-muted-foreground font-mono text-[10px] uppercase">{provider ?? "…"}</span>
+        <span className="text-muted-foreground text-[10px]">{provider ?? "…"}</span>
       </div>
 
       {loadError !== null ? (
@@ -164,7 +169,7 @@ export function BillingCard() {
       {billing !== null ? (
         <div className="mt-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="border-border text-foreground rounded-full border border-solid px-2.5 py-0.5 font-mono text-[11px] uppercase">
+            <span className="border-border text-foreground rounded-full border border-solid px-2.5 py-0.5 text-[11px]">
               {planTier}
             </span>
             <p className="text-muted-foreground text-xs">{statusCopy(subscription)}</p>

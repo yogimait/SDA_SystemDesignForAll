@@ -64,7 +64,7 @@ Unknown API routes return a 404 envelope with `ROUTE_NOT_FOUND`. Responses set `
 | `POST` | `/api/auth/forgot-password` | 200 | Always 200; queues a reset link. |
 | `POST` | `/api/auth/reset-password` | 200 | Consume a reset token; revoke sessions. |
 | `POST` | `/api/auth/refresh` | 200 | Rotate the refresh cookie; new Bearer session. |
-| `DELETE` | `/api/users/me` | 200 | Password-confirmed account deletion. |
+| `DELETE` | `/api/users/me` | 200 | Password-confirmed account deletion; throttled step-up. |
 | `GET` | `/api/dev/outbox` | 200 | Development-only email links; 404 in production. |
 | `GET` | `/api/dashboard` | 200 | Usage totals, daily buckets, top models, recent runs. |
 | `POST` | `/api/projects/:id/requirements` | 202 | Start a requirements generation run. |
@@ -186,7 +186,7 @@ Send `Authorization: Bearer <accessToken>` to `GET /api/auth/me`, `POST /api/aut
 - CSRF or Origin failures are `400 VALIDATION_ERROR` with `details.reason = "csrf_invalid"` or `"origin_not_allowed"`. Auth-throttle rejections are `429 QUOTA_EXCEEDED` with a `Retry-After` header.
 - Without SMTP, links land in the development outbox: `GET /api/dev/outbox` lists the last 50 messages. The route is a 404 in production.
 - `REQUIRE_EMAIL_VERIFICATION=1` makes project creation and every run start return 401 `AUTH_REQUIRED` with `details.reason = "email_not_verified"` until the address is confirmed.
-- `DELETE /api/users/me { password }` deletes the account. Owned projects keep working through their `x-project-key` with `ownerId: null`; sessions, tokens, configs, preferences, subscriptions, and billing events cascade.
+- `DELETE /api/users/me { password }` deletes the account. Owned projects keep working through their `x-project-key` with `ownerId: null`; sessions, tokens, configs, preferences, subscriptions, and billing events cascade. The password step-up uses the auth throttle and returns `429 QUOTA_EXCEEDED` with `Retry-After` after repeated failures.
 
 ### Billing
 
@@ -316,7 +316,7 @@ Content-Type: application/json
 }
 ```
 
-The `model` is the canonical `ArchitectureModel` from `@sda/contracts`: requirements snapshot, LLD, HLD, DSA, and learning steps. Client-side export/PDF uses `GET /api/projects/:id` plus this response; no server-side PDF renderer or export endpoint is provided.
+The `model` is the canonical `ArchitectureModel` from `@sda/contracts`: requirements snapshot, LLD, HLD, DSA, and learning steps. Client-side export/PDF uses `GET /api/projects/:id` plus this response; no server-side PDF renderer or export endpoint is provided. Generation enforces must-have coverage before persisting, so a model produced by this version does not carry the `unreferenced_must_requirement` warning.
 
 ## Poll a run
 

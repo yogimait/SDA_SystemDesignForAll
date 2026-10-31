@@ -123,7 +123,7 @@ export function LibraryContent() {
           <div>
             <h1 className="text-foreground text-xl font-medium tracking-tight">Project library</h1>
             <p className="text-muted-foreground mt-1 text-sm">
-              {`${session.user.email}’s designs`} — opening keeps access scoped to per-project
+              {`${session.user.email}’s designs`}. Opening keeps access scoped to per-project
               keys.
             </p>
           </div>
@@ -190,7 +190,7 @@ export function LibraryContent() {
                     </h2>
                   </div>
                   <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-                    <span className="font-mono">{STATUS_LABEL[project.status]}</span>
+                    <span>{STATUS_LABEL[project.status]}</span>
                     <span aria-hidden="true">·</span>
                     <span>updated {new Date(project.updatedAt).toLocaleDateString("en-US")}</span>
                     {project.currentArchitectureVersion !== null ? (
@@ -247,7 +247,7 @@ function EmptyState() {
     <div className="border-border bg-card mt-6 rounded-xl border border-dashed p-8 text-center">
       <h2 className="text-foreground text-base font-medium">No projects here yet</h2>
       <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-        Start a design from the landing page — every confirmed architecture
+        Start a design from the landing page. Every confirmed architecture
         shows up in this library for its owner.
       </p>
       <Link href="/" className="text-primary hover:underline mt-4 inline-block text-sm underline-offset-4">

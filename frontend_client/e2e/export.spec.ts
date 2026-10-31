@@ -168,7 +168,7 @@ test("export renders the document, prints light, and hides app chrome", async ({
     "href",
     "/projects/proj_1/workspace",
   );
-  await expect(page.getByText(/Download the SVG in each design section/)).toBeVisible();
+  await expect(page.getByText(/Download an SVG in each design section/)).toBeVisible();
   // Raw contract ids never print (fr_/nfr_/q_/asm_/step_ refs are UI keys only).
   await expect(page.getByText(/fr_/)).toHaveCount(0);
   await expect(page.getByText(/nfr_/)).toHaveCount(0);
@@ -287,7 +287,7 @@ test("invalid model blocks the export with an error card", async ({ page }) => {
   });
   await page.addInitScript(AUTH_SEED);
   await page.goto("/projects/proj_1/export");
-  await expect(page.getByText("The model failed validation — export blocked.")).toBeVisible();
+  await expect(page.getByText("The model failed validation. Export blocked.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Print / Save as PDF" })).toHaveCount(0);
 });
 
@@ -338,4 +338,41 @@ test("?next= round-trip: signing in returns to the requested page", async ({ pag
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+});
+
+test("diagrams-only print emits exactly the two landscape pages", async ({ page }) => {
+  interceptExport(page);
+  await page.addInitScript(AUTH_SEED);
+  await page.goto("/projects/proj_1/export");
+  await expect(page.getByRole("heading", { name: "Rate Limiter" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Diagrams only", exact: true }).click();
+  await expect(page.locator("article.export-doc")).toHaveAttribute(
+    "data-print-scope",
+    "diagrams",
+  );
+
+  await page.emulateMedia({ media: "print" });
+  // Text pages and their legends are gone; both landscape diagrams remain.
+  await expect(page.getByRole("region", { name: "Requirements" })).toBeHidden();
+  await expect(page.getByRole("region", { name: "High-level design" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Low-level design" })).toBeVisible();
+  await expect(page.locator(".export-diagram .diagram-legend").first()).toBeHidden();
+
+  const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+  const raw = pdf.toString("latin1");
+  const boxes = [...raw.matchAll(/\/MediaBox\s*\[([^\]]+)\]/g)].map((match) =>
+    match[1].split(/\s+/).map(Number),
+  );
+  const landscape = boxes.filter((box) => (box[2] ?? 0) > (box[3] ?? 0));
+  // No cover, no text pages, no trailing blank: exactly HLD + LLD.
+  expect(boxes).toHaveLength(2);
+  expect(landscape).toHaveLength(2);
+  fs.writeFileSync(path.join("test-results", "export-diagrams-only.pdf"), pdf);
+
+  await page.emulateMedia({ media: "screen" });
+  const toggle = page.getByRole("button", { name: /Diagrams only/ });
+  await expect(toggle).toBeVisible();
+  await toggle.click();
+  await expect(page.locator("article.export-doc")).toHaveAttribute("data-print-scope", "full");
 });

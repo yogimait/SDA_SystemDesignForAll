@@ -61,7 +61,10 @@ Rules:
 - Include scalability notes and failure scenarios with impact, mitigation, and
   trade-off. Stay honest: this is reasoning, not a stress test.
 - requirementRefs must use ids from the confirmed requirements, or be empty when
-  no requirement applies.`;
+  no requirement applies. Every must-have functional requirement (priority
+  "must") must appear in the requirementRefs of at least one component or flow
+  that genuinely implements it. Never invent ids or attach a requirement to
+  unrelated elements.`;
 }
 
 export function hldUserPrompt(
@@ -109,7 +112,12 @@ Rules:
 - Learning steps must reference existing element ids from the HLD or LLD in
   elementRefs, in a sensible teaching order.
 - meta.title and meta.summary describe this specific system.
-- HLD element ids are pinned; reuse them exactly and never rename them.`;
+- HLD element ids are pinned; reuse them exactly and never rename them.
+- requirementRefs (classes, patterns, DSA recommendations) must use ids from the
+  confirmed requirements. Every must-have functional requirement not already
+  covered by an HLD component or flow must be referenced by at least one class,
+  pattern, or DSA recommendation that genuinely implements it. Never invent ids
+  or attach a requirement to unrelated elements.`;
 }
 
 export function lldDsaUserPrompt(

@@ -5,7 +5,7 @@
  * and the boot refresh that re-mints a 15-minute access token after a reload.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { mockAuthRoutes } from "./helpers";
+import { fillAuthForm, mockAuthRoutes } from "./helpers";
 
 const USER: {
   id: string;
@@ -421,5 +421,23 @@ test.describe("access-token refresh", () => {
 
     await expect(page.getByText("Refresh path project")).toBeVisible();
     expect(authorized).toBeGreaterThan(0);
+  });
+});
+
+test.describe("auth redirect hardening", () => {
+  test("?next= cannot bounce a signed-in user off-origin", async ({ page }) => {
+    mockPortal(page);
+    await page.route("**/api/auth/login", oh({
+      user: USER,
+      accessToken: "token_next_guard",
+      tokenType: "Bearer",
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    }));
+
+    await page.goto("/login?next=%2F%2Fevil.example");
+    await fillAuthForm(page, "next@example.com", "supersecret1");
+    await page.getByRole("button", { name: "Sign in" }).click();
+
+    await expect(page).toHaveURL(/\/library$/);
   });
 });

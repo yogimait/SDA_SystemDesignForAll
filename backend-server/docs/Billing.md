@@ -29,7 +29,7 @@ The Stripe adapter uses form-encoded REST calls; no SDK dependency. `Stripe-Sign
 
 `billing_subscriptions` holds one row per user: plan, status, provider, external customer/subscription ids, period end, and `cancel_at_period_end`. `users.plan_tier` is the enforcement source used by `PlanService`.
 
-`billing_events` is the webhook ledger: `idempotency_key` (provider event id) is unique, the payload is stored, an optional `user_id` links the event to an account (cascade on user delete), and `processed_at` marks successful processing. Insert uses `ON CONFLICT DO NOTHING`, so a concurrent duplicate is acknowledged with `{ received: true, processed: false }` instead of a 500.
+`billing_events` is the webhook ledger: `idempotency_key` (provider event id) is unique, the payload is stored, an optional `user_id` links the event to an account (cascade on user delete), and `processed_at` marks successful processing. Checkout events take the user from `client_reference_id`; `customer.subscription.updated` / `deleted` resolve it through the stored subscription for that external id, so account deletion cascades them. An event for a subscription this backend never stored stays `user_id = null` and is retained. Insert uses `ON CONFLICT DO NOTHING`, so a concurrent duplicate is acknowledged with `{ received: true, processed: false }` instead of a 500.
 
 ```mermaid
 sequenceDiagram

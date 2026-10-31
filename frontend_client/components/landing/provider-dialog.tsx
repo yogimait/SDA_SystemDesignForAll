@@ -66,9 +66,12 @@ function resolveSelection(
 export function ProviderDialog({
   triggerLabel,
   onSaved,
+  marketing = false,
 }: {
   triggerLabel?: string;
   onSaved?: (setup: ProviderSetup) => void;
+  /** Marketing-page header control: 44px tall instead of the compact app size. */
+  marketing?: boolean;
 } = {}) {
   const session = useSession();
   const [open, setOpen] = useState(false);
@@ -182,6 +185,11 @@ export function ProviderDialog({
           <Button
             variant="outline"
             size={triggerLabel === undefined ? "sm" : "default"}
+            className={
+              marketing
+                ? "border-border bg-card text-foreground hover:bg-popover h-11 rounded-lg px-3.5 text-xs font-medium [&_svg]:size-3.5"
+                : undefined
+            }
             aria-label={ready ? "Provider ready" : (triggerLabel ?? "Provider setup")}
           />
         }
@@ -213,7 +221,7 @@ export function ProviderDialog({
           <div>
             <label
               htmlFor="provider-name"
-              className="text-muted-foreground mb-1.5 block text-[11px] font-medium uppercase tracking-wider"
+              className="text-muted-foreground mb-1.5 block text-xs font-medium"
             >
               Provider
             </label>
@@ -274,7 +282,7 @@ export function ProviderDialog({
           <div>
             <label
               htmlFor="provider-api-key"
-              className="text-muted-foreground mb-1.5 block text-[11px] font-medium uppercase tracking-wider"
+              className="text-muted-foreground mb-1.5 block text-xs font-medium"
             >
               API key
             </label>
@@ -300,7 +308,7 @@ export function ProviderDialog({
           <div>
             <label
               htmlFor="provider-model"
-              className="text-muted-foreground mb-1.5 block text-[11px] font-medium uppercase tracking-wider"
+              className="text-muted-foreground mb-1.5 block text-xs font-medium"
             >
               Model
             </label>
@@ -342,8 +350,8 @@ export function ProviderDialog({
             <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
               Stored in this browser tab only (sessionStorage). Cleared when you
               close the tab. Sent only for generation requests via the{" "}
-              <span className="font-mono">x-provider-api-key</span> header —
-              never logged, never stored server-side.
+              <span className="font-mono">x-provider-api-key</span> header.
+              Never logged, never stored server-side.
             </p>
           </div>
 

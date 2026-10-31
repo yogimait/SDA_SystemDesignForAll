@@ -41,7 +41,7 @@ No raw token is ever persisted in production. The development outbox stores usab
 | `POST /api/auth/resend-verification` | Bearer | Issues a fresh token; no-op when already verified. |
 | `POST /api/auth/forgot-password` | — | Always 200. Creates a reset token only when the account exists. |
 | `POST /api/auth/reset-password` | token | Consumes the token, updates the hash, deletes all sessions and revokes all refresh families. |
-| `DELETE /api/users/me` | Bearer + CSRF | Re-verifies the password, then deletes the user. |
+| `DELETE /api/users/me` | Bearer + CSRF | Re-verifies the password, then deletes the user. The password step-up is throttled like login. |
 | `GET /api/dev/outbox` | — | Development only; 404 in production. Returns the last 50 messages. |
 
 `GET /api/auth/me` returns `emailVerifiedAt` (ISO string or `null`).
@@ -85,7 +85,7 @@ Links use `APP_BASE_URL`:
 
 ## Throttling
 
-`AuthThrottlerGuard` applies `AUTH_THROTTLE_LIMIT` per `AUTH_THROTTLE_TTL_MS` (default 5 per 60 s) per IP and route to register, login, verify, resend, forgot, and reset. A blocked request is `429 QUOTA_EXCEEDED` with a `Retry-After` header. Run starts keep the separate `THROTTLE_*` budget. Token durations must be at least `1s`; `0s` fails boot.
+`AuthThrottlerGuard` applies `AUTH_THROTTLE_LIMIT` per `AUTH_THROTTLE_TTL_MS` (default 5 per 60 s) per IP and route to register, login, verify, resend, forgot, reset, and the account-deletion password step-up. A blocked request is `429 QUOTA_EXCEEDED` with a `Retry-After` header. Run starts keep the separate `THROTTLE_*` budget. Token durations must be at least `1s`; `0s` fails boot.
 
 ## Error codes
 

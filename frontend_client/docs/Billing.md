@@ -13,7 +13,7 @@ Client surfaces for the backend billing slice (see `backend-server/docs/Billing.
 
 ## Checkout flow
 
-`POST /api/billing/checkout {plan:"pro"}` → `{checkoutId, url, provider}`. `lib/billing/checkout.ts` resolves the target purely: same-origin URLs (the stub) navigate in-app; Stripe-hosted URLs get a full external redirect. The stub then completes through the non-production `POST /api/billing/checkout/:id/complete`.
+`POST /api/billing/checkout {plan:"pro"}` → `{checkoutId, url, provider}`. `lib/billing/checkout.ts` resolves the target purely: same-origin URLs (the stub) navigate in-app; Stripe-hosted URLs get a full external redirect. Only `http:`/`https:` targets are navigable — `javascript:`, `data:` and malformed values resolve to `kind: "invalid"` and both callers (pricing checkout, settings portal) refuse the redirect instead of assigning it. The stub then completes through the non-production `POST /api/billing/checkout/:id/complete`.
 
 ## Settings → Billing
 

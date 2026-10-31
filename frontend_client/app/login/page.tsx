@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { authRateLimitCopy } from "@/lib/auth/messages";
+import { safeNextPath } from "@/lib/auth/safe-next";
 import { saveSession } from "@/lib/session/auth";
 import {
   FLOATING_HEADER_CARD,
@@ -28,7 +29,7 @@ import {
 function AuthForms() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/library";
+  const next = safeNextPath(searchParams.get("next"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -195,12 +196,12 @@ function LoginContent() {
     <div className="w-full max-w-[460px] animate-fade-up">
       <div className="mb-5">
         <h1 className="text-foreground text-balance text-xl font-medium tracking-tight">
-          Your designs belong to you — sign in to reach your library, dashboard, and settings.
+          Your designs belong to you. Sign in to reach your library, dashboard, and settings.
         </h1>
         {pendingIdea ? (
           <p className="text-success mt-2 flex items-center gap-1.5 text-sm">
             <LightbulbIcon className="size-4 flex-none" aria-hidden="true" />
-            Your idea is saved in this tab — sign in to continue designing it.
+            Your idea is saved in this tab. Sign in to continue designing it.
           </p>
         ) : null}
       </div>

@@ -288,7 +288,7 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
             {setupState.gaps.map((gap) => (
               <li
                 key={gap}
-                className="border-primary/40 text-foreground/85 rounded-full border border-solid px-2.5 py-0.5 font-mono text-[10px] uppercase"
+                className="border-primary/40 text-foreground/85 rounded-full border border-solid px-2.5 py-0.5 text-[10px]"
               >
                 {PROVIDER_GAP_LABELS[gap]}
               </li>

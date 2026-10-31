@@ -65,7 +65,7 @@ export function ExportFlow({ projectId }: { projectId: string }) {
         stage="architecture"
         tone="error"
         title="This export needs project access."
-        lead="Project access keys live in this browser tab only — reopen from the library with your account, or start a session from the landing page."
+        lead="Project access keys live in this browser tab only. Reopen from the library with your account, or start a session from the landing page."
       >
         <div className="flex flex-wrap gap-3">
           <Link href="/login?next=/library" className="text-primary hover:underline text-sm underline-offset-4">
@@ -87,7 +87,7 @@ export function ExportFlow({ projectId }: { projectId: string }) {
         stage="architecture"
         tone="error"
         title={api?.userMessage ?? "Loading the export failed."}
-        lead="Nothing is exported until the model loads — retry, or go back to the workspace."
+        lead="Nothing is exported until the model loads. Retry, or go back to the workspace."
       >
         <p className="text-muted-foreground font-mono text-xs">
           {api?.message ?? String(error)}
@@ -120,7 +120,7 @@ export function ExportFlow({ projectId }: { projectId: string }) {
         stage="architecture"
         tone="error"
         title="There is no architecture to export yet."
-        lead="Generate and confirm an architecture first — the export renders the canonical model only."
+        lead="Generate and confirm an architecture first. The export renders the canonical model only."
       >
         <Link href={`/projects/${projectId}/requirements`} className="text-primary hover:underline text-sm underline-offset-4">
           Go to the requirements editor
@@ -134,7 +134,7 @@ export function ExportFlow({ projectId }: { projectId: string }) {
       <JourneyShell
         stage="architecture"
         tone="error"
-        title="The model failed validation — export blocked."
+        title="The model failed validation. Export blocked."
         lead="An invalid model must not print as a trusted document. Fix validation in the workspace, then export again."
       >
         <p className="text-muted-foreground flex items-start gap-2 text-sm">

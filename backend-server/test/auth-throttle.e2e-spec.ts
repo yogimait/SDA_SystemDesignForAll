@@ -12,8 +12,7 @@ interface Envelope<T> {
   error?: { code: string; details?: Record<string, unknown> };
 }
 
-describe("Auth throttle (e2e)", () => {
-  let app: INestApplication<App>;
+describe("Auth throttle (e2e)", () => {  let app: INestApplication<App>;
   let server: App;
 
   beforeAll(async () => {
@@ -57,6 +56,29 @@ describe("Auth throttle (e2e)", () => {
     if (!blocked) {
       throw new Error("The auth throttle never blocked a login attempt.");
     }
+    expect(blocked.status).toBe(429);
+    expect((blocked.body as Envelope<null>).error?.code).toBe("QUOTA_EXCEEDED");
+    expect(Number(blocked.headers["retry-after"])).toBeGreaterThan(0);
+  });
+
+  it("throttles the account-deletion password step-up", async () => {
+    const registered = await request(server)
+      .post("/api/auth/register")
+      .send({ email: `step-up-${Date.now()}@example.com`, password: "password123" });
+    expect(registered.status).toBe(201);
+    const token = (registered.body as Envelope<{ accessToken: string }>).data
+      .accessToken;
+
+    const wrongPassword = () =>
+      request(server)
+        .delete("/api/users/me")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ password: "wrong-password" });
+
+    expect((await wrongPassword()).status).toBe(401);
+    expect((await wrongPassword()).status).toBe(401);
+
+    const blocked = await wrongPassword();
     expect(blocked.status).toBe(429);
     expect((blocked.body as Envelope<null>).error?.code).toBe("QUOTA_EXCEEDED");
     expect(Number(blocked.headers["retry-after"])).toBeGreaterThan(0);

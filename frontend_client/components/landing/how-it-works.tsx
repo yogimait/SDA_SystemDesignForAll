@@ -1,137 +1,148 @@
+"use client";
+
+/**
+ * "How it works" (Stitch Coffee reference): four pipeline steps joined by a
+ * dashed rail. The control/verification detail from the previous landing stays
+ * as one collapsed disclosure so the honest BYOK/export facts are still one
+ * click away without adding copy to the screen.
+ */
+import { useState } from "react";
+import {
+  ArrowRightIcon,
+  BookOpenIcon,
+  ChevronDownIcon,
+  FilePenIcon,
+  ListChecksIcon,
+  SettingsIcon,
+} from "lucide-react";
+
 const STEPS = [
   {
-    tag: "01 · Idea",
-    title: "Describe the system",
-    body: "Paste anything — “Build Spotify”, a URL shortener, or a full spec up to 8,000 characters. Sign in, then a design session opens; first time, you set your model key in one dialog.",
+    icon: FilePenIcon,
+    title: "Describe your idea",
+    body: "Enter a vague prompt or detailed specification.",
   },
   {
-    tag: "02 · Requirements",
-    title: "A specification you own",
-    body: "The idea becomes an editable requirements specification. Edit it before anything generates — nothing runs until you confirm the spec.",
+    icon: ListChecksIcon,
+    title: "Review requirements",
+    body: "Edit functional and non-functional requirements.",
   },
   {
-    tag: "03 · Canonical model",
-    title: "One validated model",
-    body: "The confirmed spec generates a single canonical architecture model. Validation errors block the view and tell you what to fix; warnings surface without blocking.",
+    icon: SettingsIcon,
+    title: "Generate architecture",
+    body: "Get LLD, HLD and DSA based on your requirements.",
   },
   {
-    tag: "04 · Three lenses",
-    title: "LLD, HLD and DSA",
-    body: "Every view renders from the same model. Selecting a class, edge, component or operation opens its responsibility, rationale and alternatives.",
-  },
-  {
-    tag: "05 · Guided",
-    title: "Walked, not dumped",
-    body: "Guided mode steps through each view with explanations, so you learn the whys — resume where you left off in the same session.",
-  },
-  {
-    tag: "06 · Export",
-    title: "Take it with you",
-    body: "Export the design as a document from the browser (SVG diagrams included) and print it to PDF. Nothing leaves your machine.",
+    icon: BookOpenIcon,
+    title: "Explore and learn",
+    body: "Interactive diagrams with guided explanations.",
   },
 ] as const;
 
 const CONTROLS = [
   {
-    tag: "BYOK",
     title: "Your model, your key",
-    body: "Runs use your own provider key — OpenRouter or Groq, with provider-specific models (GLM-5.3 Flash on OpenRouter by default). The key lives in this browser tab only (sessionStorage), is sent only with generation requests via the x-provider-api-key header, and is never persisted server-side or logged.",
-    chips: ["openrouter · groq", "session-only key", "never persisted"],
+    body: "Runs use your own provider key (OpenRouter or Groq). The key lives in this browser tab only (sessionStorage), travels only with generation requests, and is never persisted server-side or logged.",
   },
   {
-    tag: "Control",
-    title: "Iterate at any scope",
-    body: "Regenerate the whole model or a single view, jump back into the requirements editor, annotate the diagram, or hide side panels in focus mode — every change is explicit, nothing rewrites your design silently.",
-    chips: ["regenerate per view", "annotate", "focus mode"],
+    title: "One validated model",
+    body: "The confirmed spec generates a single canonical architecture model. Validation errors block the view and tell you what to fix; warnings surface without blocking.",
   },
   {
-    tag: "Honest state",
-    title: "Progress you can verify",
-    body: "Run stages reflect persisted generation stages, validation results come from the real model validation, and dashboards summarize actual provider runs — no simulated loading or made-up telemetry.",
-    chips: ["persisted stages", "real validation", "usage from runs"],
+    title: "Iterate and export",
+    body: "Regenerate the whole model or one view, annotate the diagram, and export the design as a printable document with SVG diagrams. Nothing leaves your machine.",
   },
 ] as const;
 
-/**
- * Text-led landing detail sections (no screenshots): the idea → requirements →
- * canonical model flow, and the control/BYOK/verification story.
- */
 export function HowItWorks() {
+  const [controlsOpen, setControlsOpen] = useState(false);
+
   return (
-    <>
-      <section
-        id="how-it-works"
-        className="mx-auto mb-16 w-full max-w-[1100px] px-6"
-      >
-        <h2 className="text-foreground text-xl font-medium tracking-tight md:text-2xl">
-          How it works
-        </h2>
-        <p className="text-muted-foreground mt-2 max-w-[70ch] text-sm leading-relaxed">
-          One pipeline: your idea becomes a specification you confirm, the
-          confirmed spec becomes a canonical architecture, and every view
-          explains a different layer of that architecture.
-        </p>
-        <p
-          aria-hidden="true"
-          className="text-muted-foreground border-border/60 font-mono mt-6 hidden border-y border-solid py-2 text-xs lg:block"
-        >
-          idea&nbsp;→&nbsp;requirements&nbsp;(edit · confirm)&nbsp;→&nbsp;canonical
-          model&nbsp;→&nbsp;LLD&thinsp;/&thinsp;HLD&thinsp;/&thinsp;DSA&nbsp;→&nbsp;export
-        </p>
-
-        <ol className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:gap-6">
-          {STEPS.map((step) => (
-            <li
-              key={step.tag}
-              className="bg-card border-border hover:border-foreground/25 rounded-xl border border-solid p-5 transition-[border-color] duration-200 md:p-6"
+    <section
+      id="how-it-works"
+      className="border-border/60 bg-background/60 relative border-t border-solid py-20"
+    >
+      <div className="mx-auto w-full max-w-7xl space-y-14 px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+          <div>
+            <h2 className="text-foreground font-heading text-3xl font-bold tracking-tight sm:text-4xl md:text-[2.5rem]">
+              How it works
+            </h2>
+            <p className="text-muted-foreground mt-2 text-sm sm:text-base">
+              From a simple idea to a complete architecture in minutes.
+            </p>
+          </div>
+          <div>
+            <a
+              href="#examples"
+              className="text-primary hover:text-primary-hover inline-flex items-center gap-1.5 text-sm font-medium transition-colors"
             >
-              <p className="text-primary font-mono text-xs">{step.tag}</p>
-              <h3 className="text-foreground mt-2 text-base font-medium">
-                {step.title}
-              </h3>
-              <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-                {step.body}
-              </p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section className="mx-auto mb-16 w-full max-w-[1100px] px-6">
-        <h2 className="text-foreground text-xl font-medium tracking-tight md:text-2xl">
-          Control and verification
-        </h2>
-        <p className="text-muted-foreground mt-2 max-w-[70ch] text-sm leading-relaxed">
-          The tool keeps you in charge of the model, the provider and the
-          truthfulness of what you see.
-        </p>
-        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-3">
-          {CONTROLS.map((control) => (
-            <article
-              key={control.tag}
-              className="bg-card border-border hover:border-foreground/25 rounded-xl border border-solid p-6 transition-[border-color] duration-200"
-            >
-              <p className="text-primary font-mono text-xs">{control.tag}</p>
-              <h3 className="text-foreground mt-2 font-medium">
-                {control.title}
-              </h3>
-              <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-                {control.body}
-              </p>
-              <div className="border-border/60 mt-4 flex flex-wrap gap-2 border-t border-solid pt-4">
-                {control.chips.map((chip) => (
-                  <span
-                    key={chip}
-                    className="text-muted-foreground border-input rounded border border-solid px-2 py-0.5 font-mono text-[11px]"
-                  >
-                    {chip}
-                  </span>
-                ))}
-              </div>
-            </article>
-          ))}
+              <span>Learn more</span>
+              <ArrowRightIcon className="size-4" aria-hidden="true" />
+            </a>
+          </div>
         </div>
-      </section>
-    </>
+
+        <div className="relative">
+          <div
+            className="border-border absolute top-10 right-[12%] left-[12%] hidden h-0.5 border-t-2 border-dashed lg:block"
+            aria-hidden="true"
+          />
+          <div className="relative z-10 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-[1.07fr_1fr_1fr_0.93fr]">
+            {STEPS.map((step, index) => {
+              const Icon = step.icon;
+              return (
+                <div
+                  key={step.title}
+                  className="flex flex-col items-center space-y-3 text-center"
+                >
+                  <div className="bg-card border-border text-primary flex size-14 items-center justify-center rounded-2xl border border-solid shadow-md transition-colors hover:border-primary">
+                    <Icon className="size-6" aria-hidden="true" strokeWidth={1.8} />
+                  </div>
+                  <div className="text-foreground font-landing-mono text-sm font-bold">
+                    {index + 1}
+                  </div>
+                  <h3 className="text-foreground font-heading text-base font-semibold">
+                    {step.title}
+                  </h3>
+                  <p className="text-muted-foreground max-w-xs text-xs leading-relaxed sm:text-sm">
+                    {step.body}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Secondary detail, collapsed by default (body mounts only when open). */}
+        <details
+          open={controlsOpen}
+          onToggle={(event) => setControlsOpen(event.currentTarget.open)}
+          className="border-border/60 group mx-auto max-w-3xl border-t border-solid pt-4"
+        >
+          <summary className="text-muted-foreground hover:text-foreground flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-medium transition-colors [&::-webkit-details-marker]:hidden">
+            Controls, keys and export
+            <ChevronDownIcon
+              className="size-4 flex-none transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </summary>
+          {controlsOpen ? (
+            <dl className="mt-4 grid gap-4 sm:grid-cols-3">
+              {CONTROLS.map((control) => (
+                <div key={control.title}>
+                  <dt className="text-foreground text-xs font-semibold">
+                    {control.title}
+                  </dt>
+                  <dd className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                    {control.body}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+        </details>
+      </div>
+    </section>
   );
 }

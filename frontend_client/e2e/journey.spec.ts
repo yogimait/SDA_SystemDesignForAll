@@ -199,7 +199,7 @@ test("provider failure path: rate-limited run start maps to an actionable messag
     page.getByText(/The model provider is rate-limiting requests/),
   ).toBeVisible({ timeout: 20_000 });
   await expect(
-    page.getByText("Specification confirmed — starting architecture generation…"),
+    page.getByText("Specification confirmed. Starting architecture generation…"),
   ).toBeVisible();
   await expect(confirmButton).toBeEnabled();
 });

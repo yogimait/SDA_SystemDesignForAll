@@ -8,7 +8,7 @@
  * diagrams fit their fixed print-sized box (see .export-diagram rules).
  */
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import type {
   ArchitectureVersion,
   Project,
@@ -40,6 +40,8 @@ export function ExportDocument({
 }) {
   const hldWrap = useRef<HTMLDivElement>(null);
   const lldWrap = useRef<HTMLDivElement>(null);
+  /** Print scope: the full report, or just the two landscape diagram pages. */
+  const [diagramsOnly, setDiagramsOnly] = useState(false);
 
   const cover = buildCover(project, version);
   const spec = version.model.requirements.spec;
@@ -83,28 +85,37 @@ export function ExportDocument({
   }
 
   return (
-    <article className="export-doc">
-      <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-3">
+    <article className="export-doc" data-print-scope={diagramsOnly ? "diagrams" : "full"}>
+      <div className="no-print mb-6 flex flex-wrap items-start justify-between gap-3">
         <p className="text-muted-foreground text-xs">
-          {functional.length + nonFunctional.length} requirements ·{" "}
-          {version.model.hld.components.length} components ·{" "}
+          {functional.length + nonFunctional.length} requirements /{" "}
+          {version.model.hld.components.length} components /{" "}
           {version.model.lld.classes.length} classes
         </p>
         <div className="text-right">
-          <Button onClick={() => window.print()}>
-            <PrinterIcon />
-            Print / Save as PDF
-          </Button>
-          <p className="text-muted-foreground mt-1 text-[11px]">
-            Diagrams print fit-to-page. Download the SVG in each design section
-            for full resolution.
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant={diagramsOnly ? "secondary" : "outline"}
+              aria-pressed={diagramsOnly}
+              onClick={() => setDiagramsOnly((value) => !value)}
+            >
+              {diagramsOnly ? "Diagrams only — on" : "Diagrams only"}
+            </Button>
+            <Button onClick={() => window.print()}>
+              <PrinterIcon />
+              Print / Save as PDF
+            </Button>
+          </div>
+          <p className="text-muted-foreground mt-1 max-w-[48ch] text-right text-[11px] leading-relaxed">
+            {diagramsOnly
+              ? "Prints just the two landscape diagram pages (HLD + LLD). Toggle off for the full report."
+              : "Text pages print portrait; HLD/LLD print landscape, fit to the printable area. Download an SVG in each design section for full resolution."}
           </p>
         </div>
       </div>
 
       {/* Cover */}
-      <header className="export-section">
-        <p className="font-mono text-xs tracking-wider uppercase">Architecture report</p>
+      <header className="export-section export-text-section">
         <h1 className="mt-1 text-3xl leading-tight font-semibold tracking-tight">
           {cover.title}
         </h1>
@@ -127,7 +138,7 @@ export function ExportDocument({
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Validation</dt>
-            <dd className="font-mono">
+            <dd>
               {cover.valid ? "valid" : "invalid"} · {cover.warningCount} warning
               {cover.warningCount === 1 ? "" : "s"}
               {cover.errorCount > 0 ? ` · ${cover.errorCount} errors` : ""}
@@ -137,7 +148,7 @@ export function ExportDocument({
       </header>
 
       {/* Requirements */}
-      <section className="export-section" aria-label="Requirements">
+      <section className="export-section export-text-section" aria-label="Requirements">
         <h2>Requirements</h2>
         <RequirementList rows={functional} title="Functional" />
         {nonFunctional.length > 0 ? (
@@ -151,7 +162,7 @@ export function ExportDocument({
                 <li key={row.id}>
                   {row.question}
                   {row.answer !== "" ? (
-                    <span className="text-muted-foreground"> — {row.answer}</span>
+                    <span className="text-muted-foreground">: {row.answer}</span>
                   ) : null}
                 </li>
               ))}
@@ -194,7 +205,7 @@ export function ExportDocument({
         </div>
       </section>
 
-      <section className="export-section" aria-label="Components and flows">
+      <section className="export-section export-text-section" aria-label="Components and flows">
         <h2>Components</h2>
         <dl className="export-defs">
           {version.model.hld.components.map((component) => (
@@ -216,8 +227,8 @@ export function ExportDocument({
             <ol className="export-list">
               {version.model.hld.flows.map((flow) => (
                 <li key={flow.id}>
-                  <strong>{flow.name}</strong> — {flow.description}{" "}
-                  <span className="text-muted-foreground font-mono text-xs">
+                  <strong>{flow.name}</strong>: {flow.description}{" "}
+                  <span className="text-muted-foreground text-xs">
                     {flow.steps.length} steps
                   </span>
                 </li>
@@ -228,7 +239,7 @@ export function ExportDocument({
       </section>
 
       {/* LLD diagram: its own landscape page, same as HLD. */}
-      <section className="export-section export-diagram-page" aria-label="Low-level design">
+      <section className="export-section export-diagram-page export-print-end" aria-label="Low-level design">
         <div className="flex items-center justify-between gap-3">
           <h2>Low-level design</h2>
           <Button
@@ -257,7 +268,7 @@ export function ExportDocument({
         </div>
       </section>
 
-      <section className="export-section" aria-label="Classes and patterns">
+      <section className="export-section export-text-section" aria-label="Classes and patterns">
         <h2>Classes</h2>
         <dl className="export-defs">
           {version.model.lld.classes.map((cls) => (
@@ -276,7 +287,7 @@ export function ExportDocument({
               {version.model.lld.relationships.map((rel) => (
                 <li key={rel.id}>
                   <span className="font-mono text-xs">
-                    {rel.sourceMultiplicity} — {rel.kind} → {rel.targetMultiplicity}
+                    {rel.sourceMultiplicity}: {rel.kind} → {rel.targetMultiplicity}
                   </span>{" "}
                   {rel.rationale}
                 </li>
@@ -294,7 +305,7 @@ export function ExportDocument({
                   <span className="text-muted-foreground font-mono text-xs">
                     {pattern.category}
                   </span>{" "}
-                  — {pattern.rationale}
+                  : {pattern.rationale}
                 </li>
               ))}
             </ul>
@@ -303,18 +314,18 @@ export function ExportDocument({
       </section>
 
       {/* DSA */}
-      <section className="export-section" aria-label="Data structures and algorithms">
+      <section className="export-section export-text-section" aria-label="Data structures and algorithms">
         <h2>Data structures &amp; algorithms</h2>
         <WorkspaceDsa model={version.model} className="export-dsa" />
       </section>
 
       {/* Learning steps */}
-      <section className="export-section" aria-label="Learning steps">
+      <section className="export-section export-text-section" aria-label="Learning steps">
         <h2>Learning steps</h2>
         <ol className="export-list export-numbered">
           {steps.map((step) => (
             <li key={step.id}>
-              <strong>{step.title}</strong> — {step.explanation}
+              <strong>{step.title}</strong>: {step.explanation}
             </li>
           ))}
         </ol>
@@ -322,7 +333,7 @@ export function ExportDocument({
 
       {/* Warnings */}
       {warnings.length > 0 ? (
-        <section className="export-section" aria-label="Validation notes">
+        <section className="export-section export-text-section" aria-label="Validation notes">
           <h2>
             <CircleAlertIcon className="inline size-4" aria-hidden="true" /> Validation notes
           </h2>
@@ -341,7 +352,7 @@ export function ExportDocument({
         </section>
       ) : null}
 
-      <footer className="export-section text-muted-foreground border-border mt-8 border-t pt-3 text-xs">
+      <footer className="export-section export-text-section text-muted-foreground border-border mt-8 border-t pt-3 text-xs">
         System Design All-in-One · {cover.title} · v{cover.version} ·{" "}
         {documentDate(cover.createdAt)}
       </footer>

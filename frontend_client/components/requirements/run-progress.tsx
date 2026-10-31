@@ -83,7 +83,7 @@ function RunErrorBanner({ error, retryAfter: retryAfter }: { error: RunError; re
       </p>
       <p className="text-muted-foreground mt-1 text-xs leading-relaxed">{error.message}</p>
       {retryAfter !== null && retryAfter > 0 ? (
-        <p className="text-warning mt-1 font-mono text-[11px]">
+        <p className="text-warning mt-1 text-[11px]">
           Provider asks to wait ~{retryAfter}s before retrying.
         </p>
       ) : null}
@@ -142,7 +142,7 @@ export function RunProgress({
             {run !== null ? <StatusChip status={run.status} /> : null}
             {showConnection ? <ConnectionIndicator connection={connection} /> : null}
             {run !== null ? (
-              <span className="text-muted-foreground font-mono text-[11px]" title={technical}>
+              <span className="text-muted-foreground text-[11px]" title={technical}>
                 {formatTokens(run.usage.totalTokens)} tokens used
               </span>
             ) : null}
@@ -208,13 +208,13 @@ export function RunProgress({
                   {stage.name}
                 </span>
                 {stage.attempt > 1 ? (
-                  <span className="text-warning font-mono text-[11px]">
+                  <span className="text-warning text-[11px]">
                     attempt {stage.attempt}
                   </span>
                 ) : null}
                 {stage.usage !== null ? (
-                  <span className="text-muted-foreground font-mono text-[11px]">
-                    {formatTokens(stage.usage.totalTokens)} tok
+                  <span className="text-muted-foreground text-[11px]">
+                    {formatTokens(stage.usage.totalTokens)} tokens
                   </span>
                 ) : null}
                 {stage.error !== null ? (

@@ -554,9 +554,16 @@ describe("API (e2e)", () => {
       expect(firstBody.version.version).toBe(1);
       expect(firstBody.version.model.meta.title).toBe("Collaborative workspace");
       expect(firstBody.version.validation.valid).toBe(true);
+      // Must-have coverage is enforced before persisting, so a successful
+      // generation cannot carry the unreferenced-must warning.
       expect(
         firstBody.version.validation.warnings.map((warning) => warning.rule),
-      ).toContain("unreferenced_must_requirement");
+      ).not.toContain("unreferenced_must_requirement");
+      expect(
+        firstBody.version.model.hld.components.some((component) =>
+          component.requirementRefs.length > 0,
+        ),
+      ).toBe(true);
 
       const regenerate = await request(server)
         .post(`/api/projects/${projectId}/architecture/regenerate`)

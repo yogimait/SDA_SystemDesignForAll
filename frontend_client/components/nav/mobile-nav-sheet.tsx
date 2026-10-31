@@ -60,7 +60,7 @@ export function MobileNavSheet({
             <span className="text-muted-foreground truncate font-mono text-[11px]" title={session.user.email}>
               {session.user.email}
             </span>
-            <span className="text-muted-foreground border-border/60 self-start rounded border border-solid px-1.5 py-0.5 font-mono text-[10px] uppercase">
+            <span className="text-muted-foreground border-border/60 self-start rounded border border-solid px-1.5 py-0.5 text-[10px]">
               {session.user.planTier}
             </span>
           </div>
@@ -81,7 +81,7 @@ export function MobileNavSheet({
 
         {providerSetup ? (
           <div className="flex flex-col gap-1">
-            <p className="text-muted-foreground text-[11px] uppercase">Model access</p>
+            <p className="text-muted-foreground text-[11px]">Model access</p>
             <ProviderDialog />
           </div>
         ) : null}

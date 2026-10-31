@@ -37,8 +37,8 @@ export function VerifyEmailBanner() {
       <p className="text-foreground flex items-start gap-2 text-sm">
         <MailWarningIcon className="text-warning mt-0.5 size-4 flex-none" aria-hidden="true" />
         <span>
-          Verify <span className="font-mono text-[11px]">{session.user.email}</span> to unlock
-          generation when the server requires a confirmed address.
+          Verify <span className="font-mono text-[11px]">{session.user.email}</span> so generation
+          works when the server requires a confirmed address.
         </span>
       </p>
       <div className="flex items-center gap-2">

@@ -106,6 +106,13 @@ async function mockLldDsa(): Promise<LldDsaOutput> {
   ).data as LldDsaOutput;
 }
 
+/** The fixture has no refs; coverage enforcement needs the sole must-have. */
+async function mockHldWithMustRefs(): Promise<HldModel> {
+  const hld = await mockHld();
+  hld.components[0].requirementRefs = ["fr_one"];
+  return hld;
+}
+
 describe("RequirementsGenerator repair path", () => {
   it("fails with GENERATION_REPAIR_FAILED after two invalid JSON responses", async () => {
     const provider = new ScriptedProvider([invalidJson(), invalidJson()]);
@@ -162,7 +169,7 @@ describe("ArchitectureGenerator repair path", () => {
   it("drops invalid requirement refs instead of failing the HLD", async () => {
     const hld = await mockHld();
     const tampered = structuredClone(hld);
-    tampered.components[0].requirementRefs = ["fr_missing"];
+    tampered.components[0].requirementRefs = ["fr_one", "fr_missing"];
     const provider = new ScriptedProvider([tampered]);
     const generator = new ArchitectureGenerator();
 
@@ -173,11 +180,11 @@ describe("ArchitectureGenerator repair path", () => {
       requirements,
     );
 
-    expect(result.hld.components[0]?.requirementRefs).toEqual([]);
+    expect(result.hld.components[0]?.requirementRefs).toEqual(["fr_one"]);
   });
 
   it("succeeds after one invalid JSON response", async () => {
-    const hld = await mockHld();
+    const hld = await mockHldWithMustRefs();
     const provider = new ScriptedProvider([invalidJson(), hld]);
     const generator = new ArchitectureGenerator();
     const attempts: number[] = [];
@@ -195,8 +202,56 @@ describe("ArchitectureGenerator repair path", () => {
     expect(attempts).toEqual([1, 2]);
   });
 
+  it("repairs an HLD that omits a must-have requirement", async () => {
+    const missing = await mockHld();
+    const fixed = await mockHldWithMustRefs();
+    const provider = new ScriptedProvider([missing, fixed]);
+    const generator = new ArchitectureGenerator();
+
+    const result = await generator.generateHld(
+      provider,
+      "test/model",
+      "An idea.",
+      requirements,
+    );
+
+    expect(result.attempts).toBe(2);
+    expect(result.hld.components[0]?.requirementRefs).toContain("fr_one");
+    const repair = provider.calls[1]?.messages.at(-1)?.content ?? "";
+    expect(repair).toContain("unreferenced_must_requirement");
+    expect(repair).toContain("fr_one");
+    expect(repair).toContain("not referenced");
+  });
+
+  it("fails boundedly when the HLD keeps omitting a must-have requirement", async () => {
+    const provider = new ScriptedProvider([
+      await mockHld(),
+      await mockHld(),
+      await mockHld(),
+    ]);
+    const generator = new ArchitectureGenerator();
+
+    await expect(
+      generator.generateHld(provider, "test/model", "An idea.", requirements),
+    ).rejects.toMatchObject({
+      code: "GENERATION_REPAIR_FAILED",
+      message: expect.stringContaining("must-have"),
+      details: {
+        stage: "hld_model",
+        attempts: 3,
+        issues: [
+          {
+            rule: "unreferenced_must_requirement",
+            path: "requirements.functional(fr_one)",
+          },
+        ],
+      },
+    });
+    expect(provider.calls).toHaveLength(3);
+  });
+
   it("retries a truncated HLD with a compact prompt at the raised budget", async () => {
-    const hld = await mockHld();
+    const hld = await mockHldWithMustRefs();
     const provider = new ScriptedProvider([truncatedOutput(), hld]);
     const generator = new ArchitectureGenerator();
 
@@ -240,7 +295,7 @@ describe("ArchitectureGenerator repair path", () => {
   });
 
   it("normalizes deterministic relationship mistakes and drops invalid learning refs", async () => {
-    const hld = await mockHld();
+    const hld = await mockHldWithMustRefs();
     const section = await mockLldDsa();
     const composition = section.lld.relationships.find(
       (relationship) => relationship.kind === "composition",
@@ -273,7 +328,7 @@ describe("ArchitectureGenerator repair path", () => {
   });
 
   it("fails fast when the LLD/DSA output is truncated", async () => {
-    const hld = await mockHld();
+    const hld = await mockHldWithMustRefs();
     const provider = new ScriptedProvider([truncatedOutput()]);
     const generator = new ArchitectureGenerator();
 
@@ -296,6 +351,30 @@ describe("ArchitectureGenerator repair path", () => {
     expect(provider.calls).toHaveLength(1);
     expect(provider.calls[0].maxOutputTokens).toBe(64_000);
     expect(provider.calls[0].timeoutMs).toBe(900_000);
+  });
+
+  it("repairs LLD/DSA that leaves a must-have requirement uncovered", async () => {
+    // The pinned HLD has no refs, so the merged model depends on this section.
+    const hld = await mockHld();
+    const missing = await mockLldDsa();
+    const fixed = await mockLldDsa();
+    fixed.lld.classes[0].requirementRefs = ["fr_one"];
+    const provider = new ScriptedProvider([missing, fixed]);
+    const generator = new ArchitectureGenerator();
+
+    const result = await generator.generateLldDsa(
+      provider,
+      "test/model",
+      "An idea.",
+      requirements,
+      hld,
+    );
+
+    expect(result.attempts).toBe(2);
+    expect(result.section.lld.classes[0].requirementRefs).toContain("fr_one");
+    const repair = provider.calls[1]?.messages.at(-1)?.content ?? "";
+    expect(repair).toContain("fr_one");
+    expect(repair).toContain("not referenced");
   });
 });
 

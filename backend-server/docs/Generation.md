@@ -93,9 +93,19 @@ flowchart LR
   FV -->|warnings only| V[Persist architecture version]
 ```
 
-- Phase A (`hld_model`) generates components, connections, flows, technology decisions, scalability notes, and failure scenarios. Budget: 64k output tokens, 900s. The prompt targets 6-12 components, 8-16 connections, and 1-2 flows; every component must appear in a connection. A `finish_reason: length` truncation is retried once with a compact-output instruction (≤8 components, ≤10 connections, 1-2 flows); repeated truncation fails with `GENERATION_REPAIR_FAILED`.
-- Phase B (`lld_dsa_model`) generates classes, relationships, patterns, DSA recommendations, learning steps, and model metadata, with the HLD pinned as context. Budget: 64k output tokens, 900s. The prompt targets 8-14 classes, 10-20 relationships, 2-5 patterns, 3-5 DSA recommendations, and 4-8 learning steps. Reasoning effort defaults to `low` on OpenRouter, but reasoning tokens still share the output budget. A truncated response fails fast instead of repeating the same over-budget repair.
+- Phase A (`hld_model`) generates components, connections, flows, technology decisions, scalability notes, and failure scenarios. Budget: 64k output tokens, 900s. The prompt targets 6-12 components, 8-16 connections, and 1-2 flows; every component must appear in a connection. A `finish_reason: length` truncation is retried once with a compact-output instruction (≤8 components, ≤10 connections, 1-2 flows); repeated truncation fails with `GENERATION_REPAIR_FAILED`. Must-have functional requirements must be referenced by at least one component or flow: uncovered ids are fed into the bounded repair message, and persistent omission fails the run instead of persisting an architecture that ignores them.
+- Phase B (`lld_dsa_model`) generates classes, relationships, patterns, DSA recommendations, learning steps, and model metadata, with the HLD pinned as context. Budget: 64k output tokens, 900s. The prompt targets 8-14 classes, 10-20 relationships, 2-5 patterns, 3-5 DSA recommendations, and 4-8 learning steps. Reasoning effort defaults to `low` on OpenRouter, but reasoning tokens still share the output budget. A truncated response fails fast instead of repeating the same over-budget repair. The merged model (HLD + classes + patterns + DSA recommendations) is re-checked for must-have coverage; gaps are repaired within the same 3-attempt bound.
 - Each phase gets at most 3 attempts: initial + 2 repairs. Repairs include the exact validation issue list and the previous output.
+
+### Must-have coverage
+
+`unreferenced_must_requirement` means a `must` functional requirement is not in any component/flow (HLD) or class/pattern/DSA recommendation (merged LLD/DSA) `requirementRefs`. The validator keeps it as a warning for arbitrary models, but generation promotes it to a repairable error:
+
+- after the HLD validates, uncovered ids and their text are added to the repair message;
+- after the merged LLD/DSA validates, the same check runs across both sections;
+- persistent omission ends with `GENERATION_REPAIR_FAILED` (`issues[].rule = "unreferenced_must_requirement"`) and no version is persisted.
+
+Prompts state the rule and forbid invented refs. A successful generation therefore has full must-have coverage and does not carry this warning.
 - A failed Phase B leaves the successful Phase A stage row intact.
 - `findReusableHld()` can reuse a validated HLD from an earlier failed/interrupted full run with the same requirements hash and valid structure. This avoids paying for Phase A twice.
 - `validate` runs the full structural + semantic validator on the merged model, including relationship type and multiplicity compatibility. Structural errors fail the run; warnings are stored in the version report.
@@ -152,6 +162,7 @@ DSA regeneration does not touch `hld` or `lld`; the e2e suite asserts the untouc
 | Invalid JSON / empty / oversized output | Repaired when parseable; oversized output is rejected. If still failing after attempts, `GENERATION_REPAIR_FAILED`. |
 | Truncated output (`finish_reason: length` or incomplete JSON) | HLD: one compact retry, then `GENERATION_REPAIR_FAILED`. Other stages: `GENERATION_REPAIR_FAILED` immediately. Issue rule `truncated_output` preserves the provider reason. |
 | Schema or validator errors after repairs | `GENERATION_REPAIR_FAILED` |
+| Must-have requirement unreferenced after repairs | `GENERATION_REPAIR_FAILED` with `issues[].rule = "unreferenced_must_requirement"` |
 | Unexpected exception | `INTERNAL_ERROR` |
 
 `failRun()` marks the currently running stage failed, then the run failed, with the same code/message/details. Usage accumulated before the failure is retained, and usage attached to the provider failure (`error.details.usage`, including the nested `providerOutput` of a repair-exhausted error) is added to the run and stored on the failed stage. Failed calls therefore count toward plan tokens and dashboard analytics.

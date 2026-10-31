@@ -103,7 +103,7 @@ export function SettingsContent() {
               <li>
                 A run always uses the provider, model, and{" "}
                 <span className="font-mono text-[11px]">x-provider-api-key</span>{" "}
-                you confirm in that dialog — the key stays in this browser tab
+                you confirm in that dialog. The key stays in this browser tab
                 and is never stored server-side.
               </li>
               <li>
@@ -227,7 +227,7 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
         </div>
         <span
           className={
-            "font-mono text-[10px] uppercase " +
+            "text-[10px] " +
             (loaded === "active" ? "text-success" : "text-muted-foreground")
           }
         >
@@ -336,7 +336,7 @@ function ProviderConfigCard({ providers }: ProviderConfigCardProps) {
 
           {loaded === "empty" ? (
             <p className="text-muted-foreground text-xs">
-              Nothing saved yet — the dialog asks for provider and model until you
+              Nothing saved yet. The dialog asks for provider and model until you
               save them here.
             </p>
           ) : null}

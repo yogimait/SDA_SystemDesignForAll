@@ -11,6 +11,7 @@ import type { DeleteAccountRequest } from "@sda/contracts";
 import { DeleteAccountRequestSchema } from "@sda/contracts";
 import type { Response } from "express";
 import { AuthGuard } from "../common/access/auth.guard.js";
+import { AuthThrottlerGuard } from "../common/access/auth-throttler.guard.js";
 import {
   requireUser,
   type AuthRequest,
@@ -27,10 +28,11 @@ export class UsersController {
   ) {}
 
   /** Deleting the account sets owned projects' owner to NULL (FK) and
-   * cascades sessions, tokens, configs, preferences, and subscriptions. */
+   * cascades sessions, tokens, configs, preferences, and subscriptions.
+   * Password step-up is throttled like login. */
   @Delete("me")
   @HttpCode(200)
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, AuthThrottlerGuard)
   async deleteAccount(
     @Req() request: AuthRequest,
     @Body(new ZodValidationPipe(DeleteAccountRequestSchema))

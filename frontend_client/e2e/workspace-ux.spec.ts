@@ -72,9 +72,32 @@ test("escape routes, mobile actions, regen run, validation details", async ({
   await openLinks.last().click();
   await expect(page).toHaveURL(/\/workspace$/);
 
+  // The mock provider's model can validate clean; pin one warning on the real
+  // generated model so the banner regression below is deterministic.
+  await page.route("**/api/projects/*/architecture", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    const validation = json?.data?.version?.validation;
+    if (validation) {
+      validation.warnings = [
+        {
+          rule: "unreferenced_must_requirement",
+          severity: "warning",
+          message: "One requirement is not referenced.",
+          path: "fr_1",
+        },
+      ];
+      validation.errors = [];
+      validation.valid = true;
+    }
+    await route.fulfill({ response, json });
+  });
+  await page.reload();
+  await expect(page).toHaveURL(/\/workspace$/);
+
   // Non-blocking validation banner with expandable guidance.
   await page.setViewportSize({ width: 390, height: 844 });
-  const banner = page.getByRole("status");
+  const banner = page.getByRole("status").filter({ hasText: /validation warning/i });
   await expect(banner).toBeVisible();
   await banner.getByRole("button", { name: "Details" }).click();
   await expect(banner.getByText(/Warnings never block this view/)).toBeVisible();
@@ -240,4 +263,86 @@ test("regeneration scopes: run with key, blocked + explained without", async ({
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await noOverflow(page, 900);
+});
+
+test("regeneration keeps running after closing the overlay and clears when terminal", async ({
+  page,
+}) => {
+  await journeyToWorkspace(page);
+  const projectId = page.url().split("/projects/")[1].split("/")[0];
+
+  let status = "running";
+  const envelope = (data: unknown) =>
+    JSON.stringify({ status: true, statusCode: 200, data });
+  const runDto = () => ({
+    id: "run_ux_close",
+    projectId,
+    type: "architecture",
+    status,
+    provider: "openrouter",
+    model: "z-ai/glm-5.3-flash",
+    scope: "lld",
+    stages: [],
+    error: null,
+    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    finishedAt: null,
+  });
+
+  await page.route("**/api/projects/*/architecture/regenerate", (route) =>
+    route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: envelope({ runId: "run_ux_close" }),
+    }),
+  );
+  // No stream: 404 sends useRunLive to its polling fallback, which polls the
+  // run DTO below (the same shape the dashboard reads).
+  await page.route("**/api/runs/run_ux_close/events*", (route) =>
+    route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: false,
+        statusCode: 404,
+        message: "not found",
+        error: { code: "RUN_NOT_FOUND" },
+      }),
+    }),
+  );
+  await page.route("**/api/runs/run_ux_close", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: envelope(runDto()),
+    }),
+  );
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: "Regenerate" }).click();
+  await page
+    .getByRole("menu", { name: "Regenerate" })
+    .getByRole("menuitem", { name: /LLD only/ })
+    .click();
+
+  const dialog = page.getByRole("dialog", { name: "Regenerating the architecture" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/Closing does not cancel this run/)).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toBeHidden();
+  const indicator = page.getByRole("button", { name: /Regeneration running/ });
+  await expect(indicator).toBeVisible();
+  await noOverflow(page, 1440);
+
+  // The compact header control reopens the same live panel.
+  await indicator.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(indicator).toBeVisible();
+
+  // Failed while closed: the indicator clears instead of sticking forever.
+  status = "failed";
+  await expect(indicator).toBeHidden({ timeout: 20_000 });
 });

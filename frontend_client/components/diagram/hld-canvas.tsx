@@ -375,7 +375,7 @@ export function HldCanvas({
                   <text
                     x={28}
                     y={19}
-                    className="fill-muted-foreground pointer-events-none font-mono text-[8.5px] uppercase"
+                    className="fill-muted-foreground pointer-events-none text-[8.5px]"
                   >
                     {node.type}
                   </text>
@@ -545,7 +545,7 @@ function HldLegend() {
     { kind: "data", label: "data flow" },
   ];
   return (
-    <div className="border-border border-t border-solid">
+    <div className="diagram-legend border-border border-t border-solid">
       <ul
         aria-label="Connection style legend"
         className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-2 text-[11px]"

@@ -89,15 +89,15 @@ function blockNewline(event: KeyboardEvent<HTMLTextAreaElement>) {
 function ProviderNote({ setup }: { setup: ProviderSetup | null }) {
   if (setup === null) {
     return (
-      <span className="text-warning flex items-center gap-1.5 font-mono text-[11px]">
+      <span className="text-warning flex items-center gap-1.5 text-[11px]">
         <CircleAlertIcon className="size-3" />
-        no provider key set — add one above
+        No provider key set. Add one above.
       </span>
     );
   }
   return (
-    <span className="text-muted-foreground font-mono text-[11px]">
-      {setup.model !== "" ? setup.model : "default model"} · key in this tab only
+    <span className="text-muted-foreground text-[11px]">
+      {setup.model !== "" ? setup.model : "Default model"} (key in this tab only)
     </span>
   );
 }
@@ -195,7 +195,7 @@ export function SpecEditor({
         setSavedNote("Draft saved. Nothing is confirmed yet.");
         return;
       }
-      setSavedNote("Specification confirmed — starting architecture generation…");
+      setSavedNote("Specification confirmed. Starting architecture generation…");
       const options: GenerationOptions = {
         // Provider and key travel together; the saved model alone is not enough.
         ...(setup === null || setup.provider === "" ? {} : { provider: setup.provider }),
@@ -261,7 +261,7 @@ export function SpecEditor({
       </div>
 
       <p className="text-muted-foreground mt-2 text-sm">
-        Requirements were extracted from your idea. Edit freely — the
+        Requirements were extracted from your idea. Edit freely. The
         architecture is generated from what you confirm here.
       </p>
 
@@ -442,9 +442,9 @@ export function SpecEditor({
                   <div className="flex items-center gap-2">
                     <RowChip label={rowLabel("Q", index)} />
                     {unresolved ? (
-                      <span className="text-warning font-mono text-[10px]">awaiting answer</span>
+                      <span className="text-warning text-[10px]">awaiting answer</span>
                     ) : (
-                      <span className="text-success font-mono text-[10px]">answered</span>
+                      <span className="text-success text-[10px]">answered</span>
                     )}
                     <Button
                       variant="ghost"

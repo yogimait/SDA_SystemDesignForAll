@@ -30,7 +30,7 @@ export default function ExportPage(props: PageProps<"/projects/[id]/export">) {
               System Design All-in-One
             </span>
           </Link>
-          <p className="text-muted-foreground hidden font-mono text-xs sm:block">export view</p>
+          <p className="text-muted-foreground hidden text-xs sm:block">export view</p>
           <Suspense fallback={null}>
             <BackToWorkspace />
           </Suspense>

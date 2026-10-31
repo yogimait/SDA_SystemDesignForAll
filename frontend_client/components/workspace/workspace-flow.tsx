@@ -38,7 +38,7 @@ import {
 } from "@/components/workspace/workspace-sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
@@ -60,7 +60,7 @@ import {
 import {
   useRunTerminalEffect,
 } from "@/hooks/use-generation-run";
-import { useRunLive } from "@/hooks/use-run-stream";
+import { useRunLive, type RunLiveState } from "@/hooks/use-run-stream";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import {
   dsaGuidedSteps,
@@ -167,6 +167,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
   const isPhone = useMediaQuery("(max-width: 767px)");
   const [providerReady, setProviderReady] = useState(false);
   const [regenRunId, setRegenRunId] = useState<string | null>(null);
+  const [regenOverlayOpen, setRegenOverlayOpen] = useState(false);
   const [regenScope, setRegenScope] = useState<RegenerateScope>("lld");
   const [regenError, setRegenError] = useState<{ user: string; detail: string } | null>(null);
   /** Annotate toggle: narrative chips anchored to highlighted elements. */
@@ -180,7 +181,37 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
   } | null>(null);
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
-  const closeRegen = useCallback(() => setRegenRunId(null), []);
+  const queryClient = useQueryClient();
+  // One live stream for the regeneration run, owned here so the header can
+  // show progress while the overlay is closed (closing never cancels it).
+  const regenLive = useRunLive(regenRunId, projectKey);
+  const regenTerminal =
+    regenLive.run !== null &&
+    (regenLive.run.status === "succeeded" ||
+      regenLive.run.status === "failed" ||
+      regenLive.run.status === "interrupted");
+  const regenRunning = regenRunId !== null && !regenTerminal;
+
+  const closeRegenOverlay = useCallback(() => {
+    setRegenOverlayOpen(false);
+    // A terminal run has nothing left to watch: drop it so no indicator sticks.
+    if (regenTerminal) setRegenRunId(null);
+  }, [regenTerminal]);
+
+  useRunTerminalEffect(regenLive.run, (outcome) => {
+    if (outcome === "succeeded") {
+      void (async () => {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.architecture(projectId) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
+        setRegenRunId(null);
+        setRegenOverlayOpen(false);
+      })();
+      return;
+    }
+    // Failed/interrupted: keep the overlay for Retry when it is open; a closed
+    // overlay drops the run so the header indicator clears.
+    if (!regenOverlayOpen) setRegenRunId(null);
+  });
 
   // Annotate toggle: persisted per project so it survives tab switches and
   // refreshes (restore inside the access gate, like guided-mode resume).
@@ -715,6 +746,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
         dataSchema: StartRunResponseSchema,
       });
       setRegenRunId(started.runId);
+      setRegenOverlayOpen(true);
     } catch (error) {
       if (error instanceof ApiError) {
         setRegenError({ user: error.userMessage, detail: error.message });
@@ -1055,6 +1087,18 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
           {/* Narrow headers: a labeled More menu replaces the scattered icon
               buttons; desktop keeps the inline labeled buttons. */}
           <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+            {regenRunning && !regenOverlayOpen ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-11 px-2 sm:min-h-8"
+                aria-label="Regeneration running — open the progress overlay"
+                onClick={() => setRegenOverlayOpen(true)}
+              >
+                <RefreshCcwIcon className="motion-safe:animate-spin" aria-hidden="true" />
+                <span className="hidden md:inline">Regeneration running</span>
+              </Button>
+            ) : null}
             {validation !== null ? (
               <span className="sm:hidden">
                 <ValidationBadge validation={validation} />
@@ -1329,24 +1373,44 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
           <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
             <SheetContent
               side={isPhone ? "bottom" : "right"}
+              showCloseButton={!isPhone}
               className={cn(
-                "bg-card border-border flex flex-col gap-0 overflow-y-auto p-3",
-                isPhone ? "h-[72dvh]" : "w-[380px]",
+                "bg-card border-border flex flex-col gap-0 p-0",
+                isPhone
+                  ? "h-dvh! max-h-dvh! overflow-hidden rounded-t-2xl"
+                  : "w-[380px]",
               )}
             >
-              <SheetTitle className="sr-only">Details</SheetTitle>
-              {detailsNode}
+              {isPhone ? (
+                <div className="border-border flex flex-none items-center justify-between gap-2 border-b border-solid px-4 py-1.5">
+                  <SheetTitle className="text-sm font-medium">Details</SheetTitle>
+                  <SheetClose
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Close details"
+                      />
+                    }
+                  >
+                    <XIcon />
+                  </SheetClose>
+                </div>
+              ) : (
+                <SheetTitle className="sr-only">Details</SheetTitle>
+              )}
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-1 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+                {detailsNode}
+              </div>
             </SheetContent>
           </Sheet>
         </>
       ) : null}
 
-      {regenRunId !== null ? (
+      {regenRunId !== null && regenOverlayOpen ? (
         <RegenRunPhase
-          runId={regenRunId}
-          projectKey={projectKey}
-          projectId={projectId}
-          onSettledClose={closeRegen}
+          state={regenLive}
+          onClose={closeRegenOverlay}
           onRetry={() => void regenerate(regenScope)}
         />
       ) : null}
@@ -1379,8 +1443,8 @@ function GuidedBar({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-muted-foreground font-mono text-[10px] uppercase">
-            {`guided ${index + 1} / ${total}`}
+          <p className="text-muted-foreground text-[11px]">
+            {`Step ${index + 1} of ${total}`}
           </p>
           <h3 className="text-foreground mt-0.5 text-sm font-semibold tracking-tight">{step.title}</h3>
         </div>
@@ -1401,8 +1465,8 @@ function GuidedBar({
           className="bg-muted h-1 min-w-0 flex-1 overflow-hidden rounded-full"
         >
           <div
-            className="bg-primary h-1 rounded-full transition-[width] duration-200"
-            style={{ width: `${((index + 1) / total) * 100}%` }}
+            className="bg-primary h-1 origin-left rounded-full transition-transform duration-200 motion-reduce:transition-none"
+            style={{ width: "100%", transform: `scaleX(${(index + 1) / total})` }}
           />
         </div>
         <Button variant="outline" size="sm" disabled={index >= total - 1} onClick={onNext}>
@@ -1437,14 +1501,14 @@ function ValidationWarningBanner({
       role="status"
       className="border-warning/40 bg-warning/10 border-t border-solid px-5 py-2"
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0">
           <p className="text-warning text-xs font-medium">
             {`${warnings.length} validation warning${
               warnings.length === 1 ? "" : "s"
             } — non-blocking: the diagram keeps rendering from the generated model.`}
           </p>
-          <p className="text-muted-foreground font-mono mt-0.5 text-[11px]">
+          <p className="text-muted-foreground font-mono mt-0.5 text-[11px] leading-snug">
             {first?.message ?? ""}
           </p>
         </div>
@@ -1549,10 +1613,28 @@ function ErrorCard({
   );
 }
 
+const DETAILS_MARGIN = 16;
+
+/** Clamp a free (left, top) inside the canvas box, 16px off each edge. */
+function clampPanelPosition(
+  panel: HTMLElement,
+  container: DOMRect,
+  next: { x: number; y: number },
+): { x: number; y: number } {
+  const rect = panel.getBoundingClientRect();
+  const maxX = Math.max(DETAILS_MARGIN, container.width - rect.width - DETAILS_MARGIN);
+  const maxY = Math.max(DETAILS_MARGIN, container.height - rect.height - DETAILS_MARGIN);
+  return {
+    x: Math.min(Math.max(next.x, DETAILS_MARGIN), maxX),
+    y: Math.min(Math.max(next.y, DETAILS_MARGIN), maxY),
+  };
+}
+
 /**
  * Floating details panel over the canvas: normal size, scrollable content,
  * draggable via its header (pointer capture). Desktop only — narrow screens
- * keep the Sheets. Renders the same reference fragments the column used to.
+ * keep the Sheets. The panel is capped to the canvas box (minus 32px) and a
+ * drag never moves it past those bounds, so it can never leave the viewport.
  */
 function DetailsPopover({
   details,
@@ -1577,7 +1659,10 @@ function DetailsPopover({
       const container = panel.parentElement?.getBoundingClientRect();
       setPos(
         container
-          ? { x: rect.left - container.left, y: rect.top - container.top }
+          ? clampPanelPosition(panel, container, {
+              x: rect.left - container.left,
+              y: rect.top - container.top,
+            })
           : { x: rect.left, y: rect.top },
       );
     }
@@ -1593,10 +1678,13 @@ function DetailsPopover({
     const panel = panelRef.current;
     if (offset === null || panel === null) return;
     const container = panel.parentElement?.getBoundingClientRect();
-    setPos({
-      x: event.clientX - (container?.left ?? 0) - offset.x,
-      y: event.clientY - (container?.top ?? 0) - offset.y,
-    });
+    if (container === undefined) return;
+    setPos(
+      clampPanelPosition(panel, container, {
+        x: event.clientX - container.left - offset.x,
+        y: event.clientY - container.top - offset.y,
+      }),
+    );
   }
 
   function handleDragEnd(event: ReactPointerEvent<HTMLDivElement>) {
@@ -1614,11 +1702,38 @@ function DetailsPopover({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
+  useEffect(() => {
+    // A moved panel must stay inside a canvas that shrank (window resize,
+    // outline strip toggle) or when the selected element swaps in taller
+    // content: re-clamp instead of letting it hang past the edge.
+    if (pos === null) return;
+    const panel = panelRef.current;
+    const container = panel?.parentElement;
+    if (panel === null || container === null || container === undefined) return;
+    const reclamp = () => {
+      const box = container.getBoundingClientRect();
+      setPos((current) =>
+        current === null ? current : clampPanelPosition(panel, box, current),
+      );
+    };
+    reclamp();
+    const observer = new ResizeObserver(reclamp);
+    observer.observe(panel);
+    window.addEventListener("resize", reclamp);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", reclamp);
+    };
+    // Only re-armed when the panel materializes free coordinates; reclamp()
+    // reads the live boxes, so content-size changes are covered by the observer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pos === null]);
+
   return (
     <section
       ref={panelRef}
       style={pos === null ? { right: 16, top: 16 } : { left: pos.x, top: pos.y }}
-      className="absolute z-20 flex max-h-[75%] w-[380px] max-w-[calc(100%-32px)] flex-col"
+      className="absolute z-20 flex max-h-[calc(100%-32px)] w-[380px] max-w-[calc(100%-32px)] flex-col"
       aria-label="Element details"
     >
       <div
@@ -1628,7 +1743,7 @@ function DetailsPopover({
         onPointerCancel={handleDragEnd}
         className="bg-card/95 border-border flex flex-none cursor-grab items-center justify-between gap-2 rounded-t-xl border border-b-0 border-solid px-3 py-1.5 backdrop-blur select-none active:cursor-grabbing touch-none"
       >
-        <span className="text-muted-foreground font-mono text-[10px] uppercase">
+        <span className="text-muted-foreground text-[10px]">
           details
         </span>
         <Button
@@ -1640,29 +1755,25 @@ function DetailsPopover({
           <XIcon />
         </Button>
       </div>
-      <div className="bg-card/95 border-border min-h-0 flex-1 overflow-y-auto rounded-b-xl border border-solid backdrop-blur">
+      <div className="bg-card/95 border-border min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-b-xl border border-solid backdrop-blur">
         {details}
       </div>
     </section>
   );
 }
 
-/** Hooks must live in one stable component instance per regeneration run. */
+/** Regeneration progress overlay: the run stream itself lives in the parent
+ *  so closing this view never stops watching (nor cancels) the run. */
 function RegenRunPhase({
-  runId,
-  projectKey,
-  projectId,
-  onSettledClose,
+  state,
+  onClose,
   onRetry,
 }: {
-  runId: string;
-  projectKey: string | null;
-  projectId: string;
-  onSettledClose: () => void;
+  state: RunLiveState;
+  onClose: () => void;
   onRetry: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const { run, isLoading, error, connection } = useRunLive(runId, projectKey);
+  const { run, isLoading, error, connection } = state;
   const overlayRef = useRef<HTMLDivElement>(null);
   const regenActive =
     run === null || run.status === "queued" || run.status === "running";
@@ -1678,23 +1789,14 @@ function RegenRunPhase({
   }, []);
 
   // Escape closes the overlay (same path as the Close button — D5). The run
-  // keeps going server-side; the footer says so (D9).
+  // keeps going server-side; the header indicator reopens it.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onSettledClose();
+      if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onSettledClose]);
-
-  useRunTerminalEffect(run, (outcome) => {
-    if (outcome !== "succeeded") return; // failed/interrupted stay visible for retry
-    void (async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.architecture(projectId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
-      onSettledClose();
-    })();
-  });
+  }, [onClose]);
 
   return (
     <div
@@ -1723,11 +1825,12 @@ function RegenRunPhase({
           <div className="mt-4 flex flex-col items-end gap-2">
             {regenActive ? (
               <p className="text-muted-foreground max-w-[46ch] text-right text-xs leading-relaxed">
-                Runs keep going server-side — closing leaves this view, not the
-                run. Reopen the workspace to check its outcome.
+                Closing does not cancel this run: it keeps going server-side.
+                The header shows “Regeneration running” — select it to reopen
+                this panel and watch the outcome.
               </p>
             ) : null}
-            <Button variant="ghost" size="sm" onClick={onSettledClose}>
+            <Button variant="ghost" size="sm" onClick={onClose}>
               Close
             </Button>
           </div>

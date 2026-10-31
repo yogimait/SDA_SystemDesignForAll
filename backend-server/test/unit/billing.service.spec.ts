@@ -257,4 +257,41 @@ describe("BillingService webhooks", () => {
       processed: false,
     });
   });
+
+  it("attributes subscription events to the stored subscription owner", async () => {
+    const { service, recorded } = makeService([
+      {
+        id: "evt_checkout_owner",
+        type: "checkout.session.completed",
+        payload: {
+          data: {
+            object: { client_reference_id: "usr_one", subscription: "sub_1" },
+          },
+        },
+      },
+      {
+        id: "evt_updated_owner",
+        type: "customer.subscription.updated",
+        payload: {
+          data: {
+            object: { id: "sub_1", status: "active", cancel_at_period_end: false },
+          },
+        },
+      },
+      {
+        id: "evt_unknown_sub",
+        type: "customer.subscription.deleted",
+        payload: { data: { object: { id: "sub_unknown", status: "canceled" } } },
+      },
+    ]);
+
+    await service.webhook("{}", "sig");
+    await service.webhook("{}", "sig");
+    await service.webhook("{}", "sig");
+
+    // Subscription events are linked so account deletion cascades them.
+    expect(recorded.get("evt_updated_owner")?.userId).toBe("usr_one");
+    // An unknown external subscription cannot be attributed; it stays null.
+    expect(recorded.get("evt_unknown_sub")?.userId).toBeNull();
+  });
 });

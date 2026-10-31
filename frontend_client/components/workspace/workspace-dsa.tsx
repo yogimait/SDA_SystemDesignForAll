@@ -71,7 +71,7 @@ export function WorkspaceDsa({
                 )}
                 aria-label={`${rec.operation}: ${rec.dataStructure}`}
               >
-                <p className="text-muted-foreground border-border/60 border-b border-solid pb-1.5 font-mono text-[10.5px] uppercase">
+                <p className="text-muted-foreground border-border/60 border-b border-solid pb-1.5 text-[10.5px]">
                   {rec.operation}
                 </p>
                 <header className="flex items-start justify-between gap-2 pt-3">
@@ -110,14 +110,14 @@ export function WorkspaceDsa({
 
                 {rec.alternatives.length > 0 ? (
                   <div className="mt-3">
-                    <p className="text-muted-foreground text-[10px] uppercase">
+                    <p className="text-muted-foreground text-[10px]">
                       when alternatives beat this
                     </p>
                     <ul className="mt-1 space-y-1.5">
                       {rec.alternatives.map((alt) => (
                         <li key={alt.option} className="text-xs leading-relaxed">
                           <span className="text-foreground font-medium">{alt.option}</span>
-                          <span className="text-muted-foreground"> — {alt.rejectedBecause}</span>
+                          <span className="text-muted-foreground">: {alt.rejectedBecause}</span>
                         </li>
                       ))}
                     </ul>
@@ -152,7 +152,7 @@ export function WorkspaceDsa({
               className="bg-card border-border rounded-xl border border-solid p-4"
               aria-label={pattern.name}
             >
-              <p className="text-muted-foreground border-border/60 border-b border-solid pb-1.5 font-mono text-[10.5px] uppercase">
+              <p className="text-muted-foreground border-border/60 border-b border-solid pb-1.5 text-[10.5px]">
                 algorithmic pattern
               </p>
               <p className="text-foreground pt-3 text-sm font-semibold tracking-tight">{pattern.name}</p>
@@ -164,8 +164,8 @@ export function WorkspaceDsa({
             </article>
           ))}
 
-          <section aria-label="Comparison table" className="bg-card border-border md:col-span-2 xl:col-span-3 overflow-hidden rounded-xl border border-solid">
-            <p className="text-muted-foreground border-border/60 border-b border-solid px-4 py-2 font-mono text-[10.5px] uppercase">
+          <section aria-label="Comparison table" className="bg-card border-border hidden overflow-hidden rounded-xl border border-solid md:col-span-2 md:block xl:col-span-3">
+            <p className="text-muted-foreground border-border/60 border-b border-solid px-4 py-2 text-[10.5px]">
               comparison
             </p>
             <Table>
@@ -195,6 +195,60 @@ export function WorkspaceDsa({
               </TableBody>
             </Table>
           </section>
+
+          {/* Phones: the 4-column table cannot keep readable columns, so the
+              same contract rows render as one card per operation. */}
+          {recommendations.length > 0 ? (
+            <section
+              aria-label="Comparison list"
+              className="bg-card border-border overflow-hidden rounded-xl border border-solid md:hidden"
+            >
+              <p className="text-muted-foreground border-border/60 border-b border-solid px-4 py-2 text-[10.5px]">
+                comparison
+              </p>
+              <ul className="divide-border/60 divide-y divide-solid">
+                {recommendations.map((rec) => {
+                  const chips = complexityChips(rec.complexity);
+                  return (
+                    <li key={rec.id} className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-foreground min-w-0 text-sm font-medium">
+                          {rec.operation}
+                        </p>
+                        <Badge className="flex-none bg-secondary text-secondary-foreground font-mono">
+                          {layerLabel(rec.layer)}
+                        </Badge>
+                      </div>
+                      <p className="mt-1">
+                        <span className="text-foreground text-xs font-medium">
+                          {rec.dataStructure}
+                        </span>
+                        <span className="text-muted-foreground block font-mono text-[10.5px]">
+                          {rec.algorithm}
+                        </span>
+                      </p>
+                      <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                          <dt className="text-muted-foreground">average</dt>
+                          <dd className="text-primary">{chips.average}</dd>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <dt className="text-muted-foreground">worst</dt>
+                          <dd className="text-warning">{chips.worst}</dd>
+                        </div>
+                      </dl>
+                      <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+                        <span className="text-foreground/85 font-medium">
+                          trade-off:
+                        </span>{" "}
+                        {tradeOffText(rec)}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : null}
         </section>
       </div>
     </div>
@@ -219,7 +273,7 @@ function useRecScroll(
 function CardList({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="mt-3">
-      <p className="text-muted-foreground text-[10px] uppercase">{title}</p>
+      <p className="text-muted-foreground text-[10px]">{title}</p>
       <ul className="text-muted-foreground mt-1 list-disc space-y-0.5 pl-4">
         {items.map((item) => (
           <li key={item} className="text-xs leading-relaxed">

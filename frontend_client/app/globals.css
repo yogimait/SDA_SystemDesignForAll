@@ -4,6 +4,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Extra breakpoint for the landing hero: full 60px display from 1440px, while
+   1280px keeps the compact 48px head so the CTA stays above an 800px fold. */
+@theme {
+  --breakpoint-3xl: 90rem;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -11,6 +17,11 @@
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-heading);
   --font-space-grotesk: var(--font-space-grotesk);
+  /* Landing (Stitch Coffee) families — scoped utilities, not app-wide fonts. */
+  --font-landing: var(--font-inter);
+  --font-landing-mono: var(--font-space-mono);
+  --font-hand: var(--font-caveat);
+  --color-primary-hover: var(--primary-hover);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -67,6 +78,7 @@
   --popover-foreground: oklch(0.93 0.008 60);
   /* Copper accent (interactive: buttons, links, rings) */
   --primary: oklch(0.78 0.09 74); /* #D9A05B */
+  --primary-hover: oklch(0.73 0.09 74); /* #C78F4B pressed/hover accent */
   --primary-foreground: oklch(0.19 0.02 60); /* #201409 on accent */
   --secondary: oklch(0.26 0.008 60);
   --secondary-foreground: oklch(0.93 0.008 60);
@@ -101,16 +113,25 @@
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
     @apply font-sans;
+    /* A stray wide child never turns the page into a horizontal scroller. */
+    overflow-x: clip;
+    scrollbar-color: var(--border) var(--background);
+  }
+  body {
+    @apply bg-background text-foreground;
+    overflow-x: clip;
+  }
+  ::selection {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
   }
   h1,
   h2,
   h3 {
     @apply font-heading;
+    text-wrap: balance;
   }
 }
 
@@ -178,6 +199,21 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Landing (Stitch Coffee) decorative dotted canvases: the hero diagram window
+   and the CTA banner. Token-based so they follow the coffee palette. */
+.coffee-dot-grid {
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.coffee-dot-grid-subtle {
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--border) 78%, var(--background)) 1.2px,
+    transparent 1.2px
+  );
+  background-size: 20px 20px;
 }
 
 /* ================================================================
@@ -358,11 +394,31 @@
   }
 
   /* Landscape A4 printable height = 210mm - 2 × 10mm margin = 190mm. The box
-     leaves room for the section heading (~9mm) and its gap (~3mm), so one
-     diagram never spills onto a second page. Still taller than the 620px
-     screen box (164mm), so a missed beforeprint refit cannot clip. */
+     leaves room for the section heading (~16mm measured) so one diagram never
+     spills onto a second page. 174mm uses most of that printable area once the
+     workspace legends are dropped for paper (below). */
   .export-diagram {
-    height: 172mm;
+    height: 174mm;
+  }
+
+  /* Marker/type legends orient the on-screen workspace; the document text
+     carries the same meaning, so print gives their space to the drawing. */
+  .export-diagram .diagram-legend {
+    display: none !important;
+  }
+
+  /* "Diagrams only": hide every text page so the two landscape diagram pages
+     are the whole document (no blank cover page, no trailing blank page). */
+  .export-doc[data-print-scope="diagrams"] .export-text-section {
+    display: none !important;
+  }
+
+  .export-doc[data-print-scope="diagrams"] .export-diagram-page {
+    break-before: auto;
+  }
+
+  .export-doc[data-print-scope="diagrams"] .export-print-end {
+    break-after: auto;
   }
 
   .export-section,

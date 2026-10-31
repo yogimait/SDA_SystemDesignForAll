@@ -72,11 +72,16 @@ export default function PricingPage() {
         dataSchema: CheckoutResponseSchema,
       });
       const target = checkoutTarget(checkout, window.location.origin);
+      if (target.kind === "internal") {
+        router.push(target.url);
+        return;
+      }
       if (target.kind === "external") {
         window.location.assign(target.url);
         return;
       }
-      router.push(target.url);
+      setCheckoutError("Checkout returned an unsafe redirect. Try again.");
+      setBusy(false);
     } catch (caught) {
       setCheckoutError(
         caught instanceof ApiError ? caught.userMessage : "Starting checkout failed.",
@@ -93,7 +98,7 @@ export default function PricingPage() {
           <h1 className="text-foreground text-2xl font-medium tracking-tight">Plans</h1>
           <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
             Both plans run the full pipeline: requirements, HLD, LLD, DSA, and
-            export. Pro raises the project, run, and token limits and unlocks
+            export. Pro raises the project, run, and token limits and adds
             scoped regeneration.
           </p>
         </header>
@@ -143,7 +148,7 @@ export default function PricingPage() {
                       <p className="text-muted-foreground mt-1 text-xs">{plan.description}</p>
                     </div>
                     {current ? (
-                      <span className="border-primary/40 text-primary flex-none rounded-full border border-solid px-2 py-0.5 font-mono text-[10px] uppercase">
+                      <span className="border-primary/40 text-primary flex-none rounded-full border border-solid px-2 py-0.5 text-[10px]">
                         current
                       </span>
                     ) : null}
@@ -164,15 +169,15 @@ export default function PricingPage() {
 
                   <dl className="border-border text-muted-foreground mt-4 grid grid-cols-3 gap-2 border-t border-solid pt-3 text-[11px]">
                     <div>
-                      <dt className="uppercase">Projects</dt>
+                      <dt>Projects</dt>
                       <dd className="text-foreground font-mono">{formatCount(plan.limits.projects)}</dd>
                     </div>
                     <div>
-                      <dt className="uppercase">Runs / 30d</dt>
+                      <dt>Runs / 30d</dt>
                       <dd className="text-foreground font-mono">{formatCount(plan.limits.runsPer30Days)}</dd>
                     </div>
                     <div>
-                      <dt className="uppercase">Tokens / 30d</dt>
+                      <dt>Tokens / 30d</dt>
                       <dd className="text-foreground font-mono">{formatCount(plan.limits.tokensPer30Days)}</dd>
                     </div>
                   </dl>
@@ -207,7 +212,7 @@ export default function PricingPage() {
 
         <p className="text-muted-foreground mt-6 text-xs">
           {plans?.provider === "stub"
-            ? "This deployment uses the local billing stub — upgrades complete on a sandbox checkout page and no card is charged."
+            ? "This deployment uses the local billing stub. Upgrades complete on a sandbox checkout page and no card is charged."
             : "Payments are handled by the billing provider; you will be redirected to a secure checkout."}
         </p>
 

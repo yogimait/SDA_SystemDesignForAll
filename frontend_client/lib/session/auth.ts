@@ -13,6 +13,7 @@
  *   anonymous for guards that need the difference.
  */
 import { UserSchema, type AuthResponse, type User } from "@sda/contracts";
+import { safeNextPath } from "../auth/safe-next";
 
 const IDENTITY_ENTRY = "sda:auth:user";
 /** Pre-hardening entry that embedded the access token — removed on read. */
@@ -216,8 +217,9 @@ export function handleAuthRequired(): void {
   if (typeof window === "undefined") return;
   const { pathname, search } = window.location;
   if (pathname === "/login") return; // no redirect loop on the sign-in page
+  const next = safeNextPath(`${pathname}${search}`);
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- runs inside the API client (no router); a full reload is deliberate so no stale page state survives the sign-out
-  window.location.assign(`/login?next=${encodeURIComponent(`${pathname}${search}`)}`);
+  window.location.assign(`/login?next=${encodeURIComponent(next)}`);
 }
 
 /** True when this tab believes it is signed in (token or pending refresh). */

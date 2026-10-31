@@ -72,7 +72,7 @@ function Section({
 }) {
   return (
     <Collapsible defaultOpen={defaultOpen} className="border-border group last:border-b-0 border-b border-solid">
-      <CollapsibleTrigger className="text-muted-foreground hover:text-foreground group/section flex w-full items-center justify-between py-2.5 text-left text-xs font-medium tracking-wide uppercase transition-colors">
+      <CollapsibleTrigger className="text-muted-foreground hover:text-foreground group/section flex w-full items-center justify-between py-2.5 text-left text-xs font-medium transition-colors">
         {title}
         <ChevronGlyph />
       </CollapsibleTrigger>

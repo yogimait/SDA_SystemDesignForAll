@@ -56,7 +56,7 @@ export function WorkspaceSidebar({
           vertical ? "border-b" : "w-52 flex-none border-r",
         )}
       >
-        <p className="text-muted-foreground font-mono text-[10px] uppercase">outline</p>
+        <p className="text-muted-foreground text-[10px]">Outlines</p>
         <Input
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
@@ -87,7 +87,7 @@ export function WorkspaceSidebar({
             >
               <p
                 className={cn(
-                  "text-muted-foreground px-1.5 py-1 font-mono text-[10px] uppercase",
+                  "text-muted-foreground px-1.5 py-1 text-[10px]",
                   !vertical && "whitespace-nowrap",
                 )}
               >

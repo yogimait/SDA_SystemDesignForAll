@@ -51,13 +51,13 @@ Each e2e file builds its own Nest app with `configureApp()` and `app.init()`, so
 | `openrouter.provider.spec.ts` | Request shape, BYOK header, ladder fallback and caching, every normalized error branch (including context length and oversized output), tolerant extraction, usage. |
 | `groq.provider.spec.ts` | Groq endpoint/request fields; strict-schema mismatch downgrades to json_object; prompt-mode mismatch is repairable `INVALID_MODEL_OUTPUT`. |
 | `validator.spec.ts` | Structural errors, semantic warnings, section validators, learning-ref pruning. |
-| `generators.spec.ts` | Repair exhaustion for requirements and HLD, success after one repair, HLD truncation compact retry at the 64k budget, bounded HLD truncation failure. |
+| `generators.spec.ts` | Repair exhaustion for requirements and HLD, success after one repair, HLD truncation compact retry at the 64k budget, bounded HLD truncation failure, must-have coverage repair and bounded omission failure in HLD and LLD/DSA. |
 | `failure-usage.spec.ts` | Usage extraction from failure details and nested `providerOutput`; non-errors ignored. |
 | `all-exceptions.filter.spec.ts` | Envelope mapping, details, redaction, hidden 500 details, database/payload translation. |
 | `api-response.interceptor.spec.ts` | Success wrapping and no double-wrap. |
 | `database.repositories.spec.ts` | PGlite migrations, project/access, requirements replace, run claim/update/reconcile/HLD reuse, architecture versioning and uniqueness, JSONB round-trip, users/sessions/provider config/preferences/owned-project listing/dashboard source rows, refresh rotation, single-use verification/reset tokens, billing subscription upsert and event idempotency, user-delete cascades. |
 | `auth.service.spec.ts` | Register/login/logout, normalized email, opaque hashed sessions, refresh rotation and reuse revocation, single-use reset/verification tokens, password-confirmed deletion, dummy verification for unknown email. |
-| `billing.service.spec.ts` | Webhook idempotency, retry of an unprocessed event after a plan-update failure, concurrent-insert acknowledgement, checkout activation, subscription status transitions, unsigned-webhook rejection. |
+| `billing.service.spec.ts` | Webhook idempotency, retry of an unprocessed event after a plan-update failure, concurrent-insert acknowledgement, checkout activation, subscription-event user attribution, subscription status transitions, unsigned-webhook rejection. |
 | `outbox-email.spec.ts` | Development links keep the token; production links store `<redacted>`. |
 | `password.service.spec.ts` | scrypt hash/verify, fresh salt, plaintext absence, valid dummy timing hash. |
 | `plan.service.spec.ts` | Free project/run/token limits, Pro scoped-regeneration gate, anonymous no-op. |
@@ -70,9 +70,9 @@ The repository suite uses a real Drizzle + PGlite database, not mocks. It exerci
 
 ## E2e coverage
 
-`test/app.e2e-spec.ts` runs the public HTTP surface with supertest. `test/auth.e2e-spec.ts` covers register/login/me/logout, normalized email, duplicate/invalid credentials, project ownership and listing cursor/status, anonymous legacy access, provider config without keys, preference merge, plan limits/upgrade-required, dashboard aggregation/validation, owner reopening a project with the Bearer token alone, complete client-export payloads and owner/key access, 404 envelopes for malformed project/run ids, cross-project requirement-id conflicts, and strict rejection of an `apiKey` in the provider-config save. `test/auth-hardening.e2e-spec.ts` covers email verification through the dev outbox, refresh rotation and reuse revocation, CSRF and Origin rejection, password reset single use, cookie-only logout, account deletion (project ownership nulled, key still works), and the `REQUIRE_EMAIL_VERIFICATION` gate. `test/billing.e2e-spec.ts` covers the plan catalogue, stub checkout ownership and completion, plan-tier change, cancel/downgrade, portal URL, unsigned webhook rejection, and unauthenticated access. `test/production-guards.e2e-spec.ts` covers the production 404 for the outbox and the disabled stub checkout. `test/auth-throttle.e2e-spec.ts` covers `Retry-After` on the auth 429. Manual mock-mode verification uses `MOCK_PROVIDER=1` and the same HTTP surface.
+`test/app.e2e-spec.ts` runs the public HTTP surface with supertest. `test/auth.e2e-spec.ts` covers register/login/me/logout, normalized email, duplicate/invalid credentials, project ownership and listing cursor/status, anonymous legacy access, provider config without keys, preference merge, plan limits/upgrade-required, dashboard aggregation/validation, owner reopening a project with the Bearer token alone, complete client-export payloads and owner/key access, 404 envelopes for malformed project/run ids, cross-project requirement-id conflicts, and strict rejection of an `apiKey` in the provider-config save. `test/auth-hardening.e2e-spec.ts` covers email verification through the dev outbox, refresh rotation and reuse revocation, CSRF and Origin rejection, password reset single use, cookie-only logout, account deletion (project ownership nulled, key still works), and the `REQUIRE_EMAIL_VERIFICATION` gate. `test/billing.e2e-spec.ts` covers the plan catalogue, stub checkout ownership and completion, plan-tier change, cancel/downgrade, portal URL, unsigned webhook rejection, and unauthenticated access. `test/production-guards.e2e-spec.ts` covers the production 404 for the outbox and the disabled stub checkout. `test/auth-throttle.e2e-spec.ts` covers `Retry-After` on the auth 429, including the account-deletion password step-up. Manual mock-mode verification uses `MOCK_PROVIDER=1` and the same HTTP surface.
 
-E2e files run one at a time (`fileParallelism: false`) because every app boots a WASM Postgres; parallel files exhausted memory on dev machines.
+Unit and e2e files run one at a time (`fileParallelism: false`) because every suite that touches PGlite boots a WASM Postgres; parallel files exhausted memory on dev machines. The unit suite therefore takes roughly two minutes.
 
 - health and provider metadata envelopes, including both provider model catalogs and their schema shape;
 - security headers and unknown-route `ROUTE_NOT_FOUND`;
@@ -85,6 +85,7 @@ E2e files run one at a time (`fileParallelism: false`) because every app boots a
 - SSE replay/live stage frames, terminal frame and close, Last-Event-ID replay, polling/stream stage parity, and stream auth failures;
 - `RUN_CONFLICT` for a second run and for two simultaneous starts;
 - exhausted schema repair and exhausted invalid-JSON repair;
+- successful architecture has full must-have coverage (no `unreferenced_must_requirement` warning);
 - failed-call provider usage persisted on both the run and the failed stage;
 - per-IP throttle returning `QUOTA_EXCEEDED` (auth throttle additionally asserts `Retry-After`).
 

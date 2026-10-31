@@ -279,15 +279,55 @@ export class MockProvider implements ModelProvider {
       case "requirements_analysis":
         return { data: REQUIREMENTS, usage: USAGE };
       case "hld_model":
-        return { data: HLD, usage: USAGE };
+        return { data: withHldRefs(input), usage: USAGE };
       case "lld_model":
-        return { data: LLD_DSA.lld as LldModel, usage: USAGE };
+        return { data: withLldRefs(input).lld as LldModel, usage: USAGE };
       case "dsa_model":
-        return { data: LLD_DSA.dsa as DsaModel, usage: USAGE };
+        return { data: withLldRefs(input).dsa as DsaModel, usage: USAGE };
       case "lld_dsa_model":
-        return { data: LLD_DSA, usage: USAGE };
+        return { data: withLldRefs(input), usage: USAGE };
       default:
         throw new Error(`Mock provider has no fixture for ${input.schemaName}.`);
     }
   }
+}
+
+/** Functional requirement ids present in the prompt (confirmed spec JSON). */
+function functionalIds(input: GenerateStructuredInput): string[] {
+  const ids = new Set<string>();
+  for (const message of input.messages) {
+    for (const match of message.content.matchAll(/\bfr_[A-Za-z0-9_-]+/g)) {
+      ids.add(match[0]);
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * The fixtures are static, but must-have coverage is enforced by the generator.
+ * Mock-only: claim every functional requirement on the API component so a mock
+ * architecture stays valid for whatever ids the requirements stage produced.
+ */
+function withHldRefs(input: GenerateStructuredInput): HldModel {
+  const hld = structuredClone(HLD);
+  const ids = functionalIds(input);
+  if (ids.length === 0) return hld;
+  const target = hld.components.find((item) => item.id === "cmp_api") ?? hld.components[0];
+  if (target) {
+    target.requirementRefs = ids;
+  }
+  return hld;
+}
+
+function withLldRefs(input: GenerateStructuredInput): LldDsaOutput {
+  const output = structuredClone(LLD_DSA);
+  const ids = functionalIds(input);
+  if (ids.length === 0) return output;
+  const cls = output.lld.classes[0];
+  if (cls) cls.requirementRefs = ids;
+  const pattern = output.lld.patterns[0];
+  if (pattern) pattern.requirementRefs = ids;
+  const dsa = output.dsa.recommendations[0];
+  if (dsa) dsa.requirementRefs = ids;
+  return output;
 }

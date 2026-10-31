@@ -44,14 +44,19 @@ Details panel: a **floating popover over the canvas** (`DetailsPopover` in
 `workspace-flow.tsx`) instead of a third column. It appears when a class,
 relationship, pattern, component, connection, flow, note, or decision is
 selected and disappears when the selection clears — closing it (X) clears
-the selection, so there is one source of truth. Normal size (~380px wide,
-max 75% height), content scrolls, body fixed, header draggable via pointer
-capture; starts anchored top-right, position resets each time it opens.
-Focus mode still hides just the outline strip.
+the selection, so there is one source of truth. ~380px wide, capped to
+`calc(100% - 32px)` in both axes with the body scrolling; header draggable via
+pointer capture, and **every position (initial and drag) is clamped 16px
+inside the canvas box**, then re-clamped when the canvas or the panel resizes,
+so a big diagram can never push it off-screen. Position resets each time it
+opens. Focus mode still hides just the outline strip.
 
 Narrow screens (below 1024) keep the previous behaviour — outline inline
 (768–1023) or in a Sheet (<768), details in a Sheet — same render fragments,
-vertical sidebar variant. DSA keeps its single scrollable column.
+vertical sidebar variant. The phone details sheet is a full-height bottom sheet
+(`100dvh`, no gap above the home indicator) with a fixed header and one
+scrollable body (safe-area bottom padding), so long class references stay
+reachable without clipping. DSA keeps its single scrollable column.
 
 States handled: missing access key → back-to-landing card; project/arch
 query failure → error card with the registry message (`PROJECT_NOT_FOUND`,
@@ -68,7 +73,18 @@ Persisted versions are always valid — the backend persists only validated
 models — so no invalid-model state exists here. The warning banner
 (`ValidationWarningBanner`) clarifies that warnings are non-blocking, lists
 every warning under a Details toggle, and links "Edit requirements…" — the
-typical warning is a must-have requirement no element references.
+typical warning is a must-have requirement no element references. On phones
+the banner stacks: full-width summary + first warning, then a separate row of
+44px actions (Details, Edit requirements); from `sm` up the actions sit beside
+the copy.
+
+Regeneration: the run stream is owned by the workspace shell, so **closing the
+progress overlay never cancels (or stops watching) the run**. While a run is
+queued/running and the overlay is closed, a compact "Regeneration running"
+control stays in the header and reopens the overlay; the overlay copy says
+closing does not cancel. A terminal run (succeeded/failed/interrupted) clears
+the indicator — failed stays in the open overlay for Retry, and a closed
+overlay drops it. Dashboard runs read the same backend DTO.
 
 ## Scene mapping
 
@@ -244,9 +260,12 @@ md, 3 on xl, dense flow), so real models fit without long scrolling rows:
   Tiles carrying ≥3 extra sections (assumptions + alternatives +
   limitations) take a two-column slot on xl — content-driven bento rhythm.
 - Algorithmic-pattern tiles (name, problem, approach, trade-offs).
-- The **comparison table** always spans the full row (operation ×
+- The **comparison table** spans the full row at `md` and up (operation ×
   structure+algorithm × average/worst complexity × trade-off — first
-  limitation, "—" when none).
+  limitation, "—" when none). Below `md` the same contract rows render as a
+  **card list** (one card per operation: operation heading + layer badge,
+  structure/algorithm, average/worst, trade-off) instead of horizontally
+  scrolling a 4-column table; no page-level horizontal overflow at 390/320.
 
 Every rendered string traces to a contract field; `lib/dsa/format.ts` and
 its tests guard the wording.

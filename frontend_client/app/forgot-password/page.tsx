@@ -53,7 +53,7 @@ export default function ForgotPasswordPage() {
           </p>
           <p className="text-muted-foreground text-sm leading-relaxed">
             The link expires in an hour and can be used once. Nothing changed if
-            no email arrives — check the address and try again.
+            no email arrives. Check the address and try again.
           </p>
           <Link href="/login" className="text-primary hover:underline text-sm underline-offset-4">
             Back to sign in

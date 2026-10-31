@@ -54,6 +54,10 @@ import {
   validateHldSection,
   validateLldDsaSection,
 } from "../architecture/validator.js";
+import {
+  hldMustHaveIssues,
+  mergedMustHaveIssues,
+} from "../architecture/must-have-coverage.js";
 import { addUsage } from "./requirements.generator.js";
 
 const MAX_ATTEMPTS = 3; // initial call + 2 bounded repairs
@@ -143,9 +147,14 @@ export class ArchitectureGenerator {
         } else {
           const validation = validateHldSection(parsed.data, requirements);
           if (validation.errors.length === 0) {
-            return { hld: parsed.data, usage, attempts: attempt };
+            const coverage = hldMustHaveIssues(parsed.data, requirements.spec);
+            if (coverage.length === 0) {
+              return { hld: parsed.data, usage, attempts: attempt };
+            }
+            issues = coverage;
+          } else {
+            issues = validation.errors;
           }
-          issues = validation.errors;
         }
 
         if (attempt < MAX_ATTEMPTS) {
@@ -193,7 +202,9 @@ export class ArchitectureGenerator {
 
     throw new AppError(
       "GENERATION_REPAIR_FAILED",
-      "The HLD stayed invalid after two repair attempts.",
+      coverageOnly(issues)
+        ? "The HLD still ignores must-have requirements after two repair attempts."
+        : "The HLD stayed invalid after two repair attempts.",
       { stage: "hld_model", attempts: MAX_ATTEMPTS, issues: issues.slice(0, 12) },
     );
   }
@@ -251,9 +262,18 @@ export class ArchitectureGenerator {
             requirements,
           );
           if (validation.errors.length === 0) {
-            return { section: parsed.data, usage, attempts: attempt };
+            const coverage = mergedMustHaveIssues(
+              hld,
+              parsed.data,
+              requirements.spec,
+            );
+            if (coverage.length === 0) {
+              return { section: parsed.data, usage, attempts: attempt };
+            }
+            issues = coverage;
+          } else {
+            issues = validation.errors;
           }
-          issues = validation.errors;
         }
 
         if (attempt < MAX_ATTEMPTS) {
@@ -283,7 +303,9 @@ export class ArchitectureGenerator {
 
     throw new AppError(
       "GENERATION_REPAIR_FAILED",
-      "The LLD/DSA output stayed invalid after two repair attempts.",
+      coverageOnly(issues)
+        ? "The LLD/DSA still ignores must-have requirements after two repair attempts."
+        : "The LLD/DSA output stayed invalid after two repair attempts.",
       {
         stage: "lld_dsa_model",
         attempts: MAX_ATTEMPTS,
@@ -696,6 +718,14 @@ function schemaIssues(
 
 function emptyUsage(): TokenUsage {
   return { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+}
+
+/** Distinguishes an ignored must-have from generic schema/validation failure. */
+function coverageOnly(issues: ValidationIssue[]): boolean {
+  return (
+    issues.length > 0 &&
+    issues.every((issue) => issue.rule === "unreferenced_must_requirement")
+  );
 }
 
 /** Human-readable diff for regeneration prompts. */

@@ -23,10 +23,18 @@ describe("checkout target", () => {
     });
   });
 
-  it("falls back to an external redirect when the app origin is unusable", () => {
+  it("rejects a non-http redirect scheme", () => {
+    expect(checkoutTarget({ url: "javascript:alert(1)" }, APP)).toEqual({
+      kind: "invalid",
+    });
+    expect(checkoutTarget({ url: "data:text/html,checkout" }, APP)).toEqual({
+      kind: "invalid",
+    });
+  });
+
+  it("refuses to navigate when the app origin is unusable", () => {
     expect(checkoutTarget({ url: "/billing/checkout/chk_3" }, "::::")).toEqual({
-      kind: "external",
-      url: "/billing/checkout/chk_3",
+      kind: "invalid",
     });
   });
 

@@ -13,5 +13,8 @@ export default defineConfig({
     // PGlite boots a WASM Postgres per worker; under a full parallel run the
     // beforeAll hook can exceed 20s on slower machines.
     hookTimeout: 60_000,
+    // Each worker boots a WASM Postgres; parallel PGlite instances exhausted the
+    // process heap on an ordinary dev machine. Serial files stay deterministic.
+    fileParallelism: false,
   },
 });

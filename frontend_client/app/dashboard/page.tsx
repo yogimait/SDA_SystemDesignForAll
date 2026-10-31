@@ -131,7 +131,7 @@ export function DashboardContent() {
           <div className="flex flex-wrap items-center justify-end gap-3">
             <span
               role="status"
-              className={loading && data !== null ? "text-muted-foreground font-mono text-[11px]" : "sr-only"}
+              className={loading && data !== null ? "text-muted-foreground text-[11px]" : "sr-only"}
             >
               Updating…
             </span>
@@ -268,8 +268,8 @@ function DashboardBody({ data }: { data: DashboardData }) {
                     aria-hidden="true"
                   />
                 </span>
-                <span className="text-muted-foreground flex-none whitespace-nowrap font-mono text-[10px]">
-                  {formatTokensCompact(model.totalTokens)} tok · {model.runCount} runs
+                <span className="text-muted-foreground flex-none whitespace-nowrap text-[10px]">
+                  {formatTokensCompact(model.totalTokens)} tokens · {model.runCount} runs
                 </span>
               </li>
             ))}
@@ -343,7 +343,7 @@ function UsageBuckets({
     <div className="mt-3">
       <div
         aria-hidden="true"
-        className="bg-muted/40 text-muted-foreground mb-1 text-right font-mono text-[10px]"
+        className="bg-muted/40 text-muted-foreground mb-1 text-right text-[10px]"
       >
         max {formatTokensCompact(max)} tokens
       </div>
@@ -362,8 +362,8 @@ function UsageBuckets({
               <span
                 role="img"
                 aria-label={`${short}: ${tokens} tokens`}
-                title={`${short} — ${tokens} tokens`}
-                className="bg-primary block w-full rounded-t-[2px] transition-[height] duration-200"
+                title={`${short}: ${tokens} tokens`}
+                className="bg-primary block w-full rounded-t-[2px]"
                 style={{
                   height: `${usageBarPercent(bucket.totalTokens, max)}%`,
                   minHeight: bucket.totalTokens > 0 ? 2 : 0,
@@ -405,7 +405,7 @@ function TotalCard({
 }) {
   return (
     <div className="bg-card border-border rounded-xl border border-solid p-4">
-      <p className="text-muted-foreground flex items-center gap-2 text-[11px] uppercase">
+      <p className="text-muted-foreground flex items-center gap-2 text-[11px]">
         {icon}
         {label}
       </p>
@@ -424,7 +424,7 @@ function PlanGateCard({ code }: { code: import("@sda/contracts").ErrorCode }) {
         Plan-gated data
       </p>
       <p className="text-muted-foreground mt-2 text-sm leading-relaxed">{USER_MESSAGES[code]}</p>
-      <p className="text-muted-foreground mt-1 font-mono text-[11px]">code: {code}</p>
+      <p className="text-muted-foreground mt-1 text-[11px]">code: {code}</p>
       <Link href="/pricing" className="mt-4 inline-block">
         <Button size="sm">
           <SparklesIcon />

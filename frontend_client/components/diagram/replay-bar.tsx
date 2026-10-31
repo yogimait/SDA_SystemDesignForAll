@@ -49,7 +49,7 @@ export function ReplayBar({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-muted-foreground font-mono text-[10px] uppercase">
+          <p className="text-muted-foreground text-[10px]">
             {`replay · step ${index + 1} / ${total} · ${speed}×`}
           </p>
         </div>
@@ -95,8 +95,8 @@ export function ReplayBar({
           className="bg-muted h-1 min-w-0 flex-1 overflow-hidden rounded-full"
         >
           <div
-            className="bg-primary h-1 rounded-full transition-[width] duration-200"
-            style={{ width: `${((index + 1) / total) * 100}%` }}
+            className="bg-primary h-1 origin-left rounded-full transition-transform duration-200 motion-reduce:transition-none"
+            style={{ width: "100%", transform: `scaleX(${(index + 1) / total})` }}
           />
         </div>
         <Button

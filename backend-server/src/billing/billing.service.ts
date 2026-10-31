@@ -150,7 +150,7 @@ export class BillingService {
     }
     const record = await this.billing.recordEvent({
       id: randomUUID(),
-      userId: eventUserId(event),
+      userId: await this.resolveEventUserId(event),
       provider: this.provider.id,
       idempotencyKey: event.id,
       type: event.type,
@@ -169,6 +169,31 @@ export class BillingService {
   private async processEvent(id: string, event: WebhookEvent): Promise<void> {
     await this.handleEvent(event);
     await this.billing.markEventProcessed(id, new Date());
+  }
+
+  /**
+   * Attribute the event to an account so deletion cascades. Checkout carries
+   * the client reference; subscription events resolve through the subscription
+   * we stored for that external id.
+   */
+  private async resolveEventUserId(
+    event: WebhookEvent,
+  ): Promise<string | null> {
+    const object = stripeObject(event.payload);
+    if (event.type === "checkout.session.completed") {
+      return stringField(object, "client_reference_id") ?? null;
+    }
+    if (
+      event.type === "customer.subscription.updated" ||
+      event.type === "customer.subscription.deleted"
+    ) {
+      const subscriptionId = stringField(object, "id");
+      if (!subscriptionId) return null;
+      const existing =
+        await this.billing.findSubscriptionByExternalId(subscriptionId);
+      return existing?.userId ?? null;
+    }
+    return null;
   }
 
   private get checkoutEnabled(): boolean {
@@ -265,11 +290,6 @@ function toSubscriptionDto(row: BillingSubscriptionRow) {
     cancelAtPeriodEnd: row.cancelAtPeriodEnd,
     updatedAt: row.updatedAt.toISOString(),
   };
-}
-
-function eventUserId(event: WebhookEvent): string | null {
-  if (event.type !== "checkout.session.completed") return null;
-  return stringField(stripeObject(event.payload), "client_reference_id") ?? null;
 }
 
 function stripeObject(payload: Record<string, unknown>): Record<string, unknown> {

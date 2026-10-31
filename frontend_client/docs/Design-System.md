@@ -42,16 +42,27 @@ Theme: **"Coffee"** — slightly dark warm charcoal, minimalist, accessible. Def
 
 Minimalist = motion is punctuation, not decoration. Everything is disarmed by the `prefers-reduced-motion` kill switch.
 
-- Entrance: `animate-fade-up` (8px rise + fade, 450ms, ease-out-expo) on hero, idea card, capabilities; stagger via `animation-delay-1/2/3` (60ms steps). Error banners stay instant — clarity beats flourish.
-- Hover: cards lift 1 step (-4px) with a slightly brighter border; example chips lift 1px; primary buttons lift 1px on hover and press down on click (`active:translate-y-0`).
-- Dialogs: built-in tw-animate-css fade/zoom on the shared Dialog component — do not add more.
-- Hover/focus transitions cap at ~150–200ms; entrance ≤450ms. No springs, no parallax, no autoplaying loops.
+- Entrance: `animate-fade-up` (8px rise + fade, 450ms, ease-out-expo) on the two hero columns; stagger via `animation-delay-1/2/3` (60ms steps). Error banners stay instant — clarity beats flourish.
+- Hover: pills/cards brighten their border; chips and buttons shift <2px; dialogs keep the shared tw-animate-css fade/zoom. Hover/focus transitions cap at ~150–200ms; entrance ≤450ms. No springs, no parallax, no autoplaying loops.
+
+## Landing: Stitch "Coffee Theme" implementation (2026-10-31)
+
+The landing page implements the Stitch Coffee reference (`coffee-landing.html`) with the project's own Tailwind pipeline — no CDN runtime, no second token set:
+
+- **Palette**: existing coffee tokens (`--background` #201D1A, `--card` #262320, `--popover` #2E2A27, `--border` #3A3631, `--primary` #D9A05B) plus one extra `--primary-hover` (#C78F4B) exposed as `bg-primary-hover`. Secondary copy uses `--muted-foreground`, faint labels `text-muted-foreground/70`.
+- **Typography**: headings stay `font-heading` (Space Grotesk). Landing-only families load via `next/font` and CSS variables scoped to the page: `font-landing` (Inter), `font-landing-mono` (Space Mono), `font-hand` (Caveat annotation). App surfaces keep Geist.
+- **Decorative**: `.coffee-dot-grid` / `.coffee-dot-grid-subtle` (token-based radial dots) for the hero window and CTA banner.
+- **Structure**: flat sticky 64px header → hero (badge, 12-col split: copy + idea card left / static three-view window with Caveat callout right) → `#examples` "What you get" (3 pillars, each with a miniature) → `#how-it-works` (4-step dashed pipeline + one collapsed "Controls, keys and export" disclosure) → CTA banner (3 pillars) → footer.
+- **Honesty/budget**: the "Join thousands…" social proof is replaced with factual copy; provider list says OpenRouter/Groq (no Gemini); preview miniatures are static illustrations marked `data-slot`, excluded from copy budgets; no dead interactive controls (the zoom cluster is decorative, view switches are real preview tabs).
+- **Fold**: hero breakpoints keep the primary CTA above 800px at 1280×800 (`sm:text-5xl` head, `3xl:text-6xl` from 1440px, compact hero bottom padding).
 
 ## Components currently themed
 
-- `components/landing/site-header.tsx` — floating slim nav (rounded card, `components/ui/floating-header.ts`), mono wordmark `sda/`. Sharing the floating treatment: `portal-header.tsx` (email/plan identity hidden below `md` — QA D2, 390px) and the workspace header. Desktop ≥1024 scrolling (~120px, hysteresis 80) cross-fades the card into the floating vertical dock (`components/nav/dock.tsx`; provider trigger only on landing/library; portal mains get a `body.dock-active` left offset from globals.css). Phones/tablets use the hamburger sheet (`components/nav/mobile-nav-sheet.tsx`): identity + links + provider-where-allowed + sign out.
+- `components/landing/site-header.tsx` — flat sticky coffee bar (border + `bg-background/95` + backdrop blur), accent `sda/` wordmark, section nav from `md`, provider + 44px sign-in controls. Desktop ≥1024 scrolling (~120px, hysteresis 80) cross-fades the bar into the floating vertical dock (`components/nav/dock.tsx`; provider trigger only on landing/library; portal mains get a `body.dock-active` left offset from globals.css). Phones/tablets use the hamburger sheet (`components/nav/mobile-nav-sheet.tsx`).
 - `components/landing/provider-dialog.tsx` — provider (from `GET /api/providers`) + per-provider session key + model (from the selected provider), privacy box, save-for-session (+ saved provider/model preference for signed-in users).
-- `components/landing/idea-form.tsx` — textarea card, example chips (mono), start button states, error banner, BYOK helper line.
-- `components/landing/capabilities.tsx` — three text-led cards + labelled static sample preview.
+- `components/landing/idea-form.tsx` — coffee idea card: uppercase mono label + live `chars/8000` counter, contrast-safe field (border `muted-foreground/60`, `bg-background/80`), six example chips (44px), key note ("Use your own API key (OpenRouter, Groq)") and accent CTA in the bottom action bar. Pending-idea restore and AUTH_REQUIRED hand-off unchanged.
+- `components/landing/capabilities.tsx` — "What you get" pillars (LLD/HLD/DSA) with tinted icon tiles and static miniature previews.
+- `components/landing/how-it-works.tsx` — four-step pipeline + collapsed controls disclosure.
+- `components/landing/sample-preview.tsx` — static three-view window (LLD/HLD/DSA preview tabs) with the Caveat annotation; sample fixtures only.
 
 Sample preview fixtures are demo material only (root AGENTS.md: never the production pipeline).

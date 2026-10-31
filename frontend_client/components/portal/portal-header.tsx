@@ -113,7 +113,7 @@ export function PortalHeader({ current }: { current: "library" | "dashboard" | "
                 >
                   {session.user.email}
                 </span>
-                <span className="text-muted-foreground border-border/60 hidden rounded border border-solid px-1.5 py-0.5 font-mono text-[10px] uppercase md:inline">
+                <span className="text-muted-foreground border-border/60 hidden rounded border border-solid px-1.5 py-0.5 text-[10px] md:inline">
                   {session.user.planTier}
                 </span>
                 <Button

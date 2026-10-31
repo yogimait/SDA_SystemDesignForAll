@@ -14,7 +14,7 @@ export function BackToWorkspace() {
   return (
     <Link
       href={`/projects/${id}/workspace`}
-      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded font-mono text-xs transition-colors focus-visible:ring-2 focus-visible:outline-1"
+      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded text-xs transition-colors focus-visible:ring-2 focus-visible:outline-1"
     >
       <ArrowLeftIcon className="size-3.5" aria-hidden="true" />
       Back to workspace
