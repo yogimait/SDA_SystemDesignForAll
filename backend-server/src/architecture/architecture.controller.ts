@@ -50,6 +50,7 @@ export class ArchitectureController {
       options,
       readProviderKey(request),
       request.user,
+      request.authenticatedUserId,
     );
   }
 
@@ -67,6 +68,7 @@ export class ArchitectureController {
       { provider: body.provider, model: body.model },
       readProviderKey(request),
       request.user,
+      request.authenticatedUserId,
     );
   }
 

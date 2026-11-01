@@ -1,7 +1,8 @@
 /**
- * Provider-setup gating rules (single source for the dialog guard and the
- * requirements page). A run needs all three: a provider, one of that
- * provider's models, and that provider's own key in this tab.
+ * Provider-setup gating rules (single source for the dialog guard, the
+ * requirements page, and the workspace). A run needs a provider, one of that
+ * provider's models, and a key for that provider — either in this tab or in the
+ * signed-in account's encrypted vault.
  */
 import type { ProviderSetup } from "@/lib/session/keys";
 
@@ -30,14 +31,19 @@ export const PROVIDER_GAP_LABELS: Record<ProviderSetupGap, string> = {
   key: "API key missing",
 };
 
-export function providerSetupState(setup: ProviderSetup | null): ProviderSetupState {
+export function providerSetupState(
+  setup: ProviderSetup | null,
+  hasSavedAccountKey = false,
+): ProviderSetupState {
   if (setup === null) {
     return { ready: false, gaps: ["provider", "model", "key"], provider: "", model: "" };
   }
   const gaps: ProviderSetupGap[] = [];
   if (setup.provider.trim() === "") gaps.push("provider");
   if (setup.model.trim() === "") gaps.push("model");
-  if (setup.apiKey.trim().length < MIN_PROVIDER_KEY_LENGTH) gaps.push("key");
+  if (!hasSavedAccountKey && setup.apiKey.trim().length < MIN_PROVIDER_KEY_LENGTH) {
+    gaps.push("key");
+  }
   return {
     ready: gaps.length === 0,
     gaps,

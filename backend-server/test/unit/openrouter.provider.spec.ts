@@ -140,6 +140,27 @@ describe("OpenRouterProvider", () => {
     });
   });
 
+  it("falls back when the provider fails to generate JSON", async () => {
+    const scripted = scriptedFetch([
+      failure(
+        400,
+        "Failed to generate JSON. Please adjust your prompt. See 'failed_generation' for more details.",
+      ),
+      success('{"ok":true}'),
+    ]);
+    const provider = new OpenRouterProvider(scripted.fetch);
+
+    const result = await provider
+      .bind("sk-test")
+      .generateStructured(input());
+
+    expect(result.data).toEqual({ ok: true });
+    expect(scripted.calls).toHaveLength(2);
+    expect(bodyOf(scripted.calls[1]).response_format).toEqual({
+      type: "json_object",
+    });
+  });
+
   it("falls back to prompt mode and extracts fenced JSON", async () => {
     const scripted = scriptedFetch([
       failure(422, "unsupported response_format"),
@@ -184,6 +205,44 @@ describe("OpenRouterProvider", () => {
       ).rejects.toMatchObject({ code });
     },
   );
+
+  it("scrubs an echoed key from provider error details", async () => {
+    const key = "sk-or-v1-echoed0123456789abcdef";
+    const scripted = scriptedFetch([
+      failure(400, `Incorrect API key provided: ${key}. Check the key.`),
+    ]);
+    const provider = new OpenRouterProvider(scripted.fetch);
+
+    let thrown: unknown;
+    try {
+      await provider.bind(key).generateStructured(input());
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({ code: "PROVIDER_UNSUPPORTED_CAPABILITY" });
+    const details = (thrown as { details: { providerMessage: string } }).details;
+    expect(details.providerMessage).not.toContain(key);
+    expect(details.providerMessage).not.toContain("sk-or-v1");
+    expect(details.providerMessage).toContain("[REDACTED]");
+  });
+
+  it("scrubs an echoed key that has no known prefix", async () => {
+    const key = "custom-key-0123456789";
+    const scripted = scriptedFetch([
+      failure(400, `Request rejected for credential ${key}`),
+    ]);
+    const provider = new OpenRouterProvider(scripted.fetch);
+
+    let thrown: unknown;
+    try {
+      await provider.bind(key).generateStructured(input());
+    } catch (error) {
+      thrown = error;
+    }
+    const details = (thrown as { details: { providerMessage: string } }).details;
+    expect(details.providerMessage).not.toContain(key);
+    expect(details.providerMessage).toContain("[REDACTED]");
+  });
 
   it("maps context-length failures without falling through the ladder", async () => {
     const scripted = scriptedFetch([

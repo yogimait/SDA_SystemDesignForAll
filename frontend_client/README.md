@@ -33,8 +33,10 @@ architecture generates → open the collaborative workspace (LLD / HLD / DSA
 tabs, outline, details, guided learning steps).
 
 Using a real provider: enter an OpenRouter key in the landing "Provider
-setup" dialog (BYOK; the key travels only via the `x-provider-api-key` header
-and is never persisted).
+setup" dialog (BYOK). It can stay in that browser tab for the session, or a
+signed-in user can opt in to save it encrypted to their account; a tab key
+travels only via the `x-provider-api-key` header, and the backend never returns
+a stored key.
 
 ## Checks
 

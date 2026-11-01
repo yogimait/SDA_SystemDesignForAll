@@ -27,7 +27,7 @@ All four checks must pass before backend work is done. Tests use in-memory PGlit
 - **Contracts**: include request/response schemas in `@sda/contracts`. Do not redefine DTOs or the architecture model in this app.
 - **Canonical model only**: persist and return the validated model. No sample architectures, static images, or simulated stage progress in production paths.
 - **No hardcoded model**: provider and model come from the request or env (`DEFAULT_PROVIDER`, `DEFAULT_MODEL`). Orchestration never imports an adapter directly; go through `ProviderRegistry`.
-- **Secrets**: `x-provider-api-key` stays in memory for one run. Production path is header-only; for local development only, `OPENROUTER_API_KEY` or `GROQ_API_KEY` in the gitignored `.env` is a fallback (header wins, `NODE_ENV=production` ignores it). Never persist, log, or echo a key. `x-project-key` is the project boundary; only its SHA-256 hash is stored.
+- **Secrets**: `x-provider-api-key` stays in memory for one run and is never logged, echoed, or written into run rows. A signed-in user may opt in to the account-scoped vault, which persists the key **only** as AES-256-GCM ciphertext (`user_provider_credentials`, `CREDENTIALS_ENCRYPTION_KEY`, AAD `<userId>:<provider>`) and never returns it; the stored key is used only for a valid Bearer session, never from `x-project-key` alone. Provider-echoed secrets are scrubbed from error details before persistence. That is a deliberate trade-off, documented in [[Providers]] and [[Data-Model]]. For local development only, `OPENROUTER_API_KEY` or `GROQ_API_KEY` in the gitignored `.env` is a fallback (header wins, `NODE_ENV=production` ignores it). `x-project-key` is the project boundary; only its SHA-256 hash is stored.
 - **Real stages**: stage state comes from persisted `generation_stages` rows. Do not add fake delays or optimistic stage transitions.
 - **Persistence**: access the database only through repository interfaces. Keep PGlite and Postgres interchangeable; no SQL in controllers or generators.
 - **Validation**: validate external data with Zod at the HTTP boundary and model output with contracts. No `any` without a documented reason.
@@ -45,6 +45,7 @@ All four checks must pass before backend work is done. Tests use in-memory PGlit
 | `src/projects/`, `src/requirements/`, `src/architecture/` | Controllers and domain services. |
 | `src/auth/` | Register/login/logout, scrypt password hashing, opaque sessions. |
 | `src/account/` | Saved provider config and user preferences. |
+| `src/credentials/` | Account-scoped BYOK vault: AES-256-GCM crypto, save/rotate/list/remove, run-time key resolution. |
 | `src/analytics/` | Dashboard usage aggregation. |
 | `src/plans/` | Free/Pro limits and upgrade gates. |
 | `src/architecture/validator.ts` | Structural + semantic validation of the merged model. |

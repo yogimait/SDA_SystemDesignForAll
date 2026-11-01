@@ -144,6 +144,24 @@ function intercept(page: Page, projectStatus: string, requirements: unknown): vo
       body: JSON.stringify(envelope({ ...PROJECT, status: projectStatus })),
     }),
   );
+  page.route("**/api/users/me/provider-keys**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(envelope({ credentials: [] })),
+    }),
+  );
+  page.route("**/api/users/me/provider-config", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        envelope({
+          config: { provider: "openrouter", model: "z-ai/glm-5.3-flash", updatedAt: "t" },
+        }),
+      ),
+    }),
+  );
   mockAuthRoutes(page, USER);
 }
 
@@ -197,6 +215,13 @@ test("library header fits 390px and provider setup lives in the menu", async ({ 
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(envelope({ projects: [], nextCursor: null })),
+    }),
+  );
+  page.route("**/api/users/me/provider-keys**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(envelope({ credentials: [] })),
     }),
   );
   mockAuthRoutes(page, USER);

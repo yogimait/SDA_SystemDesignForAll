@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import { APP_CONFIG } from "../config/config.module.js";
 import type { AppConfig } from "../config/env.js";
 import { AppError } from "../common/errors/app-error.js";
+import { redactDetails, redactSecrets } from "../common/logging/redact.js";
 import {
   toValidationReport,
   validateArchitectureModel,
@@ -533,13 +534,17 @@ export class GenerationWorker
     if (failedUsage) {
       addUsage(state.usage, failedUsage);
     }
+    // Details come from provider responses; scrub recursively before they are
+    // persisted or broadcast, so a leaked key cannot outlive the request.
+    const errorMessage = redactSecrets(appError.message);
+    const errorDetails = redactDetails(appError.details) ?? null;
     if (state.stage) {
       await this.updateStage(run, state, state.stage, {
         status: "failed",
         finishedAt: new Date(),
         errorCode: appError.code,
-        errorMessage: appError.message,
-        errorDetails: appError.details ?? null,
+        errorMessage,
+        errorDetails,
         ...(failedUsage
           ? {
               usagePromptTokens: failedUsage.promptTokens,
@@ -552,8 +557,8 @@ export class GenerationWorker
       status: "failed",
       finishedAt: new Date(),
       errorCode: appError.code,
-      errorMessage: appError.message,
-      errorDetails: appError.details ?? null,
+      errorMessage,
+      errorDetails,
       usagePromptTokens: state.usage.promptTokens,
       usageCompletionTokens: state.usage.completionTokens,
     });

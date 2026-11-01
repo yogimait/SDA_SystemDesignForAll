@@ -25,7 +25,7 @@ interface ModelProvider {
 
 - `MOCK_PROVIDER=1` takes precedence and always returns the deterministic mock, regardless of the requested provider.
 - Otherwise, `provider` from the request (or `DEFAULT_PROVIDER`, default `openrouter`) must be `openrouter` or `groq`; anything else is `VALIDATION_ERROR` with the available provider list.
-- A real run without `x-provider-api-key` fails immediately with `PROVIDER_AUTH_FAILED`, unless the matching local `.env` key is set (development only).
+- A real run resolves its key in this order: `x-provider-api-key` header, the signed-in owner's stored vault credential for that provider, then the matching local `.env` key (development only). With none of them the run fails immediately with `PROVIDER_AUTH_FAILED`.
 - `GET /api/providers` returns the registered provider metadata, the env defaults, and the mock flag. It never returns a key.
 - `DEFAULT_MODEL` is the active default model when a request omits one. Each provider exposes a model catalog from configuration only — no provider API is called to discover models:
   - `OPENROUTER_MODELS` (comma-separated) defaults to `z-ai/glm-5.3-flash` plus a small curated fallback list.
@@ -41,11 +41,17 @@ interface ModelProvider {
 sequenceDiagram
   participant C as Client
   participant API as RunService
+  participant V as CredentialsService
   participant REG as ProviderRegistry
   participant OR as OpenRouter adapter
   participant W as Worker
-  C->>API: POST run + x-provider-api-key
-  API->>REG: resolve(provider?, key)
+  C->>API: POST run (+ x-provider-api-key?)
+  alt no header key and owner has a vault row
+    API->>V: resolveForRun(userId, provider)
+    V->>V: decrypt with AAD userId:provider
+    V-->>API: plaintext key (memory only)
+  end
+  API->>REG: resolve(provider?, key?)
   REG->>OR: bind(key)
   OR-->>REG: closure with key
   REG-->>API: ModelProvider
@@ -56,9 +62,25 @@ sequenceDiagram
   W->>API: unregister in finally
 ```
 
-- Request-supplied keys are never written to the database, stage results, error details, or metrics. The local fallback key is loaded from the gitignored `.env` into process memory only.
+- Precedence: request header > stored account credential > development env fallback. The header is read per request and never stored; the env fallback is ignored in production.
+- The stored credential is read only for an authenticated account: `ProjectAccessGuard` records `authenticatedUserId` from a valid Bearer session, never from `x-project-key`. A project key alone therefore falls through to the env fallback (disabled in production) instead of decrypting the owner's vault.
+- Mock mode (`MOCK_PROVIDER=1` or a mocked registry) skips the vault entirely, including `lastUsedAt`; no decryption is attempted.
+- Stored credentials are decrypted only in memory for one run, and `last_used_at` is updated. The run row records provider and model, never a key.
+- Request-supplied and decrypted keys are never written to the database, stage results, error details, or metrics.
+- Providers can echo a key back in an error message; the adapter scrubs the exact bound key and every `sk-` / `sk-or-v1-` / `gsk_` token before the message reaches `AppError.details`. `GenerationWorker` and `AllExceptionsFilter` deep-redact details once more, so persisted runs, SSE frames, and HTTP error bodies stay clean.
 - The provider map entry exists only while the run is in flight; a restart loses it and reconciliation marks the run `interrupted`.
 - Redacting logger and `redactSecrets` are the last line of defence for accidental messages.
+
+### Account-scoped encrypted vault
+
+`PUT /api/users/me/provider-keys/:provider` stores one key per provider for a signed-in account. This is opt-in and the deliberate exception to header-only BYOK:
+
+- AES-256-GCM (`node:crypto`) with a random 12-byte IV, AAD `<userId>:<provider>`, and base64 `ciphertext`/`iv`/`authTag` plus `keyVersion`.
+- `CREDENTIALS_ENCRYPTION_KEY` is a base64 32-byte key; `CREDENTIALS_ENCRYPTION_KEY_VERSION` defaults to `1`. Boot rejects a malformed key, and production refuses to start without one.
+- The key is never returned by `GET`, never logged, and never placed in `AppError` details. `GET` selects only status columns. Missing key, unknown version, or a failed auth tag all surface as `503 PROVIDER_CREDENTIALS_UNAVAILABLE`.
+- Missing key with a stored row is an error, not a silent fallback: the run start fails with `503 PROVIDER_CREDENTIALS_UNAVAILABLE`. With no row, resolution returns `undefined` and the registry env fallback still applies.
+- Removing the key (`DELETE`) or deleting the account (FK cascade) deletes the row. `last_used_at` shows recent use without exposing anything.
+- Rotation plan: publish the new key under a new `CREDENTIALS_ENCRYPTION_KEY_VERSION`, keep the old key briefly to decrypt, and have users re-save. Today the service encrypts with the configured version and rejects any other version; there is no multi-key ring yet.
 
 ### Local development fallback
 
@@ -128,9 +150,9 @@ GLM-5.3 Flash mandates reasoning. OpenRouter maps `effort: "low"` to roughly 20%
 
 Request: `POST https://api.groq.com/openai/v1/chat/completions` with `Authorization: Bearer <key>`, `max_completion_tokens` from the stage budget, and `reasoning_effort` from `GROQ_REASONING_EFFORT` (default `low`). No OpenRouter `provider` routing or `X-Title` header is sent. GPT-OSS 120B supports strict `json_schema`; the shared ladder falls back to `json_object` then prompt-only if needed.
 
-Groq can answer a strict-schema request with `400 Generated JSON does not match the expected schema` (`json_validate_failed`). This is treated as a format failure, not a capability failure: `json_schema` downgrades to `json_object`, then prompt mode, and a prompt-mode mismatch returns `INVALID_MODEL_OUTPUT` (`reason = "schema_mismatch"`) so the generator's bounded repair loop runs.
+Groq can answer a strict-schema request with `400 Generated JSON does not match the expected schema` (`json_validate_failed`) or `400 Failed to generate JSON` (`failed_generation`). Both are treated as format failures, not permanent capability gaps: `json_schema` downgrades to `json_object`, then prompt mode, and a prompt-mode failure returns `INVALID_MODEL_OUTPUT` (`reason = "schema_mismatch"` or `"json_generation_failed"`) so the generator's bounded repair loop runs.
 
-The current free-plan key is limited to **30 RPM, 1,000 RPD, 8,000 TPM, 200,000 TPD** for `openai/gpt-oss-120b`. A 64k LLD/DSA request cannot fit the 8k TPM budget. Use OpenRouter for the full 64k generation, upgrade the Groq plan, or split LLD/DSA into multiple Groq calls (not implemented yet). The adapter maps Groq `429` responses to `PROVIDER_RATE_LIMITED` with `retryAfterSeconds`.
+The current free-plan key is limited to **30 RPM, 1,000 RPD, 8,000 TPM, 200,000 TPD** for `openai/gpt-oss-120b`/`openai/gpt-oss-20b`. A 64k combined LLD/DSA request cannot fit the 8k TPM budget. Use OpenRouter for the full 64k generation, upgrade the Groq plan, or split LLD/DSA into multiple Groq calls (not implemented yet). Verified workaround: generate a baseline with OpenRouter, then use Groq scoped regeneration for HLD, LLD, and DSA separately; each section fit 8k TPM and produced a valid architecture (8 components / 12 connections, 12 classes / 9 relationships, 3 DSA recommendations) on `openai/gpt-oss-20b`. The adapter maps Groq `429` responses to `PROVIDER_RATE_LIMITED` with `retryAfterSeconds`.
 
 ## Verified model
 

@@ -42,7 +42,7 @@ const STEPS = [
 const CONTROLS = [
   {
     title: "Your model, your key",
-    body: "Runs use your own provider key (OpenRouter or Groq). The key lives in this browser tab only (sessionStorage), travels only with generation requests, and is never persisted server-side or logged.",
+    body: "Runs use your own provider key (OpenRouter or Groq). Keep it in this browser tab for the session, or opt in to save it encrypted to your account so it works across devices. Keys are never logged, and only travel to the provider call.",
   },
   {
     title: "One validated model",

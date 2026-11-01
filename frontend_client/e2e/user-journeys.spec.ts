@@ -178,6 +178,29 @@ function interceptUserEndpoints(
   page.route("**/api/projects?*", overrides.projects ?? oh(LIBRARY_PAGE));
   page.route("**/api/providers", oh(PROVIDERS));
   page.route("**/api/users/me/provider-config", oh({ config: { provider: "openrouter", model: "z-ai/glm-5.3-flash", updatedAt: "t" } }));
+  // The BYOK vault status is fetched by the dialog/gate for signed-in users;
+  // keep the fake session away from the live vault and remember saves so the
+  // post-save status refresh sees them.
+  const savedCredentials = new Set<string>();
+  page.route("**/api/users/me/provider-keys**", (route) => {
+    const method = route.request().method();
+    const provider = route.request().url().split("/").pop() ?? "";
+    if (method === "PUT") {
+      savedCredentials.add(provider);
+      return oh({ credential: { provider, saved: true, updatedAt: "t" } })(route);
+    }
+    if (method === "DELETE") {
+      savedCredentials.delete(provider);
+      return oh({ removed: true })(route);
+    }
+    return oh({
+      credentials: [...savedCredentials].map((id) => ({
+        provider: id,
+        saved: true,
+        updatedAt: "t",
+      })),
+    })(route);
+  });
   page.route("**/api/users/me/preferences", oh({ preferences: { theme: "dark" } }));
   page.route("**/api/billing/plans", oh({ plans: [], provider: "stub", checkoutCompletable: true }));
   page.route("**/api/billing/subscription", oh({ subscription: null, planTier: "free" }));
@@ -458,7 +481,7 @@ test.describe("provider settings + preferences", () => {
     await page.getByRole("option", { name: "OpenRouter" }).click();
     await expect(apiKey).toHaveValue("sk-or-test-key-0123456789");
 
-    await page.getByRole("button", { name: "Save for this session" }).click();
+    await page.getByRole("button", { name: "Save provider setup" }).click();
     await expect(page.getByRole("dialog")).toBeHidden();
     await expect(page.getByRole("button", { name: /Provider (setup|ready)/ })).toHaveText(/Provider ready/);
     // Signed in: the choice lands server-side without the key.
@@ -531,8 +554,10 @@ test.describe("requirements provider gate", () => {
 
     const blocker = page.getByRole("region", { name: "Provider setup required" });
     await expect(blocker).toBeVisible();
-    await expect(blocker).toContainText("Provider missing");
+    // The account's saved provider/model fill the first two gaps; only the key
+    // is left before the dialog saves one.
     await expect(blocker).toContainText("API key missing");
+    await expect(blocker).not.toContainText("Provider missing");
     const generate = page.getByRole("button", { name: "Generate requirements" });
     await expect(generate).toBeDisabled();
     await expect(page.getByText(/Add the missing provider setup above/)).toBeVisible();
@@ -541,7 +566,7 @@ test.describe("requirements provider gate", () => {
     await page.getByRole("button", { name: /Add provider & key/ }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.getByLabel("API key").fill("sk-or-e2e-key-0123456789");
-    await page.getByRole("button", { name: "Save for this session" }).click();
+    await page.getByRole("button", { name: "Save provider setup" }).click();
     await expect(page.getByRole("dialog")).toBeHidden();
     await expect(blocker).toHaveCount(0);
     await expect(generate).toBeEnabled();
@@ -565,7 +590,7 @@ test.describe("requirements provider gate", () => {
 
     await page.getByRole("button", { name: /Add provider & key/ }).click();
     await page.getByLabel("API key").fill("sk-or-e2e-key-0123456789");
-    await page.getByRole("button", { name: "Save for this session" }).click();
+    await page.getByRole("button", { name: "Save provider setup" }).click();
     await expect(page.getByRole("dialog")).toBeHidden();
     await expect(confirm).toBeEnabled();
     await expect(page.getByText(/Confirmation needs provider setup/)).toHaveCount(0);
@@ -725,7 +750,7 @@ test.describe("unblocked path journeys", () => {
       window.sessionStorage.setItem("sda:provider-setup", JSON.stringify({
         provider: "groq",
         model: "openai/gpt-oss-120b",
-        keys: { groq: "gsk_probe_key" },
+        keys: { groq: "gsk_probe_key_0123456789" },
       }));
     `);
     await page.goto("/projects/proj_1/workspace");
@@ -739,7 +764,7 @@ test.describe("unblocked path journeys", () => {
       provider: "groq",
       model: "openai/gpt-oss-120b",
     });
-    expect(calls[0]?.key).toBe("gsk_probe_key");
+    expect(calls[0]?.key).toBe("gsk_probe_key_0123456789");
   });
 
   test("RUN_CONFLICT on run start maps to the wait message", async ({ page }) => {

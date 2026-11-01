@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRoundIcon } from "lucide-react";
+import { CircleCheckIcon, KeyRoundIcon } from "lucide-react";
 import type { ProvidersResponse } from "@sda/contracts";
 import { ProvidersResponseSchema, SavedProviderConfigResponseSchema } from "@sda/contracts";
 import {
@@ -24,12 +24,20 @@ import {
 } from "@/components/ui/select";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { providerLabel } from "@/lib/providers/label";
+import {
+  removeProviderCredential,
+  saveProviderCredential,
+} from "@/lib/providers/credentials";
 import { MIN_PROVIDER_KEY_LENGTH } from "@/lib/providers/setup";
 import { loadProviderKeys, loadProviderSetup, saveProviderSetup } from "@/lib/session/keys";
 import type { ProviderSetup } from "@/lib/session/keys";
 import { useSession } from "@/hooks/use-session";
+import { useSavedProviderKeys } from "@/hooks/use-saved-provider-keys";
+import { formatTimestamp } from "@/lib/format";
 
 type Selection = { provider: string; model: string };
+
+type DialogError = { user: string; detail: string; note?: string };
 
 /** Preferred choice wins when the server still offers the provider; a saved
  *  model is kept even when the catalog dropped it (Settings does the same). */
@@ -51,13 +59,15 @@ function resolveSelection(
 
 /**
  * Provider setup (BYOK). Provider + model lists come from `GET /api/providers`
- * (nothing hardcoded); keys stay in sessionStorage per provider — written
- * exclusively through lib/session/keys.ts.
+ * (nothing hardcoded); a session key stays in sessionStorage per provider —
+ * written exclusively through lib/session/keys.ts.
  *
  * Signed-in users share one provider/model source with Settings: their saved
  * provider-config pre-fills the dialog, and saving here writes it back via
- * `PUT /api/users/me/provider-config` (no key in that payload). Anonymous
- * visitors get sessionStorage only.
+ * `PUT /api/users/me/provider-config` (no key in that payload). They can also
+ * opt in to the encrypted account vault (`PUT /api/users/me/provider-keys`):
+ * that key is never read back, never pre-filled, and is not copied to this tab.
+ * Anonymous visitors get sessionStorage only.
  *
  * `triggerLabel` lets a page-body CTA reuse the dialog (headers keep their
  * compact label); `onSaved` fires once the tab-local setup is stored, so a
@@ -74,18 +84,26 @@ export function ProviderDialog({
   marketing?: boolean;
 } = {}) {
   const session = useSession();
+  const savedKeys = useSavedProviderKeys();
   const [open, setOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [providers, setProviders] = useState<ProvidersResponse | null>(null);
   const [provider, setProvider] = useState("");
   const [model, setModel] = useState("");
   const [keys, setKeys] = useState<Record<string, string>>({});
+  const [saveToAccount, setSaveToAccount] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<DialogError | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const providerInfo = providers?.providers.find((info) => info.id === provider) ?? null;
   const apiKey = keys[provider] ?? "";
+  const savedCredential = provider === "" ? undefined : savedKeys.credentials.get(provider);
+  const hasSavedKey = savedCredential?.saved === true;
+  const newKeyReady = apiKey.trim().length >= MIN_PROVIDER_KEY_LENGTH;
   // Same rule as Settings: a saved model the catalog no longer lists stays
   // selectable (clearly marked) instead of silently snapping to another model.
   const catalogModels = providerInfo?.models ?? [];
@@ -129,48 +147,123 @@ export function ProviderDialog({
 
   function whenOpening(): void {
     setSaveError(null);
+    setRemoveError(null);
+    setConfirmRemove(false);
+    setSaveToAccount(true);
     setKeys(loadProviderKeys());
     const stored = loadProviderSetup();
     setProvider(stored?.provider ?? "");
     setModel(stored?.model ?? "");
     setReady(stored !== null);
+    void savedKeys.refresh();
     void loadProviders();
   }
 
   async function save(): Promise<void> {
-    const setup: ProviderSetup = { provider, apiKey: apiKey.trim(), model };
-    // Local first: the key is the part that only exists in this tab.
-    saveProviderSetup(setup);
-    setReady(true);
-    onSaved?.(setup);
+    if (invalidSubmit) return;
     setSaveError(null);
-    if (session === null) {
-      setOpen(false);
+    setBusy(true);
+
+    const newKey = apiKey.trim();
+    const keyEntered = newKey.length >= MIN_PROVIDER_KEY_LENGTH;
+    // What remains in this tab after saving; "" means the account key is the
+    // only copy.
+    let appliedKey = keys[provider] ?? "";
+    let accountError: DialogError | null = null;
+    let configError: DialogError | null = null;
+
+    if (keyEntered) {
+      if (session !== null && saveToAccount) {
+        try {
+          await saveProviderCredential(provider, newKey);
+          appliedKey = "";
+          void savedKeys.refresh();
+        } catch (caught) {
+          // The account copy failed, but the tab can still run with this key.
+          appliedKey = newKey;
+          accountError = {
+            user:
+              caught instanceof ApiError
+                ? caught.userMessage
+                : "Saving the key to your account failed.",
+            detail: caught instanceof Error ? caught.message : String(caught),
+            note: "The key still works for this tab. Retry the account save, or use it session-only.",
+          };
+        }
+      } else {
+        appliedKey = newKey;
+      }
+    }
+
+    saveProviderSetup({ provider, apiKey: appliedKey, model });
+    setKeys((current) => {
+      const next = { ...current };
+      if (appliedKey === "") delete next[provider];
+      else next[provider] = appliedKey;
+      return next;
+    });
+    setReady(true);
+    // A gated page re-checks readiness even when the account save failed,
+    // because the session key is already usable.
+    onSaved?.({ provider, apiKey: appliedKey, model });
+
+    if (session !== null) {
+      try {
+        // No key in this payload — the contract rejects unknown fields.
+        await apiFetch("/api/users/me/provider-config", {
+          method: "PUT",
+          auth: true,
+          body: JSON.stringify({ provider, model }),
+          dataSchema: SavedProviderConfigResponseSchema,
+        });
+      } catch (caught) {
+        configError = {
+          user:
+            caught instanceof ApiError
+              ? caught.userMessage
+              : "Saving the provider preference failed.",
+          detail: caught instanceof Error ? caught.message : String(caught),
+          note:
+            appliedKey === ""
+              ? "The key is saved to your account; only the saved preference failed."
+              : "The key is saved for this tab; only the saved preference failed.",
+        };
+      }
+    }
+
+    setBusy(false);
+    const error = accountError ?? configError;
+    if (error !== null) {
+      setSaveError(error);
       return;
     }
-    setBusy(true);
+    setOpen(false);
+  }
+
+  async function removeSavedKey(): Promise<void> {
+    setRemoving(true);
+    setRemoveError(null);
     try {
-      // No key in this payload — the contract rejects unknown fields.
-      await apiFetch("/api/users/me/provider-config", {
-        method: "PUT",
-        auth: true,
-        body: JSON.stringify({ provider: setup.provider, model: setup.model }),
-        dataSchema: SavedProviderConfigResponseSchema,
-      });
-      setOpen(false);
+      await removeProviderCredential(provider);
+      setConfirmRemove(false);
+      await savedKeys.refresh();
+      // The tab key (if any) is untouched; readiness tells the page which one.
+      onSaved?.({ provider, apiKey: keys[provider] ?? "", model });
     } catch (caught) {
-      setSaveError(
+      setRemoveError(
         caught instanceof ApiError
           ? caught.userMessage
-          : "Saving the provider preference failed.",
+          : "Removing the saved key failed.",
       );
     } finally {
-      setBusy(false);
+      setRemoving(false);
     }
   }
 
   const invalidSubmit =
-    provider === "" || model === "" || apiKey.trim().length < MIN_PROVIDER_KEY_LENGTH;
+    provider === "" || model === "" || (!newKeyReady && !hasSavedKey);
+  const savedAt = formatTimestamp(savedCredential?.updatedAt);
+  const lastUsedAt = formatTimestamp(savedCredential?.lastUsedAt);
 
   return (
     <Dialog
@@ -206,8 +299,8 @@ export function ProviderDialog({
         <DialogHeader>
           <DialogTitle className="text-base">Set up model access</DialogTitle>
           <DialogDescription className="leading-relaxed">
-            Generation runs on your own provider key. Pick a provider, add its
-            key, then choose the model.
+            Generation runs on your own provider key. Pick a provider and model,
+            then add the key for this tab or save it encrypted to your account.
           </DialogDescription>
         </DialogHeader>
 
@@ -230,6 +323,8 @@ export function ProviderDialog({
               onValueChange={(value: string | null) => {
                 if (value === null) return;
                 setProvider(value);
+                setConfirmRemove(false);
+                setRemoveError(null);
                 const models = providers?.providers.find((info) => info.id === value)?.models ?? [];
                 setModel((current) =>
                   models.includes(current) ? current : (models[0] ?? ""),
@@ -297,11 +392,18 @@ export function ProviderDialog({
                 const value = event.target.value;
                 setKeys((current) => ({ ...current, [provider]: value }));
               }}
-              placeholder={provider === "" ? "Pick a provider first" : "Paste the provider key"}
+              placeholder={
+                provider === ""
+                  ? "Pick a provider first"
+                  : hasSavedKey
+                    ? "Saved key — paste a new key to rotate"
+                    : "Paste the provider key"
+              }
               className="placeholder:text-muted-foreground/60 text-foreground border-input bg-card w-full rounded-lg border px-3.5 py-2.5 font-mono text-sm focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-1 disabled:cursor-not-allowed disabled:opacity-50"
             />
             <p className="text-muted-foreground mt-1 text-xs">
-              Each provider keeps its own key in this tab.
+              Each provider keeps its own key. The field is never filled from
+              your account.
             </p>
           </div>
 
@@ -317,7 +419,7 @@ export function ProviderDialog({
               onValueChange={(value: string | null) => {
                 if (value !== null) setModel(value);
               }}
-              disabled={apiKey.trim() === ""}
+              disabled={!newKeyReady && !hasSavedKey}
             >
               <SelectTrigger
                 id="provider-model"
@@ -326,7 +428,9 @@ export function ProviderDialog({
               >
                 <SelectValue
                   placeholder={
-                    apiKey.trim() === "" ? "Add your API key first" : "Pick a model"
+                    newKeyReady || hasSavedKey
+                      ? "Pick a model"
+                      : "Add your API key first"
                   }
                 />
               </SelectTrigger>
@@ -345,21 +449,119 @@ export function ProviderDialog({
             </p>
           </div>
 
+          {hasSavedKey ? (
+            <section
+              aria-label="Saved account key"
+              className="bg-card border-border rounded-lg border border-solid p-3"
+            >
+              <p className="text-success flex items-center gap-1.5 text-sm font-medium">
+                <CircleCheckIcon className="size-3.5" aria-hidden="true" />
+                Saved to your account
+              </p>
+              <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                Works across devices.
+                {savedAt !== null ? ` Saved ${savedAt}.` : ""}
+                {lastUsedAt !== null ? ` Last used ${lastUsedAt}.` : ""}
+              </p>
+              {confirmRemove ? (
+                <div className="mt-2">
+                  <p className="text-foreground text-xs">
+                    Remove the saved key for {providerLabel(provider)}? A key in
+                    this tab stays.
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      onClick={() => setConfirmRemove(false)}
+                    >
+                      Keep it
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="xs"
+                      disabled={removing}
+                      onClick={() => void removeSavedKey()}
+                    >
+                      {removing ? "Removing…" : "Remove key"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  className="mt-2"
+                  onClick={() => setConfirmRemove(true)}
+                >
+                  Remove saved key
+                </Button>
+              )}
+              {removeError !== null ? (
+                <p role="alert" className="text-destructive mt-2 text-xs">
+                  {removeError}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
+
+          {session !== null ? (
+            <div className="bg-card border-border rounded-lg border border-solid p-3">
+              <label
+                htmlFor="save-key-to-account"
+                className="flex cursor-pointer items-start gap-2.5"
+              >
+                <input
+                  id="save-key-to-account"
+                  type="checkbox"
+                  checked={saveToAccount}
+                  onChange={(event) => setSaveToAccount(event.target.checked)}
+                  className="accent-primary focus-visible:ring-ring mt-0.5 size-4 flex-none rounded-sm focus-visible:ring-2 focus-visible:outline-1"
+                />
+                <span>
+                  <span className="text-foreground block text-sm font-medium">
+                    Save this key to my account (encrypted)
+                  </span>
+                  <span className="text-muted-foreground mt-0.5 block text-xs leading-relaxed">
+                    Encrypted at rest on the server and never shown again. A
+                    server breach could still expose it, so prefer a key with a
+                    spend limit.
+                  </span>
+                </span>
+              </label>
+            </div>
+          ) : null}
+
           <div className="bg-card border-border rounded-lg border border-solid p-3">
             <p className="text-foreground text-sm font-medium">Where your key lives</p>
-            <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-              Stored in this browser tab only (sessionStorage). Cleared when you
-              close the tab. Sent only for generation requests via the{" "}
-              <span className="font-mono">x-provider-api-key</span> header.
-              Never logged, never stored server-side.
-            </p>
+            <ul className="text-muted-foreground mt-1 grid gap-1 text-xs leading-relaxed">
+              <li>
+                <span className="text-foreground">Saved to your account</span> —
+                encrypted at rest on the server; works across devices and after
+                this tab closes.
+              </li>
+              <li>
+                <span className="text-foreground">Session only</span> — this
+                browser tab (sessionStorage); cleared when the tab closes.
+              </li>
+              <li>
+                <span className="text-foreground">Anonymous</span> — session only.
+                Sign in to keep a key on your account.
+              </li>
+            </ul>
           </div>
 
           {saveError !== null ? (
             <div role="alert" className="bg-destructive/10 rounded-lg p-3">
-              <p className="text-destructive text-sm font-medium">{saveError}</p>
-              <p className="text-muted-foreground mt-0.5 text-xs">
-                The key is saved for this tab; only the saved preference failed.
+              <p className="text-destructive text-sm font-medium">{saveError.user}</p>
+              {saveError.note !== undefined ? (
+                <p className="text-muted-foreground mt-0.5 text-xs">{saveError.note}</p>
+              ) : null}
+              <p className="text-muted-foreground font-mono mt-0.5 text-[11px]">
+                {saveError.detail}
               </p>
             </div>
           ) : null}
@@ -371,7 +573,7 @@ export function ProviderDialog({
               Not now
             </DialogClose>
             <Button type="submit" disabled={busy || invalidSubmit}>
-              {busy ? "Saving…" : "Save for this session"}
+              {busy ? "Saving…" : "Save provider setup"}
             </Button>
           </DialogFooter>
         </form>

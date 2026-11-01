@@ -24,6 +24,7 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   PROVIDER_TIMEOUT: 504,
   PROVIDER_UNAVAILABLE: 502,
   PROVIDER_CONFIG_NOT_FOUND: 404,
+  PROVIDER_CREDENTIALS_UNAVAILABLE: 503,
   PROVIDER_UNSUPPORTED_CAPABILITY: 502,
   INVALID_MODEL_OUTPUT: 502,
   GENERATION_REPAIR_FAILED: 422,
@@ -59,6 +60,8 @@ export const ERROR_DEFAULT_MESSAGES: Record<ErrorCode, string> = {
     "The model provider is currently unavailable. Try again later.",
   PROVIDER_CONFIG_NOT_FOUND:
     "No saved provider configuration was found for this user.",
+  PROVIDER_CREDENTIALS_UNAVAILABLE:
+    "Saved provider credentials are not available right now. Try again later.",
   PROVIDER_UNSUPPORTED_CAPABILITY:
     "The model provider does not support this generation request.",
   INVALID_MODEL_OUTPUT:

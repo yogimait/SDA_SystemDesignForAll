@@ -19,12 +19,14 @@ import { VerifyEmailBanner } from "@/components/portal/verify-email-banner";
 import { useRunTerminalEffect } from "@/hooks/use-generation-run";
 import { useRunLive } from "@/hooks/use-run-stream";
 import { useAuthBootSettled, useSession } from "@/hooks/use-session";
+import { useSavedProviderKeys } from "@/hooks/use-saved-provider-keys";
 import { apiFetch, ApiError, requiresEmailVerification } from "@/lib/api/client";
 import {
   PROVIDER_GAP_LABELS,
   providerSetupMessage,
   providerSetupState,
 } from "@/lib/providers/setup";
+import { resolveProviderSetup } from "@/lib/providers/account-setup";
 import { queryKeys } from "@/lib/query-keys";
 import {
   loadProjectAccessKey,
@@ -59,15 +61,28 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
     user: string;
     detail: string;
   } | null>(null);
+  const savedKeys = useSavedProviderKeys();
 
-  const setupState = providerSetupState(providerSetup);
+  const hasSavedKey =
+    providerSetup !== null && savedKeys.savedProviders.has(providerSetup.provider);
+  const setupState = providerSetupState(providerSetup, hasSavedKey);
+  // A signed-in user may already have an account key: do not flash the gate
+  // while that status is still loading.
+  const credentialsPending = session !== null && savedKeys.loading;
 
-  // The tab-local provider setup is the only thing a run can use; re-read it
-  // on mount (deferred off the effect body) and after the dialog saves, so the
-  // gate never goes stale.
+  // Re-read the tab-local provider setup on mount (deferred off the effect
+  // body) and after the dialog saves, so the gate never goes stale; the
+  // account-key status comes from useSavedProviderKeys.
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setProviderSetup(loadProviderSetup());
+      // New tab / cleared storage: the account's saved provider+model stands
+      // in, so an account key alone can satisfy the gate.
+      if (loadSession() !== null) {
+        void resolveProviderSetup().then((resolved) => {
+          if (resolved !== null) setProviderSetup(resolved);
+        });
+      }
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -146,7 +161,10 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
     setStartError(null);
     try {
       const setup = loadProviderSetup();
-      const guard = providerSetupState(setup);
+      const guard = providerSetupState(
+        setup,
+        setup !== null && savedKeys.savedProviders.has(setup.provider),
+      );
       if (!guard.ready) {
         setStartError({
           user: "Provider setup is incomplete.",
@@ -273,6 +291,7 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
       {/* Provider gate: a run cannot start without provider + model + key, so
           say exactly what is missing and open the dialog right here. */}
       {!setupState.ready &&
+      !credentialsPending &&
       (phase.kind === "start" || phase.kind === "editor") ? (
         <section
           aria-label="Provider setup required"
@@ -282,7 +301,8 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
             Provider setup needed before generation
           </p>
           <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-            {providerSetupMessage(setupState)} The key stays in this browser tab.
+            {providerSetupMessage(setupState)} A key added here is session-only;
+            a saved account key works on every device.
           </p>
           <ul className="mt-2 flex flex-wrap gap-1.5">
             {setupState.gaps.map((gap) => (
@@ -297,7 +317,10 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
           <div className="mt-3">
             <ProviderDialog
               triggerLabel="Add provider & key"
-              onSaved={(next) => setProviderSetup(next)}
+              onSaved={(next) => {
+                setProviderSetup(next);
+                void savedKeys.refresh();
+              }}
             />
           </div>
         </section>
@@ -427,6 +450,7 @@ export function RequirementsFlow({ projectId }: { projectId: string }) {
             spec={spec}
             setup={providerSetup}
             providerReady={setupState.ready}
+            accountKeySaved={hasSavedKey}
             onArchitectureStarted={(runId) =>
               setPhase({ kind: "run", runId, context: "architecture" })
             }

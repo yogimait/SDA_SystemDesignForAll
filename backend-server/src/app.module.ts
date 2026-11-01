@@ -7,6 +7,7 @@ import { AccountModule } from "./account/account.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { BillingModule } from "./billing/billing.module.js";
 import { CommonModule } from "./common/common.module.js";
+import { CredentialsModule } from "./credentials/credentials.module.js";
 import { ApiResponseInterceptor } from "./common/envelope/api-response.interceptor.js";
 import { AllExceptionsFilter } from "./common/errors/all-exceptions.filter.js";
 import { ConfigModule } from "./config/config.module.js";
@@ -41,6 +42,7 @@ import { RequirementsModule } from "./requirements/requirements.module.js";
     RequirementsModule,
     ArchitectureModule,
     AuthModule,
+    CredentialsModule,
     AccountModule,
     AnalyticsModule,
     BillingModule,

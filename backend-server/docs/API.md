@@ -29,9 +29,9 @@ Failure:
 | --- | --- | --- |
 | `Authorization` | Auth, account, dashboard, project list, and owner access | `Bearer <accessToken>` from register/login. |
 | `x-project-key` | Anonymous or shared project routes; optional for an owned project with Bearer | Access key returned once by `POST /api/projects`. |
-| `x-provider-api-key` | Real provider runs | BYOK provider key; held in memory for the run only. Not required with `MOCK_PROVIDER=1`. |
+| `x-provider-api-key` | Real provider runs | BYOK provider key; held in memory for the run only. Never required with `MOCK_PROVIDER=1`. |
 
-The provider key must never be put in URLs, query strings, logs, or persisted data.
+The provider key must never be put in URLs, query strings, logs, or persisted data. A signed-in account may instead store it in the encrypted vault; the header still wins (see [Account-scoped provider keys](#account-scoped-provider-keys-byok-vault)).
 
 Unknown API routes return a 404 envelope with `ROUTE_NOT_FOUND`. Responses set `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, a restrictive `Content-Security-Policy`, and a restrictive `Permissions-Policy`; Express `X-Powered-By` is disabled.
 
@@ -52,6 +52,9 @@ Unknown API routes return a 404 envelope with `ROUTE_NOT_FOUND`. Responses set `
 | `PUT` | `/api/provider-config` | 200 | Save provider/model/reasoning selection; rejects API keys. |
 | `GET` | `/api/preferences` | 200 | Theme and default provider/model preferences. |
 | `PUT` | `/api/preferences` | 200 | Merge user preferences. |
+| `GET` | `/api/users/me/provider-keys` | 200 | Stored BYOK credential status per provider; never the key. |
+| `PUT` | `/api/users/me/provider-keys/:provider` | 200 | Save or rotate an encrypted account provider key. |
+| `DELETE` | `/api/users/me/provider-keys/:provider` | 200 | Remove a stored provider key; idempotent. |
 | `GET` | `/api/billing/plans` | 200 | Plan catalogue and active billing provider. |
 | `GET` | `/api/billing/subscription` | 200 | Current subscription and plan tier. |
 | `POST` | `/api/billing/checkout` | 201 | Start a Pro checkout (Stub or Stripe). |
@@ -186,7 +189,7 @@ Send `Authorization: Bearer <accessToken>` to `GET /api/auth/me`, `POST /api/aut
 - CSRF or Origin failures are `400 VALIDATION_ERROR` with `details.reason = "csrf_invalid"` or `"origin_not_allowed"`. Auth-throttle rejections are `429 QUOTA_EXCEEDED` with a `Retry-After` header.
 - Without SMTP, links land in the development outbox: `GET /api/dev/outbox` lists the last 50 messages. The route is a 404 in production.
 - `REQUIRE_EMAIL_VERIFICATION=1` makes project creation and every run start return 401 `AUTH_REQUIRED` with `details.reason = "email_not_verified"` until the address is confirmed.
-- `DELETE /api/users/me { password }` deletes the account. Owned projects keep working through their `x-project-key` with `ownerId: null`; sessions, tokens, configs, preferences, subscriptions, and billing events cascade. The password step-up uses the auth throttle and returns `429 QUOTA_EXCEEDED` with `Retry-After` after repeated failures.
+- `DELETE /api/users/me { password }` deletes the account. Owned projects keep working through their `x-project-key` with `ownerId: null`; sessions, tokens, configs, preferences, subscriptions, billing events, and stored provider credentials cascade. The password step-up uses the auth throttle and returns `429 QUOTA_EXCEEDED` with `Retry-After` after repeated failures.
 
 ### Billing
 
@@ -206,9 +209,43 @@ Content-Type: application/json
 { "provider": "openrouter", "model": "z-ai/glm-5.3-flash", "reasoningEffort": "low" }
 ```
 
-No API key is accepted or persisted here. BYOK remains per-run through `x-provider-api-key`. Requests containing unexpected body keys — an `apiKey` for example — fail with `VALIDATION_ERROR` (the request schema is strict) rather than silently dropping the field. `GET` without a saved config returns `PROVIDER_CONFIG_NOT_FOUND`. The same routes are also available under `/api/users/me/provider-config` and `/api/users/me/preferences`. Path parameters enforce the id shape: a malformed project or run id is a `PROJECT_NOT_FOUND` / `RUN_NOT_FOUND` 404 envelope, not a database 500.
+No API key is accepted or persisted here. Provider keys belong to the account vault below, or stay per-run through `x-provider-api-key`. Requests containing unexpected body keys — an `apiKey` for example — fail with `VALIDATION_ERROR` (the request schema is strict) rather than silently dropping the field. `GET` without a saved config returns `PROVIDER_CONFIG_NOT_FOUND`. The same routes are also available under `/api/users/me/provider-config` and `/api/users/me/preferences`. Path parameters enforce the id shape: a malformed project or run id is a `PROJECT_NOT_FOUND` / `RUN_NOT_FOUND` 404 envelope, not a database 500.
 
 `PUT /api/preferences` accepts optional `theme`, `defaultProvider`, `defaultModel`, and `defaultReasoningEffort`; omitted fields keep their current values. `GET /api/preferences` returns `{ "preferences": {} }` before the first save.
+
+## Account-scoped provider keys (BYOK vault)
+
+An opt-in vault lets a signed-in user save one provider key per account so manual runs do not need the header. This is a deliberate exception to the request-scoped BYOK rule: the key is persisted **only** as AES-256-GCM ciphertext and is never returned by any endpoint.
+
+```http
+PUT /api/users/me/provider-keys/openrouter
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "apiKey": "sk-..." }
+```
+
+```json
+{
+  "status": true,
+  "statusCode": 200,
+  "data": {
+    "credential": {
+      "provider": "openrouter",
+      "saved": true,
+      "updatedAt": "2026-11-01T00:00:00.000Z"
+    }
+  }
+}
+```
+
+- `provider` must be a registered provider id (`openrouter`, `groq`); anything else is `VALIDATION_ERROR`.
+- A repeat `PUT` rotates the ciphertext in place: one row per `(user, provider)`.
+- `GET` returns `{ "credentials": [{ provider, saved, updatedAt, lastUsedAt? }] }`. `updatedAt` is the last save/rotation; `lastUsedAt` is the last run that decrypted the key. No key, ciphertext, IV, or auth tag is ever serialized, and the listing query selects metadata only.
+- `DELETE` returns `{ "removed": true | false }` and is idempotent.
+- `PUT`/`DELETE` assert CSRF like the other account mutations; Bearer-only clients pass because `allowBearer` is enabled. `GET` is not auth-throttled; writes keep the auth budget.
+- Without `CREDENTIALS_ENCRYPTION_KEY` the vault cannot encrypt: `PUT` returns `503 PROVIDER_CREDENTIALS_UNAVAILABLE` while `GET` still lists stored metadata. If a stored row exists but the key is missing, a run start that would use it fails with the same 503 instead of silently falling back.
+- Run start resolves precedence as request header > stored credential > development env fallback (see [[Providers]]). The stored credential is used only when the request carries a valid Bearer session for that account; `x-project-key` alone never unlocks the owner's vault. Keys never appear in run payloads, errors, or logs, and provider messages are scrubbed before they are persisted.
 
 ## Dashboard and plans
 
@@ -244,6 +281,8 @@ The response is always the queued run id:
 ```
 
 Starting architecture generation requires a confirmed requirements snapshot. Starting any run while another is queued or running for the same project returns `RUN_CONFLICT`.
+
+The provider key for the run resolves in this order: `x-provider-api-key` header, then the stored vault credential of the account that sent a valid Bearer session, then the development-only env fallback. `x-project-key` alone authorizes the project but never decrypts the owner's vault. A stored credential is decrypted in memory for the run and its `lastUsedAt` is updated; it is never copied into the run row. Mock mode skips the vault entirely, so a stale row cannot block a mock run.
 
 ## Save and confirm requirements
 
@@ -406,6 +445,7 @@ data: {"type":"run","status":"succeeded","error":null,"usage":{"promptTokens":12
 | `PLAN_LIMIT_EXCEEDED` | 402 | Project/run/token allowance exceeded. |
 | `PLAN_UPGRADE_REQUIRED` | 402 | Feature requires Pro. |
 | `PROVIDER_CONFIG_NOT_FOUND` | 404 | No saved provider configuration. |
+| `PROVIDER_CREDENTIALS_UNAVAILABLE` | 503 | Vault key missing, unknown `keyVersion`, or failed ciphertext authentication. |
 | `PROVIDER_AUTH_FAILED` | 502 | Provider rejected the key. |
 | `PROVIDER_RATE_LIMITED` | 429 | Provider rate limit; may carry `retryAfterSeconds`. |
 | `PROVIDER_TIMEOUT` | 504 | Provider did not answer in time. |

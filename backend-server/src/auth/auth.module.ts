@@ -15,5 +15,6 @@ import { UsersController } from "./users.controller.js";
     AuthCookieService,
     { provide: EMAIL_SERVICE, useClass: OutboxEmailService },
   ],
+  exports: [AuthCookieService],
 })
 export class AuthModule {}

@@ -74,6 +74,12 @@ const OPTIONAL_SECRET = z
   .optional()
   .transform((value) => (value ? value : undefined));
 
+/** AES-256-GCM wants exactly 32 key bytes, supplied base64-encoded. */
+function isBase64AesKey(value: string): boolean {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
+  return Buffer.from(value, "base64").length === 32;
+}
+
 export const EnvSchema = z
   .object({
     NODE_ENV: z
@@ -122,6 +128,13 @@ export const EnvSchema = z
     REQUIRE_EMAIL_VERIFICATION: BooleanFlagSchema,
     APP_BASE_URL: z.string().trim().url().default("http://localhost:3000"),
     CSRF_SECRET: OPTIONAL_SECRET,
+    // Account-scoped BYOK vault. Unset = saving keys is unavailable (503);
+    // reading stored metadata still works.
+    CREDENTIALS_ENCRYPTION_KEY: OPTIONAL_SECRET.refine(
+      (value) => value === undefined || isBase64AesKey(value),
+      { message: "Use a base64-encoded 32-byte key." },
+    ),
+    CREDENTIALS_ENCRYPTION_KEY_VERSION: z.string().trim().min(1).default("1"),
     AUTH_THROTTLE_LIMIT: z.coerce.number().int().min(1).default(5),
     AUTH_THROTTLE_TTL_MS: z.coerce.number().int().min(1000).default(60_000),
     // Stripe is optional. Without a secret key the local stub provider is used.
@@ -135,6 +148,14 @@ export const EnvSchema = z
         code: "custom",
         path: ["DATABASE_URL"],
         message: "DATABASE_URL is required when DATABASE_DRIVER=postgres.",
+      });
+    }
+    // Account-scoped BYOK is opt-in in development, mandatory in production.
+    if (value.NODE_ENV === "production" && !value.CREDENTIALS_ENCRYPTION_KEY) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["CREDENTIALS_ENCRYPTION_KEY"],
+        message: "CREDENTIALS_ENCRYPTION_KEY is required in production.",
       });
     }
   });

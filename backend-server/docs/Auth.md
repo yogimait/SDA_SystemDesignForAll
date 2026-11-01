@@ -11,8 +11,9 @@ Email + password accounts with scrypt hashes, short-lived Bearer sessions, a rot
 | Refresh token | `refresh_tokens.token_hash` (SHA-256) | Cookie only, never in a body. TTL `REFRESH_TOKEN_TTL` (default 30d). |
 | Email verification | `email_verification_tokens.token_hash` | 24 h TTL, consumed once, hash only. |
 | Password reset | `password_reset_tokens.token_hash` | 1 h TTL, single use. |
+| Provider API key (opt-in vault) | `user_provider_credentials.ciphertext` (AES-256-GCM) | Encrypted with `CREDENTIALS_ENCRYPTION_KEY`; never returned or logged. See [[Data-Model]] and [[Providers]]. |
 
-No raw token is ever persisted in production. The development outbox stores usable links so a developer can follow them; production stores only a `<redacted>` placeholder and the route is hidden when `NODE_ENV=production`.
+No raw token is ever persisted in production. The development outbox stores usable links so a developer can follow them; production stores only a `<redacted>` placeholder and the route is hidden when `NODE_ENV=production`. Provider keys are the one persisted provider secret, and only as authenticated ciphertext the server cannot read without the env key.
 
 ## Cookies and CSRF
 
@@ -24,8 +25,8 @@ No raw token is ever persisted in production. The development outbox stores usab
 `AuthCookieService.assertCsrf()`:
 
 1. If an `Origin` header is present it must be in `CORS_ORIGIN` (`origin_not_allowed` otherwise).
-2. When the CSRF cookie exists, `x-csrf-token` must equal it (`csrf_invalid` otherwise). With `CSRF_SECRET` set, the cookie is `<nonce>.<hmac>` and the signature is verified too.
-3. `POST /api/auth/logout` accepts a Bearer-only request without CSRF so existing header clients keep working; anything cookie-authenticated needs the header.
+2. When the CSRF cookie exists, `x-csrf-token` must equal it (`csrf_invalid` otherwise). With `CSRF_SECRET` set, the cookie is `<nonce>.<hmac>` and the signature is verified too. A cookie value that fails `decodeURIComponent` is treated as absent, so a tampered cookie cannot turn the check into a 500.
+3. `POST /api/auth/logout` accepts a Bearer-only request without CSRF so existing header clients keep working; anything cookie-authenticated needs the header. The provider-key vault (`PUT`/`DELETE /api/users/me/provider-keys/:provider`) uses the same `allowBearer` rule.
 
 `x-csrf-token` is in the CORS `allowedHeaders` list and CORS credentials are enabled so the browser can send cookies.
 
@@ -42,6 +43,9 @@ No raw token is ever persisted in production. The development outbox stores usab
 | `POST /api/auth/forgot-password` | — | Always 200. Creates a reset token only when the account exists. |
 | `POST /api/auth/reset-password` | token | Consumes the token, updates the hash, deletes all sessions and revokes all refresh families. |
 | `DELETE /api/users/me` | Bearer + CSRF | Re-verifies the password, then deletes the user. The password step-up is throttled like login. |
+| `GET /api/users/me/provider-keys` | Bearer | Credential status per provider; no key material, not auth-throttled. |
+| `PUT /api/users/me/provider-keys/:provider` | Bearer + CSRF (`allowBearer`) | Encrypts and stores/rotates the account provider key; auth-throttled. |
+| `DELETE /api/users/me/provider-keys/:provider` | Bearer + CSRF (`allowBearer`) | Removes the stored key; idempotent, auth-throttled. |
 | `GET /api/dev/outbox` | — | Development only; 404 in production. Returns the last 50 messages. |
 
 `GET /api/auth/me` returns `emailVerifiedAt` (ISO string or `null`).
@@ -85,7 +89,7 @@ Links use `APP_BASE_URL`:
 
 ## Throttling
 
-`AuthThrottlerGuard` applies `AUTH_THROTTLE_LIMIT` per `AUTH_THROTTLE_TTL_MS` (default 5 per 60 s) per IP and route to register, login, verify, resend, forgot, reset, and the account-deletion password step-up. A blocked request is `429 QUOTA_EXCEEDED` with a `Retry-After` header. Run starts keep the separate `THROTTLE_*` budget. Token durations must be at least `1s`; `0s` fails boot.
+`AuthThrottlerGuard` applies `AUTH_THROTTLE_LIMIT` per `AUTH_THROTTLE_TTL_MS` (default 5 per 60 s) per IP and route to register, login, verify, resend, forgot, reset, the account-deletion password step-up, and provider-key writes (`PUT`/`DELETE`). Vault reads (`GET /api/users/me/provider-keys`) are intentionally unthrottled because the client mounts status hooks on several pages. A blocked request is `429 QUOTA_EXCEEDED` with a `Retry-After` header. Run starts keep the separate `THROTTLE_*` budget. Token durations must be at least `1s`; `0s` fails boot.
 
 ## Error codes
 
@@ -93,6 +97,6 @@ Authentication failures reuse the existing registry: `AUTH_REQUIRED`, `AUTH_INVA
 
 ## Account deletion
 
-`DELETE /api/users/me` requires the current password. The users row is deleted; `projects.owner_id` is set null by the FK, while sessions, tokens, provider config, preferences, subscriptions, and billing events cascade. Orphaned projects stay readable with their `x-project-key`.
+`DELETE /api/users/me` requires the current password. The users row is deleted; `projects.owner_id` is set null by the FK, while sessions, tokens, provider config, stored provider credentials, preferences, subscriptions, and billing events cascade. Orphaned projects stay readable with their `x-project-key`.
 
 Related: [[Home]] · [[API]] · [[Data-Model]] · [[Architecture]] · [[Testing]]

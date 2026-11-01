@@ -328,9 +328,11 @@ layout that shares these fragments.
 ## Regeneration
 
 Header Regenerate menu → `POST /api/projects/:id/architecture/regenerate`
-with `{ scope: "lld" | "hld" | "dsa" }` (+ saved provider + model + `x-provider-api-key`
-saved from the landing/library provider dialog; provider and model travel together so a
-non-default provider key is not sent to the default provider). The same menu holds
+with `{ scope: "lld" | "hld" | "dsa" }` (+ saved provider + model; `x-provider-api-key`
+only when this tab holds one, otherwise the backend resolves the signed-in account's
+encrypted vault key — provider and model travel together so a non-default provider key
+is not sent to the default provider). The menu items are live when either key source
+covers the selected provider. The same menu holds
 **Edit requirements…**. The run streams through the shared
 `useRunLive` hook in an overlay (live SSE stream with polling fallback, see [[Requirements-Flow]]); success invalidates architecture/
 project queries and closes (fresh scene); failure keeps the run card open

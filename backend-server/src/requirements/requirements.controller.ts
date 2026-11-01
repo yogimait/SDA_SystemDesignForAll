@@ -51,6 +51,7 @@ export class RequirementsController {
       options,
       readProviderKey(request),
       request.user,
+      request.authenticatedUserId,
     );
   }
 

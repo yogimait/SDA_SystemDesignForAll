@@ -61,7 +61,10 @@ import {
   useRunTerminalEffect,
 } from "@/hooks/use-generation-run";
 import { useRunLive, type RunLiveState } from "@/hooks/use-run-stream";
+import { useSavedProviderKeys } from "@/hooks/use-saved-provider-keys";
 import { apiFetch, ApiError } from "@/lib/api/client";
+import { providerSetupState } from "@/lib/providers/setup";
+import { resolveProviderSetup } from "@/lib/providers/account-setup";
 import {
   dsaGuidedSteps,
   guidedStepsInScope,
@@ -86,6 +89,7 @@ import { queryKeys } from "@/lib/query-keys";
 import {
   loadProjectAccessKey,
   loadProviderSetup,
+  type ProviderSetup,
 } from "@/lib/session/keys";
 import { loadSession } from "@/lib/session/auth";
 import { requirementRefLabels } from "@/lib/format";
@@ -165,7 +169,13 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
   // <768 stacks — diagram first, outline/details as sheets.
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const isPhone = useMediaQuery("(max-width: 767px)");
-  const [providerReady, setProviderReady] = useState(false);
+  const savedKeys = useSavedProviderKeys();
+  const [providerSetup, setProviderSetup] = useState<ProviderSetup | null>(null);
+  // Regeneration is live with either a tab key or the account's saved key.
+  const providerReady = providerSetupState(
+    providerSetup,
+    providerSetup !== null && savedKeys.savedProviders.has(providerSetup.provider),
+  ).ready;
   const [regenRunId, setRegenRunId] = useState<string | null>(null);
   const [regenOverlayOpen, setRegenOverlayOpen] = useState(false);
   const [regenScope, setRegenScope] = useState<RegenerateScope>("lld");
@@ -272,10 +282,16 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
       }
       setProjectKey(key);
       setAuthed(loadSession() !== null);
-      // Provider-key presence decides whether scope items are live: without a
-      // key every scope is a guaranteed auth failure, so the menu explains it.
-      const setupNow = loadProviderSetup();
-      setProviderReady(Boolean(setupNow && setupNow.apiKey.trim() !== ""));
+      // Readiness (tab key or saved account key) decides whether scope items
+      // are live; without a key every scope is a guaranteed auth failure.
+      setProviderSetup(loadProviderSetup());
+      if (loadSession() !== null) {
+        // New tab / cleared storage: use the account's saved provider+model so
+        // an account key alone keeps the scoped runs live.
+        void resolveProviderSetup().then((resolved) => {
+          if (resolved !== null) setProviderSetup(resolved);
+        });
+      }
       // Guided-mode resume (per view): mid-session refresh restarts at each
       // saved cursor and reopens the last view that had one. Only a stored
       // cursor enables resume — a plain workspace load never auto-starts.
@@ -994,7 +1010,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
     <p className="text-muted-foreground px-2 pb-1 text-[11px] leading-relaxed">
       {providerReady
         ? "Every scope is its own paid provider pass — success replaces that view only; the other views stay as they are."
-        : "No provider key in this tab, so every scope is disabled for now. Add one, then come back and pick a scope."}
+        : "No provider key in this tab or saved to your account, so every scope is disabled for now. Add one in provider setup, then come back and pick a scope."}
     </p>
   );
 
@@ -1007,8 +1023,9 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
         Provider &amp; model key — open the Home page setup
       </span>
       <span className="text-muted-foreground block text-xs leading-snug">
-        Pick OpenRouter or Groq, add the key and model. Keys stay in this tab, so
-        you can come straight back through Library.
+        Pick OpenRouter or Groq, add the key and model — or save the key
+        encrypted to your account so it works across devices. Then come straight
+        back through Library.
       </span>
     </DropdownMenuItem>
   );

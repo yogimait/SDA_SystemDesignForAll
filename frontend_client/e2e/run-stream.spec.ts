@@ -134,6 +134,13 @@ async function interceptProject(page: Page): Promise<void> {
       body: JSON.stringify(envelope(PROJECT)),
     }),
   );
+  page.route("**/api/users/me/provider-keys**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(envelope({ credentials: [] })),
+    }),
+  );
   // Reloads have no in-memory token: the app refreshes from the mocked cookie.
   mockAuthRoutes(page, USER);
 }

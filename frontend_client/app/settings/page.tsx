@@ -3,8 +3,9 @@
 /**
  * Settings: one source of truth for generation defaults (provider + model),
  * stored per account through `PUT /api/users/me/provider-config` and shared
- * with the provider dialog, which pre-fills from it. No API key is stored
- * here — BYOK stays request-scoped in the dialog.
+ * with the provider dialog, which pre-fills from it. The provider-config
+ * payload still carries no key; the separate Saved API keys card manages the
+ * opt-in encrypted account vault (status only) and its removal.
  *
  * Deliberately absent: theme (the app ships one branded dark palette; nothing
  * to switch) and the duplicate default/provider-model fields that used to live
@@ -22,6 +23,7 @@ import { PortalHeader } from "@/components/portal/portal-header";
 import { VerifyEmailBanner } from "@/components/portal/verify-email-banner";
 import { AccountCard } from "@/components/settings/account-card";
 import { BillingCard } from "@/components/settings/billing-card";
+import { SavedApiKeysCard } from "@/components/settings/saved-api-keys-card";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -89,6 +91,7 @@ export function SettingsContent() {
         <div className="mt-6 grid gap-4">
           <VerifyEmailBanner />
           <ProviderConfigCard providers={providers} />
+          <SavedApiKeysCard />
           <BillingCard />
           <AccountCard />
           <section aria-label="How settings apply" className="bg-card border-border rounded-xl border border-solid p-4">
@@ -101,10 +104,11 @@ export function SettingsContent() {
                 requirements page pre-fills the provider and model saved here.
               </li>
               <li>
-                A run always uses the provider, model, and{" "}
+                A run uses the provider and model you confirm in that dialog,
+                plus a key: your saved account key when one exists, otherwise a
+                key kept in this browser tab. A request-level{" "}
                 <span className="font-mono text-[11px]">x-provider-api-key</span>{" "}
-                you confirm in that dialog. The key stays in this browser tab
-                and is never stored server-side.
+                wins over the saved one.
               </li>
               <li>
                 Only when nothing is chosen does the server fall back to its own
@@ -122,12 +126,15 @@ export function SettingsContent() {
               Bring your own key (BYOK)
             </h2>
             <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-              The saved configuration keeps{" "}
-              <strong className="text-foreground">no API key</strong>. Per-request
-              BYOK keys live in the provider dialog, travel only as the{" "}
-              <span className="font-mono text-[11px]">x-provider-api-key</span>{" "}
-              header for one run, and never persist. Each provider keeps its own
-              key in that tab.
+              The generation defaults keep{" "}
+              <strong className="text-foreground">no API key</strong>. You can
+              keep each provider key for one tab (sessionStorage, cleared when
+              the tab closes), or opt in to the encrypted account vault so it
+              works across devices. Vault keys are AES-256-GCM ciphertext at
+              rest, never returned by any endpoint, and never logged; prefer a
+              key with a spend limit. A run sends the tab key when present as{" "}
+              <span className="font-mono text-[11px]">x-provider-api-key</span>,
+              otherwise the server resolves the stored key.
             </p>
           </section>
         </div>

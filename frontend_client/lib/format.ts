@@ -5,6 +5,15 @@ export function formatTokens(amount: number): string {
   return amount.toLocaleString("en-US");
 }
 
+/** ISO timestamp → local display string; null for missing/invalid values. */
+export function formatTimestamp(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+}
+
 /**
  * Human labels for requirement refs. Contract ids (`fr_…`, `nfr_…`, `q_…`,
  * `asm_…`) are UI keys only — the workspace details and DSA cards show the

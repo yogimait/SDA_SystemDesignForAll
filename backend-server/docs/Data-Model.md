@@ -12,6 +12,7 @@ erDiagram
   USERS ||--o{ REFRESH_TOKENS : "refreshes"
   USERS ||--o| BILLING_SUBSCRIPTIONS : "bills"
   USERS ||--o{ PROVIDER_CONFIGS : "saves"
+  USERS ||--o{ USER_PROVIDER_CREDENTIALS : "vaults"
   USERS ||--o{ USER_PREFERENCES : "has"
   USERS ||--o{ PROJECTS : "owns"
   PROJECTS ||--|| PROJECT_ACCESS : "has key hash"
@@ -107,6 +108,18 @@ erDiagram
     text default_reasoning_effort
     timestamptz updated_at
   }
+  USER_PROVIDER_CREDENTIALS {
+    uuid id PK
+    text user_id FK
+    text provider
+    text ciphertext
+    text iv
+    text auth_tag
+    text key_version
+    timestamptz created_at
+    timestamptz updated_at
+    timestamptz last_used_at
+  }
   PROJECT_ACCESS {
     uuid project_id PK
     text key_hash
@@ -173,6 +186,7 @@ erDiagram
 | `billing_events` | Webhook ledger: unique `idempotency_key`, optional nullable `user_id` FK (cascade on user delete), provider, type, JSONB payload, `processed_at`. |
 | `provider_configs` | User primary key/FK, provider, model, optional reasoning effort, updated timestamp. There is no API-key column. |
 | `user_preferences` | User primary key/FK, optional theme/default provider/model/reasoning effort, updated timestamp. |
+| `user_provider_credentials` | UUID primary key, user FK cascade, `provider`, `ciphertext`/`iv`/`auth_tag` (base64 AES-256-GCM), `key_version`, created/updated timestamps, nullable `last_used_at`. Unique `(user_id, provider)`; index on `user_id`. Holds no plaintext key and no key hash. |
 | `projects` | UUID primary key; nullable `owner_id` FK set null on user delete; status union; snapshot JSONB; indexes on `created_at` and `(owner_id, created_at)`. |
 | `project_access` | `project_id` primary key and FK with cascade; stores only SHA-256 hex of the access key. |
 | `requirements` | Text id primary key (prefix `fr_` / `nfr_`), project FK cascade; `(project_id, position)` index. |
@@ -210,7 +224,7 @@ Requirement ids are server-assigned on first generation and preserved by clients
 ## Migrations
 
 - Schema source: `src/database/schema.ts`.
-- Generated SQL: `drizzle/0000_first_lyja.sql` (initial tables), `drizzle/0001_loving_nick_fury.sql` (active-run partial unique index), `drizzle/0002_faulty_the_captain.sql` (users, sessions, provider configs, preferences, nullable project owner), `drizzle/0003_omniscient_bloodaxe.sql` (email verification, password reset, refresh token, dev outbox, billing subscription and event tables, `users.email_verified_at`), and `drizzle/0004_long_toxin.sql` (`billing_events.user_id` FK), with metadata under `drizzle/meta/`.
+- Generated SQL: `drizzle/0000_first_lyja.sql` (initial tables), `drizzle/0001_loving_nick_fury.sql` (active-run partial unique index), `drizzle/0002_faulty_the_captain.sql` (users, sessions, provider configs, preferences, nullable project owner), `drizzle/0003_omniscient_bloodaxe.sql` (email verification, password reset, refresh token, dev outbox, billing subscription and event tables, `users.email_verified_at`), `drizzle/0004_long_toxin.sql` (`billing_events.user_id` FK), and `drizzle/0005_flimsy_doomsday.sql` (`user_provider_credentials`), with metadata under `drizzle/meta/`.
 - Generate after schema edits: `npm run db:generate` (drizzle-kit, generate-only config).
 - Apply: `DatabaseService.onModuleInit()` runs the appropriate Drizzle migrator on boot. Migrations are idempotent and recorded in Drizzle's migrations table.
 - The migrations folder is resolved relative to the compiled/source database service, so both `src` and `dist` execution find `backend-server/drizzle`.
@@ -237,8 +251,21 @@ flowchart LR
 
 The raw key is returned only by project creation. `AccessKeyService` hashes it with SHA-256 and the guard compares hashes with `timingSafeEqual`. A database leak therefore does not expose usable keys, and the 256-bit random space makes brute force infeasible.
 
+## Provider credential vault
+
+Account-scoped BYOK keys are the one place a provider secret is persisted, and only as ciphertext:
+
+- AES-256-GCM with `CREDENTIALS_ENCRYPTION_KEY` (base64 32 bytes). A random 12-byte IV per save; `ciphertext`, `iv`, and `auth_tag` are stored base64-encoded with `key_version`.
+- Additional authenticated data is exactly `<user_id>:<provider>`. Moving a row to another account or provider fails authentication instead of decrypting.
+- The plaintext exists only in memory for a save request or one generation run. It is never in the row, a log line, an error message, or an API response.
+- Status listings select only `id`, `provider`, `updated_at`, and `last_used_at`; the full row (with ciphertext) is loaded only for decryption. Run-time resolution uses only a Bearer-authenticated account id, never a project key.
+- Rotation: bump `CREDENTIALS_ENCRYPTION_KEY_VERSION` with a new key and re-save. Rows with an unknown version fail with `PROVIDER_CREDENTIALS_UNAVAILABLE` rather than decrypting with the wrong key; there is no automatic re-encryption job yet.
+- Retention: a row lives until the user removes it (`DELETE /api/users/me/provider-keys/:provider`) or the account is deleted (FK cascade). `last_used_at` records the last run that decrypted the key.
+
+This is a deliberate trade-off against the original header-only BYOK rule: the encrypted vault removes the per-run key prompt, at the cost of the server holding ciphertext whose confidentiality depends on the encryption key staying out of the database and logs.
+
 ## Deletion and cascade behavior
 
-Deleting a user row cascades sessions, email/reset/refresh tokens, provider config, preferences, subscriptions, and billing events. `projects.owner_id` is `ON DELETE SET NULL`, so an owned project survives its owner and stays reachable through its `x-project-key`; `ownerId` is then `null` in API responses.
+Deleting a user row cascades sessions, email/reset/refresh tokens, provider config, stored provider credentials, preferences, subscriptions, and billing events. `projects.owner_id` is `ON DELETE SET NULL`, so an owned project survives its owner and stays reachable through its `x-project-key`; `ownerId` is then `null` in API responses.
 
 Related: [[Home]] · [[Architecture]] · [[Generation]] · [[API]] · [[Providers]] · [[Auth]] · [[Billing]] · [[Testing]]

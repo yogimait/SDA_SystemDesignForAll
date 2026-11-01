@@ -5,7 +5,7 @@ import type {
   RequirementsSpec,
   ValidationReport,
 } from "@sda/contracts";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AccessKeyService } from "../../src/common/access/access-key.service.js";
 import { loadConfig } from "../../src/config/env.js";
@@ -23,6 +23,8 @@ import { DrizzleAnalyticsRepository } from "../../src/database/repositories/driz
 import { DrizzleTokenRepository } from "../../src/database/repositories/drizzle-token.repository.js";
 import { DrizzleBillingRepository } from "../../src/database/repositories/drizzle-billing.repository.js";
 import { DrizzleOutboxRepository } from "../../src/database/repositories/drizzle-outbox.repository.js";
+import { DrizzleProviderCredentialRepository } from "../../src/database/repositories/drizzle-provider-credential.repository.js";
+import { CredentialCryptoService } from "../../src/credentials/credential-crypto.service.js";
 
 const spec: RequirementsSpec = {
   functional: [
@@ -108,12 +110,15 @@ describe("Drizzle repositories on in-memory PGlite", () => {
   let tokens: DrizzleTokenRepository;
   let billing: DrizzleBillingRepository;
   let outbox: DrizzleOutboxRepository;
+  let credentials: DrizzleProviderCredentialRepository;
+  let crypto: CredentialCryptoService;
 
   beforeAll(async () => {
     database = new DatabaseService(
       loadConfig({
         NODE_ENV: "test",
         PGLITE_DATA_DIR: "memory://",
+        CREDENTIALS_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
       } as NodeJS.ProcessEnv),
     );
     await database.init();
@@ -128,6 +133,13 @@ describe("Drizzle repositories on in-memory PGlite", () => {
     tokens = new DrizzleTokenRepository(database);
     billing = new DrizzleBillingRepository(database);
     outbox = new DrizzleOutboxRepository(database);
+    credentials = new DrizzleProviderCredentialRepository(database);
+    crypto = new CredentialCryptoService(
+      loadConfig({
+        NODE_ENV: "test",
+        CREDENTIALS_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
+      } as NodeJS.ProcessEnv),
+    );
   });
 
   afterAll(async () => {
@@ -559,6 +571,96 @@ describe("Drizzle repositories on in-memory PGlite", () => {
       link: "http://localhost:3000/reset-password?token=dev",
     });
     expect((await outbox.listRecent(5))[0]).toMatchObject({ id: message.id });
+  });
+
+  it("stores encrypted provider credentials, rotates on conflict, and cascades", async () => {
+    const userId = `usr_${randomUUID().replaceAll("-", "")}`;
+    await users.create({
+      id: userId,
+      email: `${userId}@example.com`,
+      passwordHash: "scrypt$test",
+      planTier: "free",
+    });
+
+    const encrypted = crypto.encrypt(userId, "openrouter", "sk-repo-secret");
+    expect(encrypted.ciphertext).not.toContain("sk-repo-secret");
+    const saved = await credentials.upsert({
+      id: randomUUID(),
+      userId,
+      provider: "openrouter",
+      ...encrypted,
+    });
+    expect(saved).toMatchObject({
+      userId,
+      provider: "openrouter",
+      keyVersion: "1",
+    });
+
+    const found = await credentials.findForUserAndProvider(
+      userId,
+      "openrouter",
+    );
+    if (!found) throw new Error("Expected the stored credential.");
+    // Only ciphertext is at rest; the plaintext round-trips through decrypt.
+    expect(found.ciphertext).not.toContain("sk-repo-secret");
+    expect(crypto.decrypt(userId, "openrouter", found)).toBe("sk-repo-secret");
+    expect(await credentials.findForUserAndProvider(userId, "groq")).toBeNull();
+
+    const rotated = await credentials.upsert({
+      id: randomUUID(),
+      userId,
+      provider: "openrouter",
+      ...crypto.encrypt(userId, "openrouter", "sk-rotated-key"),
+    });
+    // One row per (user, provider): the repeat save keeps the original id.
+    expect(rotated.id).toBe(saved.id);
+    expect(crypto.decrypt(userId, "openrouter", rotated)).toBe(
+      "sk-rotated-key",
+    );
+    expect(await credentials.listForUser(userId)).toHaveLength(1);
+    const [summary] = await credentials.listForUser(userId);
+    expect(summary).toMatchObject({ provider: "openrouter" });
+    // Status listing must not read ciphertext out of the table.
+    expect(summary).not.toHaveProperty("ciphertext");
+    expect(summary).not.toHaveProperty("iv");
+    expect(summary).not.toHaveProperty("authTag");
+
+    const usedAt = new Date();
+    await credentials.touchLastUsed(rotated.id, usedAt);
+    expect(
+      (
+        await credentials.findForUserAndProvider(userId, "openrouter")
+      )?.lastUsedAt?.getTime(),
+    ).toBe(usedAt.getTime());
+
+    const otherUserId = `usr_${randomUUID().replaceAll("-", "")}`;
+    await users.create({
+      id: otherUserId,
+      email: `${otherUserId}@example.com`,
+      passwordHash: "scrypt$test",
+      planTier: "free",
+    });
+    expect(await credentials.listForUser(otherUserId)).toEqual([]);
+    expect(
+      await credentials.findForUserAndProvider(otherUserId, "openrouter"),
+    ).toBeNull();
+
+    expect(
+      await credentials.deleteForUserAndProvider(userId, "openrouter"),
+    ).toBe(true);
+    // Deletion is idempotent.
+    expect(
+      await credentials.deleteForUserAndProvider(userId, "openrouter"),
+    ).toBe(false);
+
+    await credentials.upsert({
+      id: randomUUID(),
+      userId,
+      provider: "groq",
+      ...crypto.encrypt(userId, "groq", "gsk-secret"),
+    });
+    await users.delete(userId);
+    expect(await credentials.listForUser(userId)).toEqual([]);
   });
 
   it("nulls project ownership and cascades auth rows when a user is deleted", async () => {

@@ -170,7 +170,13 @@ export class OpenAiCompatibleProvider {
       // long before the generated JSON finishes.
       const text = await response.text();
       if (!response.ok) {
-        return this.handleErrorResponse(response, text, input.model, mode);
+        return this.handleErrorResponse(
+          response,
+          text,
+          input.model,
+          mode,
+          apiKey,
+        );
       }
 
       let parsed: OpenAiCompatibleResponse;
@@ -252,9 +258,16 @@ export class OpenAiCompatibleProvider {
     text: string,
     model: string,
     mode: StructuredMode,
+    apiKey: string,
   ): RequestOutcome {
     const status = response.status;
-    const providerMessage = providerErrorMessage(text);
+    // A provider may echo the key back in its message; scrub the exact value
+    // before it can reach error details, the database, or an SSE frame.
+    const providerMessage = redactSecrets(
+      apiKey
+        ? providerErrorMessage(text).split(apiKey).join("[REDACTED]")
+        : providerErrorMessage(text),
+    );
 
     if (status === 401 || status === 403) {
       throw new AppError(
@@ -292,6 +305,25 @@ export class OpenAiCompatibleProvider {
         "PROVIDER_UNSUPPORTED_CAPABILITY",
         "The prompt exceeded the model's context window.",
         { providerStatus: status, reason: "context_length", model },
+      );
+    }
+
+    // Groq can fail to emit JSON at all ("Failed to generate JSON"). That is a
+    // format failure, not a permanent capability gap: downgrade the structured
+    // mode first, then let the bounded repair loop handle the prompt-only case.
+    if (
+      [400, 422].includes(status) &&
+      /failed to generate json|failed_generation|json_validate_failed/i.test(
+        providerMessage,
+      )
+    ) {
+      if (mode !== "prompt") {
+        return { kind: "capability" };
+      }
+      throw new AppError(
+        "INVALID_MODEL_OUTPUT",
+        "The model returned output that could not be parsed as JSON.",
+        { providerStatus: status, reason: "json_generation_failed", model },
       );
     }
 
@@ -336,7 +368,7 @@ export class OpenAiCompatibleProvider {
       "The model provider rejected this generation request.",
       {
         providerStatus: status,
-        providerMessage: redactSecrets(providerMessage).slice(0, 300),
+        providerMessage: providerMessage.slice(0, 300),
       },
     );
   }

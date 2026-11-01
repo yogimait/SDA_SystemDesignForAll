@@ -24,6 +24,7 @@ import {
   type StageRow,
 } from "../database/repositories/run.repository.js";
 import { ProviderRegistry } from "../providers/provider.registry.js";
+import { CredentialsService } from "../credentials/credentials.service.js";
 import { GenerationWorker } from "./generation.worker.js";
 import {
   RunEventsService,
@@ -45,6 +46,7 @@ export class RunService {
     @Inject(ARCHITECTURE_REPOSITORY)
     private readonly architectures: ArchitectureRepository,
     private readonly registry: ProviderRegistry,
+    private readonly credentials: CredentialsService,
     private readonly worker: GenerationWorker,
     private readonly plans: PlanService,
     private readonly events: RunEventsService,
@@ -55,11 +57,19 @@ export class RunService {
     options: GenerationOptions,
     apiKey?: string,
     actor?: UserRow,
+    authenticatedUserId?: string,
   ): Promise<StartRunResponse> {
     await this.plans.assertCanStartRun(actor, project);
-    return this.startRun(project, "requirements", null, options, apiKey, [
-      ...REQUIREMENTS_STAGES,
-    ]);
+    return this.startRun(
+      project,
+      "requirements",
+      null,
+      options,
+      apiKey,
+      [...REQUIREMENTS_STAGES],
+      actor,
+      authenticatedUserId,
+    );
   }
 
   async startArchitecture(
@@ -67,6 +77,7 @@ export class RunService {
     options: GenerationOptions,
     apiKey?: string,
     actor?: UserRow,
+    authenticatedUserId?: string,
   ): Promise<StartRunResponse> {
     if (!project.requirementsSnapshot) {
       throw new AppError(
@@ -76,9 +87,16 @@ export class RunService {
       );
     }
     await this.plans.assertCanStartRun(actor, project);
-    return this.startRun(project, "architecture", null, options, apiKey, [
-      ...ARCHITECTURE_STAGES,
-    ]);
+    return this.startRun(
+      project,
+      "architecture",
+      null,
+      options,
+      apiKey,
+      [...ARCHITECTURE_STAGES],
+      actor,
+      authenticatedUserId,
+    );
   }
 
   async startRegeneration(
@@ -87,6 +105,7 @@ export class RunService {
     options: GenerationOptions,
     apiKey?: string,
     actor?: UserRow,
+    authenticatedUserId?: string,
   ): Promise<StartRunResponse> {
     if (!project.requirementsSnapshot) {
       throw new AppError(
@@ -115,11 +134,16 @@ export class RunService {
         { reason: "architecture_not_generated" },
       );
     }
-    return this.startRun(project, "architecture", scope, options, apiKey, [
-      `${scope}_model`,
-      "validate",
-      "persist",
-    ]);
+    return this.startRun(
+      project,
+      "architecture",
+      scope,
+      options,
+      apiKey,
+      [`${scope}_model`, "validate", "persist"],
+      actor,
+      authenticatedUserId,
+    );
   }
 
   async getRun(runId: string): Promise<GenerationRun> {
@@ -136,8 +160,10 @@ export class RunService {
     type: RunType,
     scope: RegenerateScope | null,
     options: GenerationOptions,
-    apiKey: string | undefined,
+    headerKey: string | undefined,
     stageNames: string[],
+    actor?: UserRow,
+    authenticatedUserId?: string,
   ): Promise<StartRunResponse> {
     if (await this.runs.hasActiveRun(project.id)) {
       throw new AppError("RUN_CONFLICT");
@@ -145,7 +171,14 @@ export class RunService {
 
     const providerId = options.provider ?? this.registry.defaultProvider;
     const model = options.model ?? this.registry.defaultModel;
-    const provider = this.registry.resolve(providerId, apiKey);
+    // Header wins. Otherwise the vault is read only for the account that sent
+    // a valid Bearer session; a project key alone never unlocks it. Mock mode
+    // skips the vault entirely so a stale row cannot block a mock run.
+    const vaultKey =
+      !headerKey?.trim() && !this.registry.mockEnabled
+        ? await this.credentials.resolveForRun(authenticatedUserId, providerId)
+        : undefined;
+    const provider = this.registry.resolve(providerId, headerKey?.trim() || vaultKey);
 
     const runId = randomUUID();
     const inputHash = project.requirementsSnapshot

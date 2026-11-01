@@ -17,7 +17,7 @@ If an agent instruction conflicts with a global rule, the global rule wins.
 | --- | --- | --- |
 | `backend-engineer` | Generic backend: APIs, DB, auth, jobs, reliability | `opencode-go/deepseek-v4.1-flash` |
 | `frontend-engineer` | Generic frontend: React/Next.js, state, data fetching, a11y | `opencode-go/deepseek-v4.1-flash` |
-| `ui-ux-designer` | Generic UI/UX: design systems, hierarchy, responsive, accessibility | `opencode-go/mimo-v2.6-flash` (GLM only by explicit request) |
+| `ui-ux-designer` | Generic UI/UX: design systems, hierarchy, responsive, accessibility | `openrouter/z-ai/glm-5.3-flash` |
 
 Global agents are reusable across projects. They read the target project's `AGENTS.md` before working.
 
@@ -27,7 +27,7 @@ Global agents are reusable across projects. They read the target project's `AGEN
 | --- | --- | --- |
 | `sda-backend` | `backend-server/` + backend side of `packages/contracts/` | `opencode-go/deepseek-v4.1-flash` |
 | `sda-frontend` | `frontend_client/` implementation | `opencode-go/deepseek-v4.1-flash` |
-| `sda-ui-ux` | Visual design, layout, responsive, accessibility, polish | `opencode-go/mimo-v2.6-flash` (GLM only by explicit request) |
+| `sda-ui-ux` | Visual design, layout, responsive, accessibility, polish | `openrouter/z-ai/glm-5.3-flash` |
 | `backend-tester` | Backend API/DB/auth/generation/security QA | inherits session model |
 | `ui-ux-tester` | UI/UX, flows, buttons, APIs from the browser | inherits session model |
 
@@ -50,7 +50,7 @@ A task that spans frontend and backend is split: contracts first, then backend, 
 
 ## Model choices
 
-- UI/UX design: `opencode-go/glm-5.3-flash` (visual/design strength, lower token cost).
+- UI/UX design: `openrouter/z-ai/glm-5.3-flash` (visual/design strength, lower token cost).
 - Backend/frontend implementation: `opencode-go/deepseek-v4.1-flash`.
 - QA: inherits the orchestrator unless a task needs a specific model.
 

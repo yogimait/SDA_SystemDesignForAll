@@ -15,16 +15,21 @@ confirmed snapshot. Lives under `app/projects/[id]/requirements/`.
 
 1. **Back link** — always visible above the state card: signed in → `/library`,
    anonymous (project key only) → `/`. A project page never traps the user.
-1. **Provider gate** — a run needs provider + model + that provider's key in
-   this tab (`lib/providers/setup.ts`, shared with the dialog's own guard).
-   When anything is missing, an inline `Provider setup required` card lists the
-   gaps (`Provider missing` / `Model missing` / `API key missing`) and opens the
-   shared `ProviderDialog` **on this page** via "Add provider & key" (headers
-   keep their compact trigger; the dialog writes sessionStorage and the account
-   default). "Generate requirements" and "Confirm & generate architecture" stay
-   disabled with explanatory copy until the setup is complete — no provider
-   402/`PROVIDER_AUTH_FAILED` should ever be the first feedback. The gate
-   re-reads the tab setup after the dialog saves.
+1. **Provider gate** — a run needs a provider, a model, and a key for that
+   provider (`lib/providers/setup.ts`, shared with the dialog's own guard). The
+   key may live in this tab **or** in the signed-in account's encrypted vault:
+   `providerSetupState(setup, savedProviders.has(provider))` counts a saved
+   account key as ready even when sessionStorage holds none, and the run
+   request then omits `x-provider-api-key` so the backend resolves the stored
+   key. When anything is missing, an inline `Provider setup required` card lists
+   the gaps (`Provider missing` / `Model missing` / `API key missing`) and opens
+   the shared `ProviderDialog` **on this page** via "Add provider & key" (headers
+   keep their compact trigger; the dialog writes sessionStorage and/or the
+   account vault plus the shared provider/model default). "Generate requirements"
+   and "Confirm & generate architecture" stay disabled with explanatory copy
+   until the setup is complete — no provider 402/`PROVIDER_AUTH_FAILED` should
+   ever be the first feedback. The gate re-reads the tab setup and refreshes the
+   in-memory vault status after the dialog saves.
 2. **Access gate** (`GET /api/projects/:id`, `GET /api/projects/:id/requirements`):
    the access key is loaded from sessionStorage (`sda:project:<id>:access-key`).
    Missing key → copy directing back to the landing page; 403/404/other errors

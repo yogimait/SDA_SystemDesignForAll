@@ -10,7 +10,7 @@ import type { Response } from "express";
 import { AppError, ERROR_HTTP_STATUS } from "./app-error.js";
 import { isDatabaseUnavailable } from "./database-error.js";
 import { isPayloadTooLarge } from "./payload-too-large.js";
-import { redactSecrets } from "../logging/redact.js";
+import { redactDetails, redactSecrets } from "../logging/redact.js";
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -57,8 +57,8 @@ function mapException(exception: unknown): MappedException {
   if (exception instanceof AppError) {
     return {
       code: exception.code,
-      message: exception.message,
-      details: exception.details,
+      message: redactSecrets(exception.message),
+      details: redactDetails(exception.details),
       statusCode: exception.statusCode,
     };
   }

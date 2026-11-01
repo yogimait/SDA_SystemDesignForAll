@@ -125,7 +125,14 @@ function readCookie(request: Request, name: string): string | undefined {
     const separator = part.indexOf("=");
     if (separator === -1) continue;
     if (part.slice(0, separator).trim() !== name) continue;
-    return decodeURIComponent(part.slice(separator + 1).trim());
+    const raw = part.slice(separator + 1).trim();
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      // A malformed percent escape is treated as an absent cookie, so a
+      // tampered value cannot turn a CSRF check into a 500.
+      return undefined;
+    }
   }
   return undefined;
 }

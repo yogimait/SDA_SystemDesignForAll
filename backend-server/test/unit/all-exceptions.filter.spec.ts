@@ -40,6 +40,36 @@ describe("AllExceptionsFilter", () => {
     });
   });
 
+  it("redacts secrets from AppError message and nested details", () => {
+    const { host, json } = fakeHost();
+    filter.catch(
+      new AppError(
+        "PROVIDER_UNSUPPORTED_CAPABILITY",
+        "Rejected key sk-or-v1-message-secret",
+        {
+          providerMessage: "echo sk-or-v1-detail-secret",
+          apiKey: "bare-secret-value",
+          nested: [{ header: "Authorization: Bearer abc.def.ghi" }],
+          providerStatus: 400,
+        },
+      ),
+      host,
+    );
+
+    const body = json.mock.calls[0]?.[0] as { [key: string]: unknown };
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("sk-or-v1-message-secret");
+    expect(serialized).not.toContain("sk-or-v1-detail-secret");
+    expect(serialized).not.toContain("bare-secret-value");
+    expect(serialized).not.toContain("abc.def.ghi");
+    expect(body).toMatchObject({
+      error: {
+        code: "PROVIDER_UNSUPPORTED_CAPABILITY",
+        details: { providerStatus: 400 },
+      },
+    });
+  });
+
   it("maps throttling to QUOTA_EXCEEDED", () => {
     const { host, status, json } = fakeHost();
     filter.catch(new HttpException("Too many requests", 429), host);

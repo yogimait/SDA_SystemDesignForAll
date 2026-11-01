@@ -171,6 +171,39 @@ export const userPreferences = pgTable("user_preferences", {
     .defaultNow(),
 });
 
+/**
+ * Account-scoped BYOK vault. Only AES-256-GCM ciphertext and its IV/tag are
+ * stored; the plaintext key never touches the database or the logs.
+ */
+export const userProviderCredentials = pgTable(
+  "user_provider_credentials",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    iv: text("iv").notNull(),
+    authTag: text("auth_tag").notNull(),
+    keyVersion: text("key_version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("user_provider_credentials_user_provider_unique").on(
+      table.userId,
+      table.provider,
+    ),
+    index("user_provider_credentials_user_idx").on(table.userId),
+  ],
+);
+
 export const projects = pgTable(
   "projects",
   {
@@ -417,6 +450,7 @@ export const schema = {
   devOutbox,
   providerConfigs,
   userPreferences,
+  userProviderCredentials,
   billingSubscriptions,
   billingEvents,
   projects,

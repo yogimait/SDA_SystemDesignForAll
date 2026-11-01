@@ -32,7 +32,11 @@ async function journeyToWorkspace(page: Page): Promise<void> {
   await dialog.getByRole("combobox", { name: "Provider" }).click();
   await page.getByRole("option", { name: "OpenRouter" }).click();
   await dialog.getByLabel("API key").fill("sk-or-e2e-workspace-01");
-  await dialog.getByRole("button", { name: "Save for this session" }).click();
+  // Session-only path: this suite clears storage to prove the gate returns.
+  await dialog
+    .getByRole("checkbox", { name: /Save this key to my account/ })
+    .uncheck();
+  await dialog.getByRole("button", { name: "Save provider setup" }).click();
   await expect(page.getByRole("button", { name: "Add provider & key" })).toBeHidden();
 
   await page.getByRole("button", { name: "Generate requirements" }).click();

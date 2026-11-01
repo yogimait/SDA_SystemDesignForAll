@@ -91,6 +91,8 @@ export const USER_MESSAGES: Record<ApiErrorCode, string> = {
     "The model provider is temporarily unavailable. Wait a moment and retry.",
   PROVIDER_CONFIG_NOT_FOUND:
     "No saved provider setup was found. Save provider settings before retrying.",
+  PROVIDER_CREDENTIALS_UNAVAILABLE:
+    "Saved provider credentials are unavailable right now. Re-enter the key for this session or retry later.",
   PROVIDER_UNSUPPORTED_CAPABILITY:
     "The selected model cannot provide a required capability. Pick a different model in provider settings.",
   INVALID_MODEL_OUTPUT:

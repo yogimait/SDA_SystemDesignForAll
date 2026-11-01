@@ -55,3 +55,47 @@ export const SavedProviderConfigResponseSchema = z.object({
 export type SavedProviderConfigResponse = z.infer<
   typeof SavedProviderConfigResponseSchema
 >;
+
+/**
+ * Account-scoped BYOK vault. The key is sent only when saving; status
+ * responses never contain it, only whether a credential exists.
+ */
+export const SaveProviderCredentialRequestSchema = z
+  .object({
+    apiKey: z.string().trim().min(8).max(8192),
+  })
+  .strict();
+export type SaveProviderCredentialRequest = z.infer<
+  typeof SaveProviderCredentialRequestSchema
+>;
+
+export const ProviderCredentialStatusSchema = z.object({
+  provider: z.string().min(1),
+  saved: z.boolean(),
+  updatedAt: z.string().min(1).optional(),
+  lastUsedAt: z.string().min(1).optional(),
+});
+export type ProviderCredentialStatus = z.infer<
+  typeof ProviderCredentialStatusSchema
+>;
+
+export const ProviderCredentialStatusResponseSchema = z.object({
+  credential: ProviderCredentialStatusSchema,
+});
+export type ProviderCredentialStatusResponse = z.infer<
+  typeof ProviderCredentialStatusResponseSchema
+>;
+
+export const ProviderCredentialsResponseSchema = z.object({
+  credentials: z.array(ProviderCredentialStatusSchema),
+});
+export type ProviderCredentialsResponse = z.infer<
+  typeof ProviderCredentialsResponseSchema
+>;
+
+export const RemoveProviderCredentialResponseSchema = z.object({
+  removed: z.boolean(),
+});
+export type RemoveProviderCredentialResponse = z.infer<
+  typeof RemoveProviderCredentialResponseSchema
+>;

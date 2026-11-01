@@ -39,4 +39,22 @@ describe("provider setup gating", () => {
     expect(providerSetupState({ ...READY, provider: "  " }).gaps).toEqual(["provider"]);
     expect(providerSetupState({ ...READY, model: " " }).gaps).toEqual(["model"]);
   });
+
+  it("accepts a saved account key instead of a tab key", () => {
+    const state = providerSetupState({ ...READY, apiKey: "" }, true);
+    expect(state).toEqual({
+      ready: true,
+      gaps: [],
+      provider: "groq",
+      model: "openai/gpt-oss-120b",
+    });
+    // The flag names the selected provider's key, not any saved key at all.
+    expect(providerSetupState({ ...READY, apiKey: "" }, false).gaps).toEqual(["key"]);
+  });
+
+  it("still needs a provider and model without a tab key", () => {
+    const state = providerSetupState(null, true);
+    expect(state.ready).toBe(false);
+    expect(state.gaps).toEqual(["provider", "model", "key"]);
+  });
 });

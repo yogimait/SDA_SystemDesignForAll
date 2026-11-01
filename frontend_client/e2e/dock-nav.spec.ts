@@ -228,7 +228,7 @@ test("workspace Annotate is reachable below sm and toggles", async ({ page }) =>
   await setupDialog.getByRole("combobox", { name: "Provider" }).click();
   await page.getByRole("option", { name: "OpenRouter" }).click();
   await setupDialog.getByLabel("API key").fill("sk-or-e2e-workspace-01");
-  await setupDialog.getByRole("button", { name: "Save for this session" }).click();
+  await setupDialog.getByRole("button", { name: "Save provider setup" }).click();
   await expect(page.getByRole("button", { name: "Add provider & key" })).toBeHidden();
   await page.getByRole("button", { name: "Generate requirements" }).click();
   const confirmButton = page.getByRole("button", { name: /Confirm & generate architecture/ });
