@@ -1,0 +1,57 @@
+# Render Blueprint for the NestJS API.
+# Deploy from the repository root. Set every `sync: false` secret in the
+# Render dashboard after the first blueprint sync.
+#
+# `plan: free` is a demo/beta setting: Render suspends idle free services and
+# can interrupt a generation run. Change to `starter` before real users.
+services:
+  - type: web
+    name: sda-api
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci && npm run build --workspace backend-server
+    startCommand: node backend-server/dist/main.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_DRIVER
+        value: postgres
+      - key: DATABASE_URL
+        sync: false
+      - key: MOCK_PROVIDER
+        value: "0"
+      - key: DEFAULT_PROVIDER
+        value: openrouter
+      - key: DEFAULT_MODEL
+        value: z-ai/glm-5.3-flash
+      - key: OPENROUTER_REASONING_EFFORT
+        value: low
+      - key: GROQ_REASONING_EFFORT
+        value: low
+      - key: GENERATION_CONCURRENCY
+        value: "1"
+      - key: CREDENTIALS_ENCRYPTION_KEY
+        sync: false
+      - key: CREDENTIALS_ENCRYPTION_KEY_VERSION
+        value: "1"
+      - key: CSRF_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: TRUST_PROXY
+        value: "1"
+      - key: REQUIRE_EMAIL_VERIFICATION
+        value: "0"
+      - key: THROTTLE_LIMIT
+        value: "60"
+      - key: AUTH_THROTTLE_LIMIT
+        value: "10"
+      - key: AUTH_THROTTLE_TTL_MS
+        value: "60000"

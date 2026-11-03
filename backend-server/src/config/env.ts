@@ -87,6 +87,9 @@ export const EnvSchema = z
       .default("development"),
     PORT: z.coerce.number().int().min(1).max(65535).default(3001),
     CORS_ORIGIN: z.string().trim().min(1).default("http://localhost:3000"),
+    // Render/Railway/Fly terminate TLS at one trusted proxy hop. Enable only
+    // there; trusting arbitrary X-Forwarded-For values lets clients spoof IPs.
+    TRUST_PROXY: BooleanFlagSchema,
     DATABASE_DRIVER: z.enum(["pglite", "postgres"]).default("pglite"),
     PGLITE_DATA_DIR: z.string().trim().min(1).default(".data/pglite"),
     DATABASE_URL: z.string().trim().url().optional(),

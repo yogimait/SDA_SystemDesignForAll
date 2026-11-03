@@ -30,6 +30,9 @@ export function configureApp(app: INestApplication): void {
   app.setGlobalPrefix("api");
   const express = app.getHttpAdapter().getInstance() as Application;
   express.disable("x-powered-by");
+  // One trusted TLS proxy in front of the app (Render, Railway, Fly, Nginx).
+  // Direct deployments keep this off so X-Forwarded-For cannot be spoofed.
+  if (config.TRUST_PROXY) express.set("trust proxy", 1);
   app.use((_request: Request, response: Response, next: NextFunction) => {
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("X-Frame-Options", "DENY");

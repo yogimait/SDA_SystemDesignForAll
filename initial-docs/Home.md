@@ -12,6 +12,7 @@ The project emphasizes *understanding over generation*: the platform does not ju
 | [[Tech-Stack]] | Focused technology choices: Next.js frontend, NestJS backend, PGlite/Postgres persistence, Zod contracts, and the OpenRouter + GLM-5.3 Flash model setup. |
 | [[Roadmap-Planner-Frontend]] | Phase-by-phase build plan for the frontend with checkpoints. |
 | [[Roadmap-Planner-Backend]] | Phase-by-phase build plan for the backend with checkpoints. |
+| [[Deployment]] | Vercel + Render + Supabase deployment settings and first-deploy checklist. |
 | [Backend living docs](../backend-server/docs/Home.md) | Implemented backend architecture, API, data model, generation, providers, and testing. |
 
 ## Status

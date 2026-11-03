@@ -34,6 +34,7 @@ describe("loadConfig", () => {
       APP_BASE_URL: "http://localhost:3000",
       AUTH_THROTTLE_LIMIT: 5,
       AUTH_THROTTLE_TTL_MS: 60_000,
+      TRUST_PROXY: false,
     });
     expect(config.CSRF_SECRET).toBeUndefined();
     expect(config.STRIPE_SECRET_KEY).toBeUndefined();
