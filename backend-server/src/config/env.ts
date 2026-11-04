@@ -87,6 +87,9 @@ export const EnvSchema = z
       .default("development"),
     PORT: z.coerce.number().int().min(1).max(65535).default(3001),
     CORS_ORIGIN: z.string().trim().min(1).default("http://localhost:3000"),
+    // Parent cookie domain for split frontend/API hostnames, e.g.
+    // `.nerddog.me`. Unset = host-only cookies (localhost).
+    COOKIE_DOMAIN: OPTIONAL_SECRET,
     // Render/Railway/Fly terminate TLS at one trusted proxy hop. Enable only
     // there; trusting arbitrary X-Forwarded-For values lets clients spoof IPs.
     TRUST_PROXY: BooleanFlagSchema,

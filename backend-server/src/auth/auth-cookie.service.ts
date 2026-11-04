@@ -26,12 +26,14 @@ export class AuthCookieService {
   ): string {
     const secure = this.config.NODE_ENV === "production";
     const maxAge = Math.max(0, refreshExpiresAt.getTime() - Date.now());
+    const domain = this.cookieDomain();
     response.cookie(REFRESH_COOKIE, refreshToken, {
       httpOnly: true,
       secure,
       sameSite: "strict",
       path: "/api/auth",
       maxAge,
+      ...(domain ? { domain } : {}),
     });
     const csrfToken = this.createCsrfToken();
     response.cookie(CSRF_COOKIE, csrfToken, {
@@ -40,13 +42,31 @@ export class AuthCookieService {
       sameSite: "strict",
       path: "/",
       maxAge,
+      ...(domain ? { domain } : {}),
     });
+    // A pre-domain deployment may have left host-only cookies behind. Delete
+    // only those variants; the parent-domain pair above must survive.
+    if (domain) {
+      response.clearCookie(REFRESH_COOKIE, { path: "/api/auth" });
+      response.clearCookie(CSRF_COOKIE, { path: "/" });
+    }
     return csrfToken;
   }
 
   clearSessionCookies(response: Response): void {
+    // Clear both the host-only and parent-domain variants: an old deployment
+    // may have left a host-only cookie behind.
     response.clearCookie(REFRESH_COOKIE, { path: "/api/auth" });
     response.clearCookie(CSRF_COOKIE, { path: "/" });
+    const domain = this.cookieDomain();
+    if (domain) {
+      response.clearCookie(REFRESH_COOKIE, { path: "/api/auth", domain });
+      response.clearCookie(CSRF_COOKIE, { path: "/", domain });
+    }
+  }
+
+  private cookieDomain(): string | undefined {
+    return this.config.COOKIE_DOMAIN;
   }
 
   readRefreshToken(request: Request): string | undefined {

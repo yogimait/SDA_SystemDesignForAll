@@ -62,9 +62,16 @@ Set these `sync: false` values in the Render dashboard:
 DATABASE_URL=postgresql://...pooler.supabase.com:5432/postgres?sslmode=require
 CORS_ORIGIN=https://app.example.com
 APP_BASE_URL=https://app.example.com
+COOKIE_DOMAIN=.example.com
 CREDENTIALS_ENCRYPTION_KEY=<32-byte base64>
 CSRF_SECRET=<random secret>
 ```
+
+`COOKIE_DOMAIN` must be the parent domain shared by the frontend and API
+(`.example.com`). Without it the CSRF cookie is host-only on the API domain,
+the frontend cannot read it, and authenticated mutations fail with
+`csrf_invalid`. Both cookies are cleared on both host-only and parent-domain
+paths during login/logout.
 
 Generate the secrets locally, never commit them:
 
