@@ -38,6 +38,10 @@ DATABASE_URL=postgresql://postgres.[project-ref]:[url-encoded-password]@[region]
 The repository root contains [`render.yaml`](../render.yaml). Create a
 **Blueprint** in Render and point it at this repository.
 
+Render applies `NODE_ENV=production` during the build, so the build command
+uses `npm ci --include=dev`; without that, npm skips the Nest CLI and
+`nest build` fails with `nest: not found`.
+
 The blueprint sets the non-secret production defaults:
 
 ```env

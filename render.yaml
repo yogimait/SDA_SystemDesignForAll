@@ -10,7 +10,9 @@ services:
     runtime: node
     plan: free
     region: singapore
-    buildCommand: npm ci && npm run build --workspace backend-server
+    # Render applies NODE_ENV=production during builds, so npm ci skips
+    # devDependencies (including the Nest CLI) unless dev is explicit.
+    buildCommand: npm ci --include=dev && npm run build --workspace backend-server
     startCommand: node backend-server/dist/main.js
     healthCheckPath: /api/health
     autoDeploy: true
