@@ -1,0 +1,6 @@
+# Raw model outputs and judge artifacts are local by default.
+artifacts/
+holdout/
+.env
+.env.*
+*.local.jsonl

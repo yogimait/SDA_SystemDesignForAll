@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sda.local/eval/case.schema.json",
+  "title": "SDA Evaluation Case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "dataset_version",
+    "split",
+    "stages",
+    "domain",
+    "complexity",
+    "idea",
+    "confirmed_requirements",
+    "must_have_behaviors",
+    "acceptable_alternatives",
+    "anti_patterns",
+    "component_expectations",
+    "review",
+    "tags"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^TC-[A-Z0-9-]+-[0-9]{3}$"
+    },
+    "dataset_version": {
+      "const": "sda-v1"
+    },
+    "split": {
+      "enum": ["dev", "validation", "holdout"]
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["requirements", "hld", "lld", "dsa", "learning"]
+      }
+    },
+    "domain": {
+      "type": "string",
+      "minLength": 1
+    },
+    "complexity": {
+      "enum": ["low", "medium", "high"]
+    },
+    "idea": {
+      "type": "string",
+      "minLength": 20
+    },
+    "confirmed_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["functional", "nonFunctional", "assumptions", "clarifications"],
+      "properties": {
+        "functional": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "text", "priority"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "text": { "type": "string", "minLength": 1 },
+              "priority": { "enum": ["must", "should", "could"] }
+            }
+          }
+        },
+        "nonFunctional": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "text", "priority", "category", "target"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "text": { "type": "string", "minLength": 1 },
+              "priority": { "enum": ["must", "should", "could"] },
+              "category": {
+                "enum": [
+                  "performance",
+                  "scalability",
+                  "reliability",
+                  "security",
+                  "maintainability",
+                  "usability"
+                ]
+              },
+              "target": { "type": "string" }
+            }
+          }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "clarifications": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "must_have_behaviors": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "acceptable_alternatives": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "anti_patterns": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "component_expectations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hld", "lld", "dsa", "learning"],
+      "properties": {
+        "hld": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "lld": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "dsa": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "learning": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reviewer", "reviewed_at"],
+      "properties": {
+        "status": { "enum": ["draft", "reviewed", "retired"] },
+        "reviewer": { "type": ["string", "null"] },
+        "reviewed_at": { "type": ["string", "null"] }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

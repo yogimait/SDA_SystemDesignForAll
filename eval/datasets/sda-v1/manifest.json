@@ -1,0 +1,34 @@
+{
+  "dataset_version": "sda-v1",
+  "status": "seed",
+  "created_at": "2026-11-07",
+  "description": "Seed architecture-evaluation cases for System Design All-in-One. Draft, not yet expert-reviewed.",
+  "case_file": "cases.jsonl",
+  "case_file_sha256": "1f14186ab2732531ea69da6bff6f9af46a3b48888864728a0ec24a4ba412a7c0",
+  "case_count": 12,
+  "splits": {
+    "dev": 12,
+    "validation": 0,
+    "holdout": 0
+  },
+  "stages": [
+    "requirements",
+    "hld",
+    "lld",
+    "dsa",
+    "learning"
+  ],
+  "rubric_version": "architecture-v1",
+  "judge_prompt_version": "architecture-judge-v1",
+  "holdout": {
+    "in_git": false,
+    "file_sha256": null,
+    "storage_note": "Store the holdout outside Git; record its SHA-256 here before the final gate."
+  },
+  "notes": [
+    "All cases are draft and require human review.",
+    "The dataset is intentionally small for harness development.",
+    "Do not tune prompts on the future holdout split.",
+    "No real user data or provider keys belong in this directory."
+  ]
+}

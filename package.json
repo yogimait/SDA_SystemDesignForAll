@@ -11,6 +11,10 @@
     "dev:frontend": "npm run dev --workspace frontend_client",
     "dev:backend": "npm run start:dev --workspace backend-server",
     "build:frontend": "npm run build --workspace frontend_client",
+    "eval:validate": "node eval/validate-cases.mjs",
+    "eval:build": "npm run build --workspace backend-server",
+    "eval:structural": "node eval/run-structural.mjs",
+    "eval:aggregate": "node eval/aggregate-structural.mjs",
     "postinstall": "npm run build --workspace @sda/contracts"
   }
 }
