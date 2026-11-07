@@ -5,3 +5,6 @@ holdout/
 .env
 .env.*
 *.local.jsonl
+
+__pycache__/
+*.pyc

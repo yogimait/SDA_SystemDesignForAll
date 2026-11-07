@@ -69,6 +69,24 @@ for (const [model, entry] of bestByModel) {
       : requirementsMetrics.reduce((sum, metric) => sum + (metric[key] ?? 0), 0) /
         requirementsMetrics.length;
 
+  const componentAverage = (component, keys) => {
+    const metrics = records
+      .map((record) => record.component_metrics?.[component])
+      .filter(Boolean);
+    if (metrics.length === 0) return null;
+    return Object.fromEntries(
+      keys.map((key) => [
+        key,
+        Number(
+          (
+            metrics.reduce((sum, metric) => sum + (metric[key] ?? 0), 0) /
+            metrics.length
+          ).toFixed(3),
+        ),
+      ]),
+    );
+  };
+
   models.push({
     model,
     runs: records.length,
@@ -93,6 +111,36 @@ for (const [model, entry] of bestByModel) {
       avg_nfr_targets_present: average("nfrTargetsPresent"),
       avg_assumptions: average("assumptions"),
       avg_clarifications: average("clarifications"),
+    },
+    component_averages: {
+      hld: componentAverage("hld", [
+        "components",
+        "connections",
+        "flows",
+        "technologyDecisions",
+        "scalabilityNotes",
+        "failureScenarios",
+      ]),
+      lld: componentAverage("lld", [
+        "classes",
+        "relationships",
+        "patterns",
+        "classesWithRefs",
+      ]),
+      dsa: componentAverage("dsa", [
+        "recommendations",
+        "algorithmicPatterns",
+        "withComplexity",
+        "withRefs",
+      ]),
+      learning: componentAverage("learning", [
+        "steps",
+        "refs",
+        "uniqueRefs",
+        "resolvedRefs",
+        "unresolvedRefs",
+        "refsResolvedRate",
+      ]),
     },
   });
 }
