@@ -50,6 +50,7 @@ Return JSON only:
     "dsa_correctness": 1,
     "simplicity": 1,
     "pedagogical_quality": 1,
+    "learning_quality": 1,
     "interview_usefulness": 1
   },
   "mean": 1.0,

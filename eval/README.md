@@ -157,6 +157,12 @@ npm run eval:validate
 npm run eval:build
 npm run eval:structural -- --model z-ai/glm-5.3-flash --stage architecture --limit 1
 npm run eval:aggregate -- --stage requirements
+
+# Semantic judge (Python sidecar; no generation calls)
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r judge-requirements.txt
+.venv\Scripts\python.exe judge_architecture.py
+node aggregate-judge.mjs
 ```
 
 `eval:validate` checks JSONL structure, unique IDs, split counts, and manifest
@@ -178,9 +184,9 @@ generation.
 - Validation and holdout sets: not populated yet
 - Structural runner: implemented; one-case smoke passed for requirements, HLD, and full architecture
 - Requirements matrix: complete (8 models × 12 cases × 2 repeats)
-- HLD matrix: next
-- LLD/DSA/learning component eval: after HLD
-- DeepEval judge: after structural component matrix
-- LangSmith tracing: after offline baseline
-- Regression baseline: after the first component matrix
+- GLM architecture baseline: complete (24/24 valid, 12 cases × 2 repeats)
+- Semantic judge: complete on 24 GLM outputs; **0/24 passed the 4.0 threshold**, 21/24 had hard flags
+- Human calibration: next (5-record sample required before treating scores as a release gate)
+- LLD/DSA split: still pending
+- LangSmith tracing: after calibration and regression baseline
 - Validation and holdout cases: next

@@ -50,7 +50,14 @@ Scores are integers from 1 to 5.
 - 3: Clear but uneven explanation; some reasoning is implicit.
 - 5: Explains what, why, trade-offs, and alternatives in an interview-ready way.
 
-### 7. Interview usefulness
+### 7. Learning quality
+
+- 1: Learning steps are missing, repetitive, or reference the wrong elements.
+- 3: Steps are grounded but shallow; sequence is only partly useful.
+- 5: Steps build understanding in a logical order, reference real elements, and
+  explain why the design works.
+
+### 8. Interview usefulness
 
 - 1: Advice would be misleading or impractical in an interview.
 - 3: Generally sound, but lacks follow-up depth.
@@ -94,7 +101,7 @@ Scores are integers from 1 to 5.
 
 ## Scoring rule
 
-For a valid output, compute the mean of the seven dimensions.
+For a valid output, compute the mean of the eight dimensions.
 Reject or flag a candidate when any dimension is below 3.
 
 Do not let the judge override a structural failure.
