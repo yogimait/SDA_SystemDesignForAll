@@ -49,8 +49,11 @@ SCORE_KEYS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--judge-model", default=os.getenv("JUDGE_MODEL", DEFAULT_JUDGE_MODEL))
+    parser.add_argument("--judge-prompt", default=str(JUDGE_PROMPT))
     parser.add_argument("--limit", type=int, default=0, help="0 = all records")
     parser.add_argument("--case", default=None)
+    parser.add_argument("--cases", default=None, help="Comma-separated case IDs")
+    parser.add_argument("--repeat", type=int, default=None)
     return parser.parse_args()
 
 
@@ -222,12 +225,17 @@ def main() -> None:
     records = [record for record in records if record.get("structural", {}).get("valid")]
     if args.case:
         records = [record for record in records if record.get("case_id") == args.case]
+    if args.cases:
+        selected = {item.strip() for item in args.cases.split(",") if item.strip()}
+        records = [record for record in records if record.get("case_id") in selected]
+    if args.repeat is not None:
+        records = [record for record in records if record.get("repeat_index") == args.repeat]
     if args.limit:
         records = records[: args.limit]
     if not records:
         raise SystemExit("No valid GLM architecture records found")
 
-    prompt = JUDGE_PROMPT.read_text(encoding="utf-8")
+    prompt = Path(args.judge_prompt).read_text(encoding="utf-8")
     client = OpenAI(
         api_key=api_key,
         base_url="https://openrouter.ai/api/v1",
