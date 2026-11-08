@@ -186,7 +186,10 @@ generation.
 - Requirements matrix: complete (8 models × 12 cases × 2 repeats)
 - GLM architecture baseline: complete (24/24 valid, 12 cases × 2 repeats)
 - Semantic judge: complete on 24 GLM outputs; **0/24 passed the 4.0 threshold**, 21/24 had hard flags
-- Human calibration: pack generated at `eval/artifacts/calibration/architecture-glm-v1/`; 5 records, blind scoring before opening `judge-key.json`
+- Judge v2: explicit evaluation steps + varied example scores; tested on 5 records with Claude Haiku and GPT-5 Nano
+- Judge reliability: mean absolute disagreement 0.475/5; GPT is consistently more lenient than Claude. Absolute quality gate is therefore not trustworthy without further validation.
+- Human calibration: pack generated at `eval/artifacts/calibration/architecture-glm-v1/`; not used by decision because human judging is disabled
+- Mutation testing: next; synthetic defects test judge sensitivity without human labels
 - LLD/DSA split: still pending
 - LangSmith tracing: after calibration and regression baseline
 - Validation and holdout cases: next
