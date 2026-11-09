@@ -152,41 +152,50 @@ class ArchitectureJudgeMetric(BaseMetric):
         kwargs = {
             "model": self.model,
             "temperature": 0,
-            "max_tokens": 8000,
+            "max_tokens": 16000,
             "messages": [
                 {"role": "system", "content": self.prompt},
                 {"role": "user", "content": user},
             ],
         }
-        try:
-            response = self.client.chat.completions.create(
-                **kwargs,
-                response_format={"type": "json_object"},
-            )
-        except Exception:
-            # Some routed providers reject response_format; the prompt still
-            # requires JSON, so retry once without it.
-            response = self.client.chat.completions.create(**kwargs)
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                response = self.client.chat.completions.create(
+                    **kwargs,
+                    response_format={"type": "json_object"},
+                )
+            except Exception:
+                # Some routed providers reject response_format; the prompt still
+                # requires JSON, so retry without it.
+                response = self.client.chat.completions.create(**kwargs)
 
-        content = response.choices[0].message.content or ""
-        if not content.strip():
-            # Claude Haiku can return an empty JSON-mode completion on this
-            # route even though it answers the same prompt without the flag.
-            response = self.client.chat.completions.create(**kwargs)
             content = response.choices[0].message.content or ""
-        if not content.strip():
-            raise ValueError(
-                "judge returned empty content; "
-                f"finish={response.choices[0].finish_reason!r} usage={response.usage!r}"
-            )
+            if not content.strip():
+                # Claude Haiku can return an empty JSON-mode completion on this
+                # route even though it answers the same prompt without the flag.
+                response = self.client.chat.completions.create(**kwargs)
+                content = response.choices[0].message.content or ""
 
-        parsed = extract_json(content)
-        usage = getattr(response, "usage", None)
-        if usage is not None:
-            self.input_tokens += getattr(usage, "prompt_tokens", 0) or 0
-            self.output_tokens += getattr(usage, "completion_tokens", 0) or 0
-        self.raw = content
-        return parsed
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                self.input_tokens += getattr(usage, "prompt_tokens", 0) or 0
+                self.output_tokens += getattr(usage, "completion_tokens", 0) or 0
+            self.raw = content
+
+            if not content.strip():
+                last_error = ValueError(
+                    "judge returned empty content; "
+                    f"finish={response.choices[0].finish_reason!r} usage={response.usage!r}"
+                )
+                continue
+
+            try:
+                return extract_json(content)
+            except (json.JSONDecodeError, ValueError) as error:
+                last_error = error
+
+        raise ValueError(f"judge returned invalid JSON after retry: {last_error}")
 
     def measure(self, test_case: LLMTestCase, *args: Any, **kwargs: Any) -> float:
         case_payload = json.loads(test_case.input)

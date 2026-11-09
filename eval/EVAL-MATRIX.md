@@ -16,15 +16,17 @@ The semantic judge itself is evaluated without human labels:
 
 | Check | Method | Current result |
 |---|---|---|
-| Inter-judge agreement | Same records scored by two independent judges | 0.475/5 mean absolute disagreement on 5 records |
-| Test-retest stability | Duplicate clean controls in one blind batch | Max 0.5/5 mean absolute difference |
-| Defect sensitivity | Six injected semantic defects plus controls | 5/6 caught by at least one judge; 4/6 by both |
-| Localization | Target dimension drop and unrelated dimension change | One missed trace defect; one security defect caused a 0.917 unrelated drop |
-| Control flag stability | Same clean control repeated blind | 2 of 6 judge-case controls had unstable hard flags |
+| Inter-judge agreement | Same records scored by two independent judges | 0.859/5 mean absolute disagreement on 24 GLM outputs |
+| Test-retest stability | Duplicate clean controls in blind batches | Max 0.875/5 mean absolute difference |
+| Defect sensitivity | Six injected defects per batch, original and held-out | 6/6 caught by at least one judge in both batches; 5/6 by both |
+| Localization | Target dimension drop and unrelated dimension change | Max unrelated drop 0.786 original, 1.167 held-out |
+| Control flag stability | Same clean control repeated blind | 2 inconsistent cases original; 5 held-out judge-case controls |
 
 A judge is not a release gate unless it passes sensitivity, control stability,
 and localization. Current result: **not a release gate**. Use it for relative
-regression and defect discovery only.
+regression and defect discovery only. The full v3 panel is in
+`eval/artifacts/judge/v3-panel/`; the frozen summary is in
+`eval/baseline/architecture-glm-v1.json`.
 
 ## Pipeline evals
 

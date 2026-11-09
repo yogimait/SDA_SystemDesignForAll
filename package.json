@@ -16,7 +16,9 @@
     "eval:structural": "node eval/run-structural.mjs",
     "eval:aggregate": "node eval/aggregate-structural.mjs",
     "eval:mutations": "node eval/make-mutations.mjs",
+    "eval:mutations:heldout": "node eval/make-mutations.mjs --batch heldout-v1",
     "eval:mutations:report": "node eval/aggregate-mutations.mjs",
+    "eval:judge:panel": "node eval/aggregate-judge-panel.mjs",
     "postinstall": "npm run build --workspace @sda/contracts"
   }
 }

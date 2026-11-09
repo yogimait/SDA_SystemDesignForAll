@@ -45,11 +45,35 @@ function latestGlmArchitectureArtifact() {
   return candidates.at(-1);
 }
 
+const batch = arg("--batch", "architecture-v1");
+const batchCaseIds = {
+  "architecture-v1": ["TC-URL-001", "TC-CHAT-003", "TC-AGENT-012"],
+  "heldout-v1": [
+    "TC-RATE-002",
+    "TC-JOBS-006",
+    "TC-PAY-005",
+    "TC-FILES-007",
+    "TC-SEARCH-008",
+    "TC-SOCIAL-011",
+  ],
+};
+if (!batchCaseIds[batch]) {
+  throw new Error(`Unknown --batch: ${batch}`);
+}
+
 const artifact = resolve(
   root,
   arg("--input", latestGlmArchitectureArtifact() ?? ""),
 );
-const outputDir = resolve(root, arg("--out-dir", "eval/artifacts/mutation"));
+const outputDir = resolve(
+  root,
+  arg(
+    "--out-dir",
+    batch === "architecture-v1"
+      ? "eval/artifacts/mutation"
+      : `eval/artifacts/mutation/${batch}`,
+  ),
+);
 const inputPath = join(outputDir, "mutation-input.jsonl");
 const keyPath = join(outputDir, "mutation-key.json");
 
@@ -67,7 +91,7 @@ const records = readFileSync(artifact, "utf8")
   .filter((line) => line.trim() !== "")
   .map((line) => JSON.parse(line));
 
-const caseIds = ["TC-URL-001", "TC-CHAT-003", "TC-AGENT-012"];
+const caseIds = batchCaseIds[batch];
 const bases = new Map();
 for (const caseId of caseIds) {
   const record = records.find(
@@ -278,7 +302,131 @@ function mutateAgentTenantLeak(base) {
   return { hld, section };
 }
 
-const specs = [
+function mutateRateAtomicity(base) {
+  const hld = clone(base.hld);
+  const section = clone(base.lld_dsa);
+
+  const redis = component(hld, "cmp_redis");
+  redis.responsibility =
+    "Non-atomic counters: each instance reads the current value with GET, adds one, and writes it back with SET.";
+  redis.scalingNotes =
+    "Concurrent instances can overwrite each other's increments.";
+
+  const lua = lldClass(section, "cls_RedisLuaScript");
+  lua.responsibility =
+    "Read-modify-write helper using GET then SET; no atomic script.";
+  lua.rationale =
+    "Simpler than Lua, but concurrent checks can lose increments.";
+
+  const atomic = recommendation(section, "dsa_lua_script_execution");
+  atomic.dataStructure = "Redis string counter";
+  atomic.algorithm =
+    "GET the current value, increment in application memory, then SET it back.";
+  atomic.complexity = {
+    average: "O(1)",
+    worst: "O(1)",
+    notes: "A single round trip per step, but not atomic.",
+  };
+  return { hld, section };
+}
+
+function mutateJobsAckBeforeWork(base) {
+  const hld = clone(base.hld);
+  const section = clone(base.lld_dsa);
+
+  const worker = component(hld, "cmp_worker");
+  worker.responsibility =
+    "Acknowledges each job as soon as it is claimed, before execution; failures are dropped and never retried.";
+
+  const dlq = component(hld, "cmp_dlq");
+  dlq.responsibility =
+    "Configured but unused; exhausted or failed jobs are discarded.";
+
+  const jobWorker = lldClass(section, "cls_job_worker");
+  jobWorker.responsibility =
+    "Marks a job done immediately on claim, then executes it; execution failure is ignored.";
+
+  const deadLetter = lldClass(section, "cls_dead_letter_store");
+  deadLetter.responsibility =
+    "Unused; no job is ever written to the dead-letter table.";
+  return { hld, section };
+}
+
+function mutatePaymentWebhook(base) {
+  const hld = clone(base.hld);
+  const section = clone(base.lld_dsa);
+
+  const ingress = component(hld, "cmp_webhook_ingress");
+  ingress.responsibility =
+    "Receives provider webhook payloads and enqueues them without signature verification; any caller can submit settlement events.";
+
+  const flow = hld.flows.find((item) => item.id === "flow_reconcile");
+  flow.description =
+    "Process provider settlement webhooks without authenticating the sender.";
+  return { hld, section };
+}
+
+function mutateFilesPublic(base) {
+  const hld = clone(base.hld);
+  const section = clone(base.lld_dsa);
+
+  const service = component(hld, "cmp_file_service");
+  service.responsibility =
+    "Returns presigned download URLs for any file ID without checking ownership or ACL.";
+
+  const fileService = lldClass(section, "cls_FileService");
+  fileService.responsibility =
+    "Orchestrates uploads and returns download URLs for any file ID; no ownership check.";
+
+  const objectStore = component(hld, "cmp_object_store");
+  objectStore.responsibility =
+    "Public bucket; every object is readable by key without signed access.";
+
+  const s3 = lldClass(section, "cls_S3ObjectStore");
+  s3.responsibility =
+    "S3 adapter that serves public object URLs; no signed-URL enforcement.";
+  return { hld, section };
+}
+
+function mutateSearchFullScan(base) {
+  const hld = clone(base.hld);
+  const section = clone(base.lld_dsa);
+
+  const suggest = component(hld, "cmp_suggest");
+  suggest.responsibility =
+    "Runs a SQL LIKE '%prefix%' full-table scan on every keystroke and returns all matching phrases without a result cap.";
+
+  const prefix = lldClass(section, "cls_prefix_index");
+  prefix.responsibility =
+    "Loads all phrases from the relational table and linearly scans them per request; no prefix index.";
+
+  const trie = recommendation(section, "dsa_trie_prefix");
+  trie.dataStructure = "Relational phrase table";
+  trie.algorithm =
+    "SELECT phrases WHERE phrase LIKE '%' || prefix || '%'; no index and no result limit.";
+  trie.complexity = {
+    average: "O(N) full table scan per keystroke",
+    worst: "O(N), where N is the entire phrase table",
+    notes: "No prefix index and no result cap.",
+  };
+  return { hld, section };
+}
+
+function mutateSocialPublicMedia(base) {
+  const hld = clone(base.hld);
+  const section = clone(base.lld_dsa);
+
+  const mediaStore = component(hld, "cmp_media_store");
+  mediaStore.responsibility =
+    "Public media bucket; serves any object key without signed URLs, authorization, or moderation checks.";
+
+  const asset = lldClass(section, "cls_media_asset");
+  asset.responsibility =
+    "Public media reference: key, mime type, size, permanent public URL; no access control.";
+  return { hld, section };
+}
+
+const architectureV1Specs = [
   {
     label: "url_control_a",
     caseId: "TC-URL-001",
@@ -388,6 +536,170 @@ const specs = [
     apply: mutateAgentTenantLeak,
   },
 ];
+
+const heldoutV1Specs = [
+  {
+    label: "rate_control_a",
+    caseId: "TC-RATE-002",
+    variant: "control",
+    defect: "Clean rate-limiter control",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "rate_control_b",
+    caseId: "TC-RATE-002",
+    variant: "control",
+    defect: "Clean rate-limiter control repeat",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "rate_atomicity",
+    caseId: "TC-RATE-002",
+    variant: "mutant",
+    defect: "Replaced atomic counter update with GET/SET race",
+    expectedFlags: [
+      "missing_must_have",
+      "contradicts_confirmed_requirements",
+    ],
+    targetDimensions: ["lld_responsibility", "dsa_correctness"],
+    apply: mutateRateAtomicity,
+  },
+  {
+    label: "jobs_control_a",
+    caseId: "TC-JOBS-006",
+    variant: "control",
+    defect: "Clean job-queue control",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "jobs_control_b",
+    caseId: "TC-JOBS-006",
+    variant: "control",
+    defect: "Clean job-queue control repeat",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "jobs_ack_before_work",
+    caseId: "TC-JOBS-006",
+    variant: "mutant",
+    defect: "Acknowledged jobs before execution and removed retries",
+    expectedFlags: [
+      "missing_must_have",
+      "contradicts_confirmed_requirements",
+    ],
+    targetDimensions: ["hld_boundaries", "lld_responsibility"],
+    apply: mutateJobsAckBeforeWork,
+  },
+  {
+    label: "pay_control_a",
+    caseId: "TC-PAY-005",
+    variant: "control",
+    defect: "Clean payment control",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "pay_control_b",
+    caseId: "TC-PAY-005",
+    variant: "control",
+    defect: "Clean payment control repeat",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "pay_webhook_unsigned",
+    caseId: "TC-PAY-005",
+    variant: "mutant",
+    defect: "Removed webhook signature verification",
+    expectedFlags: ["unsafe_security_design"],
+    targetDimensions: ["hld_boundaries"],
+    apply: mutatePaymentWebhook,
+  },
+  {
+    label: "files_control_a",
+    caseId: "TC-FILES-007",
+    variant: "control",
+    defect: "Clean file-service control",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "files_control_b",
+    caseId: "TC-FILES-007",
+    variant: "control",
+    defect: "Clean file-service control repeat",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "files_public",
+    caseId: "TC-FILES-007",
+    variant: "mutant",
+    defect: "Made object storage public and removed ownership checks",
+    expectedFlags: ["unsafe_security_design"],
+    targetDimensions: ["hld_boundaries", "lld_responsibility"],
+    apply: mutateFilesPublic,
+  },
+  {
+    label: "search_control_a",
+    caseId: "TC-SEARCH-008",
+    variant: "control",
+    defect: "Clean search control",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "search_control_b",
+    caseId: "TC-SEARCH-008",
+    variant: "control",
+    defect: "Clean search control repeat",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "search_full_scan",
+    caseId: "TC-SEARCH-008",
+    variant: "mutant",
+    defect: "Replaced prefix index with full-table LIKE scan",
+    expectedFlags: ["contradicts_confirmed_requirements"],
+    targetDimensions: ["hld_boundaries", "dsa_correctness"],
+    apply: mutateSearchFullScan,
+  },
+  {
+    label: "social_control_a",
+    caseId: "TC-SOCIAL-011",
+    variant: "control",
+    defect: "Clean social control",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "social_control_b",
+    caseId: "TC-SOCIAL-011",
+    variant: "control",
+    defect: "Clean social control repeat",
+    expectedFlags: [],
+    targetDimensions: [],
+  },
+  {
+    label: "social_public_media",
+    caseId: "TC-SOCIAL-011",
+    variant: "mutant",
+    defect: "Made media public and removed authorization",
+    expectedFlags: ["unsafe_security_design"],
+    targetDimensions: ["hld_boundaries", "lld_responsibility"],
+    apply: mutateSocialPublicMedia,
+  },
+];
+
+const specs = {
+  "architecture-v1": architectureV1Specs,
+  "heldout-v1": heldoutV1Specs,
+}[batch];
 
 function toConfirmed(item) {
   return {
@@ -552,6 +864,7 @@ const built = shuffled.map((spec, index) => buildRecord(spec, index + 1));
 const inputRecords = built.map((item) => item.record);
 const key = {
   generated_at: new Date().toISOString(),
+  batch,
   artifact,
   input: inputPath,
   records: built.map((item) => item.key),

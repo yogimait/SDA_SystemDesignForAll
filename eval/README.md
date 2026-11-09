@@ -167,9 +167,13 @@ node aggregate-judge.mjs
 
 # Judge sensitivity (mutation test; no generation calls)
 node make-mutations.mjs
-.venv\Scripts\python.exe judge_architecture.py --input artifacts/mutation/mutation-input.jsonl --judge-prompt datasets/sda-v1/judge-prompts/architecture-judge-v2.md --judge-model anthropic/claude-haiku-5.5 --out artifacts/mutation/judge-claude-v2.jsonl
-.venv\Scripts\python.exe judge_architecture.py --input artifacts/mutation/mutation-input.jsonl --judge-prompt datasets/sda-v1/judge-prompts/architecture-judge-v2.md --judge-model openai/gpt-5-nano --out artifacts/mutation/judge-gpt-v2.jsonl
-node aggregate-mutations.mjs
+node make-mutations.mjs --batch heldout-v1
+.venv\Scripts\python.exe judge_architecture.py --input artifacts/mutation/heldout-v1/mutation-input.jsonl --judge-prompt datasets/sda-v1/judge-prompts/architecture-judge-v3.md --judge-model anthropic/claude-haiku-5.5 --out artifacts/mutation/heldout-v1/judge-claude-v3.jsonl
+.venv\Scripts\python.exe judge_architecture.py --input artifacts/mutation/heldout-v1/mutation-input.jsonl --judge-prompt datasets/sda-v1/judge-prompts/architecture-judge-v3.md --judge-model openai/gpt-5-nano --out artifacts/mutation/heldout-v1/judge-gpt-v3.jsonl
+node aggregate-mutations.mjs --dir artifacts/mutation/heldout-v1
+
+# Full semantic panel
+node aggregate-judge-panel.mjs --dir artifacts/judge/v3-panel
 ```
 
 `eval:validate` checks JSONL structure, unique IDs, split counts, and manifest
@@ -192,13 +196,13 @@ generation.
 - Structural runner: implemented; one-case smoke passed for requirements, HLD, and full architecture
 - Requirements matrix: complete (8 models × 12 cases × 2 repeats)
 - GLM architecture baseline: complete (24/24 valid, 12 cases × 2 repeats)
-- Semantic judge: complete on 24 GLM outputs; **0/24 passed the 4.0 threshold**, 21/24 had hard flags. Treat this as a diagnostic, not final truth.
-- Judge v2: explicit evaluation steps + varied example scores; tested on 5 records with Claude Haiku and GPT-5 Nano
-- Judge reliability: mean absolute disagreement 0.475/5; GPT is consistently more lenient than Claude. Absolute quality gate is not trustworthy without further validation.
-- Mutation test: complete; 5/6 defects detected by at least one judge, 4/6 by both. Chat send-flow mis-trace was reported in Claude evidence but not reflected in its score or hard flags; GPT missed it entirely. GPT also missed pattern stuffing. Overall gate fails because control flags were unstable and one security mutant caused a broad unrelated drop.
-- Mutation artifacts: `eval/artifacts/mutation/mutation-report.md` and `.json` (gitignored)
-- Human calibration: pack generated at `eval/artifacts/calibration/architecture-glm-v1/`; not used by decision because human judging is disabled
-- Full v2 judge panel on all 24 outputs: not run; mutation test does not justify it yet
-- LLD/DSA split: still pending
-- LangSmith tracing: after calibration and regression baseline
-- Validation and holdout cases: next
+- Semantic judge v3: full 24-output panel complete. Claude mean 3.182 (0/24 success, 22/24 hard-flag records); GPT mean 4.042 (13/24 success, 6/24 hard-flag records); mean absolute inter-judge difference 0.859/5. Absolute gate rejected.
+- Judge v3: consistency check added; mutation sensitivity improved to 6/6 detected by at least one judge on both the original and held-out batches, 5/6 by both.
+- Judge stability: control scores/flags remain unstable; held-out control instability touched 5 of 6 judge-case controls at worst. Do not use absolute scores as a gate.
+- Offline baseline: frozen in `eval/baseline/architecture-glm-v1.json` and `eval/BASELINE.md`.
+- Mutation artifacts: `eval/artifacts/mutation/architecture-v1-v3/` and `eval/artifacts/mutation/heldout-v1/` (gitignored)
+- Full judge panel artifacts: `eval/artifacts/judge/v3-panel/` (gitignored)
+- Human calibration: pack generated at `eval/artifacts/calibration/architecture-glm-v1/`; not used because human judging is disabled.
+- LLD/DSA split: still pending; independent component attribution is blocked.
+- Validation and holdout cases: not populated; final generalization gate cannot run.
+- LangSmith tracing: after validation/holdout and a stable judge policy.

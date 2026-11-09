@@ -19,7 +19,7 @@
     "learning"
   ],
   "rubric_version": "architecture-v1",
-  "judge_prompt_version": "architecture-judge-v1",
+  "judge_prompt_version": "architecture-judge-v3",
   "holdout": {
     "in_git": false,
     "file_sha256": null,

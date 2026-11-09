@@ -1,0 +1,110 @@
+{
+  "baseline_id": "architecture-glm-v1",
+  "created_at": "2026-11-09",
+  "dataset_version": "sda-v1",
+  "dataset_case_file_sha256": "1f14186ab2732531ea69da6bff6f9af46a3b48888864728a0ec24a4ba412a7c0",
+  "generation": {
+    "model": "z-ai/glm-5.3-flash",
+    "stage_mode": "architecture",
+    "production_prompt_sha256": "a8cd88f79254eb970aa32fbe819b2d3e2af6024e619bad95ec30096a0d6d3616",
+    "structural_artifact": "eval/artifacts/structural/2026-11-07T18-33-29-669Z-z_ai_glm_5_3_flash.jsonl",
+    "runs": 24,
+    "unique_cases": 12,
+    "repeats": 2,
+    "valid_runs": 24,
+    "pass_at_1": 12,
+    "pass_on_repeats": 12,
+    "failed_runs": 0,
+    "avg_duration_ms": 105580,
+    "p95_duration_ms": 232222,
+    "total_tokens": 683539,
+    "cost_usd": 0.246378,
+    "cost_per_valid": 0.010266,
+    "component_averages": {
+      "hld_components": 10.083,
+      "hld_connections": 14.0,
+      "hld_flows": 1.875,
+      "lld_classes": 15.542,
+      "lld_relationships": 19.083,
+      "lld_patterns": 3.25,
+      "dsa_recommendations": 4.417,
+      "dsa_algorithmic_patterns": 2.458,
+      "learning_steps": 7.167,
+      "learning_unresolved_refs": 0
+    }
+  },
+  "requirements_matrix": {
+    "models": 8,
+    "runs": 192,
+    "valid_runs": 185,
+    "failed_runs": 7,
+    "total_tokens": 347773,
+    "cost_usd": 0.096214
+  },
+  "semantic_judge": {
+    "prompt": "architecture-judge-v3",
+    "prompt_sha256": "d698fa0432d0ec5815b49614536db83bfc712fc0e715116555b198dd40523b4d",
+    "status": "uncalibrated",
+    "paired_outputs": 24,
+    "mean_absolute_inter_judge_difference": 0.859,
+    "judges": [
+      {
+        "model": "anthropic/claude-haiku-5.5",
+        "mean": 3.182,
+        "successes": 0,
+        "hard_flag_records": 22,
+        "dimension_means": {
+          "traceability": 3.083,
+          "hld_boundaries": 3.042,
+          "lld_responsibility": 2.625,
+          "dsa_correctness": 2.583,
+          "simplicity": 3.208,
+          "pedagogical_quality": 3.792,
+          "learning_quality": 3.5,
+          "interview_usefulness": 3.625
+        }
+      },
+      {
+        "model": "openai/gpt-5-nano",
+        "mean": 4.042,
+        "successes": 13,
+        "hard_flag_records": 6,
+        "dimension_means": {
+          "traceability": 4.792,
+          "hld_boundaries": 3.958,
+          "lld_responsibility": 3.833,
+          "dsa_correctness": 4.333,
+          "simplicity": 3.042,
+          "pedagogical_quality": 4.292,
+          "learning_quality": 4.292,
+          "interview_usefulness": 3.792
+        }
+      }
+    ]
+  },
+  "mutation_tests": {
+    "architecture_v1_v3": {
+      "mutants": 6,
+      "detected_by_at_least_one": 6,
+      "detected_by_both": 5,
+      "control_flag_instability_cases": 2,
+      "control_max_mean_abs_difference": 0.875,
+      "max_unrelated_dimension_drop": 0.786,
+      "overall_pass": false
+    },
+    "heldout_v1_v3": {
+      "mutants": 6,
+      "detected_by_at_least_one": 6,
+      "detected_by_both": 5,
+      "control_flag_instability_cases": 5,
+      "control_max_mean_abs_difference": 0.75,
+      "max_unrelated_dimension_drop": 1.167,
+      "overall_pass": false
+    }
+  },
+  "verdict": {
+    "absolute_release_gate": false,
+    "relative_regression_use": true,
+    "reason": "Both judges detect most injected defects, but control scores and hard flags are unstable, localization fails, and the two judges disagree by 0.859/5 on paired outputs. No human labels are available to establish validity."
+  }
+}

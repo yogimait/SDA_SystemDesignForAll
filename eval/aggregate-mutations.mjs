@@ -47,7 +47,7 @@ function flagName(flag) {
     return flag.split(":")[0].trim();
   }
   if (flag && typeof flag === "object") {
-    return String(flag.code ?? flag.type ?? JSON.stringify(flag));
+    return String(flag.flag ?? flag.code ?? flag.type ?? JSON.stringify(flag));
   }
   return String(flag);
 }
