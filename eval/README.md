@@ -99,7 +99,8 @@ The evaluation runner must import the production prompts from
 
 Do not duplicate prompts in the eval folder. A prompt change must change both
 the product and the evaluation. The judge prompt is separate and versioned in
-`datasets/sda-v1/judge-prompts/architecture-judge-v1.md`.
+`datasets/sda-v1/judge-prompts/` (`architecture-judge-v1.md` is the original,
+`architecture-judge-v2.md` adds explicit steps and varied example scores).
 
 ### Pipeline evals
 
@@ -163,6 +164,12 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r judge-requirements.txt
 .venv\Scripts\python.exe judge_architecture.py
 node aggregate-judge.mjs
+
+# Judge sensitivity (mutation test; no generation calls)
+node make-mutations.mjs
+.venv\Scripts\python.exe judge_architecture.py --input artifacts/mutation/mutation-input.jsonl --judge-prompt datasets/sda-v1/judge-prompts/architecture-judge-v2.md --judge-model anthropic/claude-haiku-5.5 --out artifacts/mutation/judge-claude-v2.jsonl
+.venv\Scripts\python.exe judge_architecture.py --input artifacts/mutation/mutation-input.jsonl --judge-prompt datasets/sda-v1/judge-prompts/architecture-judge-v2.md --judge-model openai/gpt-5-nano --out artifacts/mutation/judge-gpt-v2.jsonl
+node aggregate-mutations.mjs
 ```
 
 `eval:validate` checks JSONL structure, unique IDs, split counts, and manifest
@@ -185,11 +192,13 @@ generation.
 - Structural runner: implemented; one-case smoke passed for requirements, HLD, and full architecture
 - Requirements matrix: complete (8 models × 12 cases × 2 repeats)
 - GLM architecture baseline: complete (24/24 valid, 12 cases × 2 repeats)
-- Semantic judge: complete on 24 GLM outputs; **0/24 passed the 4.0 threshold**, 21/24 had hard flags
+- Semantic judge: complete on 24 GLM outputs; **0/24 passed the 4.0 threshold**, 21/24 had hard flags. Treat this as a diagnostic, not final truth.
 - Judge v2: explicit evaluation steps + varied example scores; tested on 5 records with Claude Haiku and GPT-5 Nano
-- Judge reliability: mean absolute disagreement 0.475/5; GPT is consistently more lenient than Claude. Absolute quality gate is therefore not trustworthy without further validation.
+- Judge reliability: mean absolute disagreement 0.475/5; GPT is consistently more lenient than Claude. Absolute quality gate is not trustworthy without further validation.
+- Mutation test: complete; 5/6 defects detected by at least one judge, 4/6 by both. Chat send-flow mis-trace was reported in Claude evidence but not reflected in its score or hard flags; GPT missed it entirely. GPT also missed pattern stuffing. Overall gate fails because control flags were unstable and one security mutant caused a broad unrelated drop.
+- Mutation artifacts: `eval/artifacts/mutation/mutation-report.md` and `.json` (gitignored)
 - Human calibration: pack generated at `eval/artifacts/calibration/architecture-glm-v1/`; not used by decision because human judging is disabled
-- Mutation testing: next; synthetic defects test judge sensitivity without human labels
+- Full v2 judge panel on all 24 outputs: not run; mutation test does not justify it yet
 - LLD/DSA split: still pending
 - LangSmith tracing: after calibration and regression baseline
 - Validation and holdout cases: next

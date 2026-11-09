@@ -50,6 +50,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--judge-model", default=os.getenv("JUDGE_MODEL", DEFAULT_JUDGE_MODEL))
     parser.add_argument("--judge-prompt", default=str(JUDGE_PROMPT))
+    parser.add_argument("--input", default=None, help="JSONL input; defaults to latest GLM architecture artifact")
+    parser.add_argument("--out", default=None, help="Output JSONL path; defaults to the judge artifact directory")
     parser.add_argument("--limit", type=int, default=0, help="0 = all records")
     parser.add_argument("--case", default=None)
     parser.add_argument("--cases", default=None, help="Comma-separated case IDs")
@@ -216,7 +218,7 @@ def main() -> None:
         raise SystemExit("OPENROUTER_API_KEY is not set")
 
     cases = load_cases()
-    artifact = latest_glm_architecture_artifact()
+    artifact = Path(args.input) if args.input else latest_glm_architecture_artifact()
     records = [
         json.loads(line)
         for line in artifact.read_text(encoding="utf-8").splitlines()
@@ -245,7 +247,8 @@ def main() -> None:
 
     JUDGE_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
-    out_path = JUDGE_DIR / f"architecture-glm-{stamp}.jsonl"
+    out_path = Path(args.out) if args.out else JUDGE_DIR / f"architecture-glm-{stamp}.jsonl"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     results = []
 
     for index, record in enumerate(records, start=1):
@@ -276,6 +279,7 @@ def main() -> None:
             metadata={
                 "case_id": record["case_id"],
                 "repeat_index": record.get("repeat_index"),
+                "mutation_id": record.get("mutation_id"),
                 "artifact": artifact.name,
             },
         )
@@ -289,6 +293,7 @@ def main() -> None:
             result = {
                 "case_id": record["case_id"],
                 "repeat_index": record.get("repeat_index"),
+                "mutation_id": record.get("mutation_id"),
                 "judge_model": args.judge_model,
                 "status": parsed.get("status", "scored"),
                 "scores": parsed.get("scores"),
@@ -305,6 +310,7 @@ def main() -> None:
             result = {
                 "case_id": record["case_id"],
                 "repeat_index": record.get("repeat_index"),
+                "mutation_id": record.get("mutation_id"),
                 "judge_model": args.judge_model,
                 "status": "judge_error",
                 "scores": None,

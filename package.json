@@ -15,6 +15,8 @@
     "eval:build": "npm run build --workspace backend-server",
     "eval:structural": "node eval/run-structural.mjs",
     "eval:aggregate": "node eval/aggregate-structural.mjs",
+    "eval:mutations": "node eval/make-mutations.mjs",
+    "eval:mutations:report": "node eval/aggregate-mutations.mjs",
     "postinstall": "npm run build --workspace @sda/contracts"
   }
 }
