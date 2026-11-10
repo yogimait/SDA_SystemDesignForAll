@@ -84,7 +84,7 @@ describe("Production deployment guards (e2e)", () => {
 
     const registered = await request(server)
       .post("/api/auth/register")
-      .send({ email: "prod-billing@example.com", password: "password123" });
+      .send({ email: "prod-billing@example.com", password: "Password123!" });
     expect(registered.status).toBe(201);
     const auth = (registered.body as Envelope<AuthResponse>).data;
 

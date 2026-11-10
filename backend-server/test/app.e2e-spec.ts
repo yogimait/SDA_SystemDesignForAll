@@ -233,7 +233,7 @@ async function register(
 ): Promise<AuthResponse> {
   const response = await request(server)
     .post("/api/auth/register")
-    .send({ email, password: "password123" });
+    .send({ email, password: "Password123!" });
   expect(response.status).toBe(201);
   return (response.body as Envelope<AuthResponse>).data;
 }

@@ -19,7 +19,7 @@ test("account key: saved status, header-free runs, remove re-gates", async ({
 
   await page.goto("/login");
   await page.getByRole("tab", { name: "Create account" }).click();
-  await fillAuthForm(page, email, "supersecret123", {
+  await fillAuthForm(page, email, "Supersecret123!", {
     confirm: true,
     mode: "register",
   });

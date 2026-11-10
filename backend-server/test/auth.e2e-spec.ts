@@ -69,7 +69,7 @@ function auth(token: string): { Authorization: string } {
 async function register(
   server: App,
   email: string,
-  password = "password123",
+  password = "Password123!",
 ): Promise<AuthResponse> {
   const response = await request(server)
     .post("/api/auth/register")
@@ -192,7 +192,7 @@ describe("Auth, ownership, account, plan, and dashboard (e2e)", () => {
 
     const duplicate = await request(server)
       .post("/api/auth/register")
-      .send({ email: "USER@example.com", password: "password123" });
+      .send({ email: "USER@example.com", password: "Password123!" });
     expect(duplicate.status).toBe(409);
     expect((duplicate.body as Envelope<null>).error?.code).toBe(
       "AUTH_EMAIL_TAKEN",
@@ -200,7 +200,7 @@ describe("Auth, ownership, account, plan, and dashboard (e2e)", () => {
 
     const loggedIn = await request(server)
       .post("/api/auth/login")
-      .send({ email: "USER@example.com", password: "password123" });
+      .send({ email: "USER@example.com", password: "Password123!" });
     expect(loggedIn.status).toBe(200);
 
     const logout = await request(server)
@@ -215,6 +215,19 @@ describe("Auth, ownership, account, plan, and dashboard (e2e)", () => {
     expect((afterLogout.body as Envelope<null>).error?.code).toBe(
       "AUTH_REQUIRED",
     );
+  });
+
+  it("rejects new passwords that miss the policy", async () => {
+    const weakPasswords = ["short", "password1", "password!", "password"];
+    for (const [index, weak] of weakPasswords.entries()) {
+      const response = await request(server)
+        .post("/api/auth/register")
+        .send({ email: `weak-${index}@example.com`, password: weak });
+      expect(response.status).toBe(400);
+      expect((response.body as Envelope<null>).error?.code).toBe(
+        "VALIDATION_ERROR",
+      );
+    }
   });
 
   it("assigns ownership, lists with cursor/status, and isolates users", async () => {

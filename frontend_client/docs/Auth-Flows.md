@@ -6,10 +6,23 @@ Standalone auth pages plus the shared session semantics behind them. Backend con
 
 | Route | Behavior |
 | --- | --- |
-| `/login` | Sign in / create account tabs (session stored via `saveSession`: access token memory-only, identity persisted). "Forgot password?" → `/forgot-password`. |
+| `/login` | Sign in / create account tabs (session stored via `saveSession`: access token memory-only, identity persisted). "Forgot password?" links to `/forgot-password`. Password fields have a show/hide control; the register tab shows the four live password rules. The back link is styled as an outline button. |
 | `/forgot-password` | `POST /api/auth/forgot-password {email}`; **always** the neutral "if that email has an account…" copy (no account enumeration), even on repeated submissions. |
-| `/reset-password?token=…` | `POST /api/auth/reset-password {token,password}` from the emailed link. Client validates length + confirmation; success clears the local session (the server revoked every session) and points at sign-in. `details.reason = "reset_invalid"` gets reset-specific copy ("This reset link is invalid or has expired") plus a **Request a new reset link** action to `/forgot-password` — never the generic credential error. |
+| `/reset-password?token=…` | `POST /api/auth/reset-password {token,password}` from the emailed link. Client validates the four password rules + confirmation, with show/hide controls; success clears the local session (the server revoked every session) and points at sign-in. `details.reason = "reset_invalid"` gets reset-specific copy ("This reset link is invalid or has expired") plus a **Request a new reset link** action to `/forgot-password` — never the generic credential error. |
 | `/verify-email?token=…` | `POST /api/auth/verify-email {token}` on load (deduped so dev StrictMode cannot consume the single-use token twice). Success refreshes the identity when signed in. `details.reason = "verification_invalid"` gets link-specific copy plus the resend (signed in) / sign-in action; a missing token explains the incomplete link. |
+
+## Password rules
+
+New passwords (register/reset) require exactly four visible rules:
+
+1. At least 8 characters.
+2. One uppercase letter.
+3. One number.
+4. One special character.
+
+`@sda/contracts` owns the rules; `lib/auth/password.ts` maps them to live
+checklist state. Login and account deletion accept existing passwords so
+accounts created before the policy can still sign in.
 
 ## Verification banner
 
@@ -29,5 +42,5 @@ Destructive/checkout controls (stub **Complete upgrade**, delete-account dialog,
 
 ## Tests
 
-- Unit: `lib/api/client.test.ts` (refresh-once/retry, sign-out on refresh failure, cookie-only new-tab refresh, stale-cookie no-bounce, CSRF header), `lib/session/auth.test.ts` (memory token, migration, pending state, boot-settled flag), `lib/account/delete-guard.test.ts`.
-- Playwright `e2e/auth-billing.spec.ts`: forgot/reset/verify flows, verification banner resend, delete account, boot refresh with an expired in-memory token, plus the billing journeys in [[Billing]].
+- Unit: `lib/auth/password.test.ts` (four rules), `lib/api/client.test.ts` (refresh-once/retry, sign-out on refresh failure, cookie-only new-tab refresh, stale-cookie no-bounce, CSRF header), `lib/session/auth.test.ts` (memory token, migration, pending state, boot-settled flag), `lib/account/delete-guard.test.ts`.
+- Playwright `e2e/auth-billing.spec.ts`: forgot/reset/verify flows, verification banner resend, delete account, boot refresh with an expired in-memory token, plus the billing journeys in [[Billing]]. `e2e/auth-billing-ux.spec.ts` covers the password reveal control and the button-styled back link.

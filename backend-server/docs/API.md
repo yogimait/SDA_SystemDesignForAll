@@ -155,8 +155,11 @@ pre-existing anonymous rows (if any) stay readable through their
 POST /api/auth/register
 Content-Type: application/json
 
-{ "email": "user@example.com", "password": "password123" }
+{ "email": "user@example.com", "password": "Password123!" }
 ```
+
+New passwords require at least 8 characters, one uppercase letter, one number,
+and one special character. Login accepts existing passwords.
 
 Returns:
 

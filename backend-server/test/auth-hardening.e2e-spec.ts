@@ -79,7 +79,7 @@ function cookieHeader(headers: Record<string, unknown>): string {
 async function register(
   server: App,
   email: string,
-  password = "password123",
+  password = "Password123!",
 ): Promise<AuthResponse> {
   const response = await request(server)
     .post("/api/auth/register")
@@ -138,7 +138,7 @@ describe("Auth hardening (e2e)", () => {
 
     const login = await request(server)
       .post("/api/auth/login")
-      .send({ email: "verify@example.com", password: "password123" });
+      .send({ email: "verify@example.com", password: "Password123!" });
     expect(login.status).toBe(200);
     const user = (login.body as Envelope<AuthResponse>).data.user;
     expect(user.emailVerifiedAt).toEqual(expect.any(String));
@@ -147,7 +147,7 @@ describe("Auth hardening (e2e)", () => {
   it("rotates the refresh cookie and revokes the family on reuse", async () => {
     const login = await request(server)
       .post("/api/auth/login")
-      .send({ email: "verify@example.com", password: "password123" });
+      .send({ email: "verify@example.com", password: "Password123!" });
     expect(login.status).toBe(200);
     const cookies = cookieHeader(login.headers);
     const csrf = cookieValue(login.headers, "sda_csrf");
@@ -188,7 +188,7 @@ describe("Auth hardening (e2e)", () => {
   it("rejects refresh without a CSRF token or from a foreign origin", async () => {
     const login = await request(server)
       .post("/api/auth/login")
-      .send({ email: "verify@example.com", password: "password123" });
+      .send({ email: "verify@example.com", password: "Password123!" });
     const cookies = cookieHeader(login.headers);
     const csrf = cookieValue(login.headers, "sda_csrf");
 
@@ -242,28 +242,28 @@ describe("Auth hardening (e2e)", () => {
 
     const reset = await request(server)
       .post("/api/auth/reset-password")
-      .send({ token, password: "newpassword123" });
+      .send({ token, password: "newPassword123!" });
     expect(reset.status).toBe(200);
 
     const reused = await request(server)
       .post("/api/auth/reset-password")
-      .send({ token, password: "another123" });
+      .send({ token, password: "Another123!" });
     expect(reused.status).toBe(401);
 
     const oldPassword = await request(server)
       .post("/api/auth/login")
-      .send({ email: "verify@example.com", password: "password123" });
+      .send({ email: "verify@example.com", password: "Password123!" });
     expect(oldPassword.status).toBe(401);
     const newPassword = await request(server)
       .post("/api/auth/login")
-      .send({ email: "verify@example.com", password: "newpassword123" });
+      .send({ email: "verify@example.com", password: "newPassword123!" });
     expect(newPassword.status).toBe(200);
   });
 
   it("logs out with only the refresh cookie and CSRF token", async () => {
     const created = await request(server)
       .post("/api/auth/register")
-      .send({ email: "cookie-logout@example.com", password: "password123" });
+      .send({ email: "cookie-logout@example.com", password: "Password123!" });
     expect(created.status).toBe(201);
     const cookies = cookieHeader(created.headers);
     const csrf = cookieValue(created.headers, "sda_csrf");
@@ -292,7 +292,7 @@ describe("Auth hardening (e2e)", () => {
   it("deletes the account after password re-entry and keeps the project key working", async () => {
     const created = await request(server)
       .post("/api/auth/register")
-      .send({ email: "delete@example.com", password: "password123" });
+      .send({ email: "delete@example.com", password: "Password123!" });
     const auth = (created.body as Envelope<AuthResponse>).data;
     const project = await request(server)
       .post("/api/projects")
@@ -306,7 +306,7 @@ describe("Auth hardening (e2e)", () => {
       .delete("/api/users/me")
       .set("Authorization", `Bearer ${auth.accessToken}`)
       .set("Cookie", cookieAuth)
-      .send({ password: "password123" });
+      .send({ password: "Password123!" });
     expect(csrfMissing.status).toBe(400);
     expect((csrfMissing.body as Envelope<null>).error).toMatchObject({
       details: { reason: "csrf_invalid" },
@@ -321,7 +321,7 @@ describe("Auth hardening (e2e)", () => {
     const deleted = await request(server)
       .delete("/api/users/me")
       .set("Authorization", `Bearer ${auth.accessToken}`)
-      .send({ password: "password123" });
+      .send({ password: "Password123!" });
     expect(deleted.status).toBe(200);
 
     const me = await request(server)
@@ -337,7 +337,7 @@ describe("Auth hardening (e2e)", () => {
 
     const login = await request(server)
       .post("/api/auth/login")
-      .send({ email: "delete@example.com", password: "password123" });
+      .send({ email: "delete@example.com", password: "Password123!" });
     expect(login.status).toBe(401);
   });
 });

@@ -15,6 +15,19 @@ Email + password accounts with scrypt hashes, short-lived Bearer sessions, a rot
 
 No raw token is ever persisted in production. The development outbox stores usable links so a developer can follow them; production stores only a `<redacted>` placeholder and the route is hidden when `NODE_ENV=production`. Provider keys are the one persisted provider secret, and only as authenticated ciphertext the server cannot read without the env key.
 
+## Password policy
+
+New passwords (register and reset) require four rules:
+
+1. At least 8 characters.
+2. One uppercase letter.
+3. One number.
+4. One special character.
+
+Login and account-deletion use the existing-password schema (non-empty, max 128)
+so accounts created before the policy change can still sign in. The rules are
+defined once in `@sda/contracts` and mirrored by the client-side checklist.
+
 ## Cookies and CSRF
 
 | Cookie | Flags | Purpose |

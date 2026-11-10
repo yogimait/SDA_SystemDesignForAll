@@ -240,7 +240,7 @@ describe("AuthService", () => {
     const { service, sessions, refreshTokens, sent } = makeService();
     const registered = await service.register({
       email: " User@Example.com ",
-      password: "password123",
+      password: "Password123!",
     });
 
     expect(registered.response.user.email).toBe("user@example.com");
@@ -256,7 +256,7 @@ describe("AuthService", () => {
 
     const loggedIn = await service.login({
       email: "USER@example.com",
-      password: "password123",
+      password: "Password123!",
     });
     expect(loggedIn.response.user.id).toBe(registered.response.user.id);
     expect(sessions.size).toBe(2);
@@ -274,13 +274,13 @@ describe("AuthService", () => {
     const { service } = makeService();
     await service.register({
       email: "taken@example.com",
-      password: "password123",
+      password: "Password123!",
     });
 
     await expect(
       service.register({
         email: "TAKEN@example.com",
-        password: "password123",
+        password: "Password123!",
       }),
     ).rejects.toMatchObject({ code: "AUTH_EMAIL_TAKEN" });
 
@@ -306,17 +306,17 @@ describe("AuthService", () => {
     await expect(
       service.login({
         email: "missing@example.com",
-        password: "password123",
+        password: "Password123!",
       }),
     ).rejects.toMatchObject({ code: "AUTH_INVALID_CREDENTIALS" });
-    expect(verifyDummy).toHaveBeenCalledWith("password123");
+    expect(verifyDummy).toHaveBeenCalledWith("Password123!");
   });
 
   it("rotates the refresh token and revokes the family on reuse", async () => {
     const { service, refreshTokens } = makeService();
     const first = await service.register({
       email: "rotate@example.com",
-      password: "password123",
+      password: "Password123!",
     });
 
     const second = await service.refresh(first.refreshToken);
@@ -350,7 +350,7 @@ describe("AuthService", () => {
     await expect(
       service.register({
         email: "email-down@example.com",
-        password: "password123",
+        password: "Password123!",
       }),
     ).resolves.toMatchObject({
       response: { user: { email: "email-down@example.com" } },
@@ -367,26 +367,26 @@ describe("AuthService", () => {
     const { service, sessions, sent } = makeService();
     const registered = await service.register({
       email: "reset@example.com",
-      password: "password123",
+      password: "Password123!",
     });
     await service.forgotPassword("reset@example.com");
     const reset = sent.find((message) => message.kind === "reset");
     expect(reset).toBeDefined();
 
-    await service.resetPassword(reset!.token, "newpassword123");
+    await service.resetPassword(reset!.token, "newPassword123!");
     expect(sessions.size).toBe(0);
     await expect(
-      service.resetPassword(reset!.token, "another123"),
+      service.resetPassword(reset!.token, "Another123!"),
     ).rejects.toMatchObject({ details: { reason: "reset_invalid" } });
     await expect(
       service.login({
         email: "reset@example.com",
-        password: "password123",
+        password: "Password123!",
       }),
     ).rejects.toMatchObject({ code: "AUTH_INVALID_CREDENTIALS" });
     const loggedIn = await service.login({
       email: "reset@example.com",
-      password: "newpassword123",
+      password: "newPassword123!",
     });
     expect(loggedIn.response.user.id).toBe(registered.response.user.id);
   });
@@ -395,7 +395,7 @@ describe("AuthService", () => {
     const { service, users, sent } = makeService();
     const registered = await service.register({
       email: "verify@example.com",
-      password: "password123",
+      password: "Password123!",
     });
     const verification = sent.find(
       (message) => message.kind === "verification",
@@ -413,14 +413,14 @@ describe("AuthService", () => {
     const { service, users } = makeService();
     const registered = await service.register({
       email: "delete@example.com",
-      password: "password123",
+      password: "Password123!",
     });
     const user = users.get(registered.response.user.id)!;
 
     await expect(
       service.deleteAccount(user, "wrong-password"),
     ).rejects.toMatchObject({ code: "AUTH_INVALID_CREDENTIALS" });
-    await service.deleteAccount(user, "password123");
+    await service.deleteAccount(user, "Password123!");
     expect(users.size).toBe(0);
   });
 });

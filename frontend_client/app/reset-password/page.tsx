@@ -11,10 +11,12 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CircleAlertIcon } from "lucide-react";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { PasswordInput } from "@/components/auth/password-input";
+import { PasswordRules } from "@/components/auth/password-rules";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { authRateLimitCopy } from "@/lib/auth/messages";
+import { passwordIsValid } from "@/lib/auth/password";
 import { clearSession } from "@/lib/session/auth";
 
 type State = "idle" | "busy" | "done";
@@ -32,7 +34,7 @@ function ResetPasswordContent() {
   const mismatch = confirm !== "" && password !== confirm;
 
   async function submit(): Promise<void> {
-    if (password.length < 8 || password !== confirm) return;
+    if (!passwordIsValid(password) || password !== confirm) return;
     setError(null);
     setState("busy");
     try {
@@ -106,26 +108,25 @@ function ResetPasswordContent() {
             <label htmlFor="new-password" className="text-foreground text-sm font-medium">
               New password
             </label>
-            <Input
+            <PasswordInput
               id="new-password"
-              type="password"
               autoComplete="new-password"
               minLength={8}
               maxLength={128}
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="At least 8 characters"
+              placeholder="Create a strong password"
               className="mt-1.5 font-mono text-xs"
             />
+            <PasswordRules value={password} />
           </div>
           <div>
             <label htmlFor="confirm-password" className="text-foreground text-sm font-medium">
               Confirm password
             </label>
-            <Input
+            <PasswordInput
               id="confirm-password"
-              type="password"
               autoComplete="new-password"
               minLength={8}
               maxLength={128}
@@ -165,7 +166,9 @@ function ResetPasswordContent() {
             type="submit"
             className="h-11 w-full sm:h-9"
             aria-describedby={mismatch ? "confirm-password-note" : undefined}
-            disabled={state === "busy" || password.length < 8 || password !== confirm}
+            disabled={
+              state === "busy" || !passwordIsValid(password) || password !== confirm
+            }
           >
             {state === "busy" ? "Saving…" : "Set new password"}
           </Button>

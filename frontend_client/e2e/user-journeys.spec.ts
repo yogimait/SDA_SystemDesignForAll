@@ -227,7 +227,7 @@ test.describe("register / login / logout / restore", () => {
   test("login throttle shows neutral copy, not the generation message", async ({ page }) => {
     interceptUserEndpoints(page, { login: ofail("QUOTA_EXCEEDED", "Too many attempts", 429) });
     await page.goto("/login");
-    await fillAuthForm(page, "probe@example.com", "supersecret1");
+    await fillAuthForm(page, "probe@example.com", "Supersecret1!");
     await page.getByRole("button", { name: "Sign in" }).click();
 
     const alert = page.getByRole("main").getByRole("alert");
@@ -245,7 +245,7 @@ test.describe("register / login / logout / restore", () => {
     await page.addInitScript(AUTH_SAVE.replace("sda:auth:user", "sda:none")); // keep storage empty pre-login
     await page.goto("/login");
     await page.getByRole("tab", { name: "Create account" }).click();
-    await fillAuthForm(page, "probe@example.com", "supersecret1", { confirm: true, mode: "register" });
+    await fillAuthForm(page, "probe@example.com", "Supersecret1!", { confirm: true, mode: "register" });
     await page.getByRole("button", { name: "Create account" }).click();
 
     await expect(page).toHaveURL(/\/library$/);
@@ -271,7 +271,7 @@ test.describe("register / login / logout / restore", () => {
     interceptUserEndpoints(page, { register: ofail("AUTH_EMAIL_TAKEN", "taken", 409) });
     await page.goto("/login");
     await page.getByRole("tab", { name: "Create account" }).click();
-    await fillAuthForm(page, "probe@example.com", "supersecret1", { confirm: true, mode: "register" });
+    await fillAuthForm(page, "probe@example.com", "Supersecret1!", { confirm: true, mode: "register" });
     await page.getByRole("button", { name: "Create account" }).click();
     await expect(
       page.getByRole("tabpanel", { name: "Create account" }).getByRole("alert"),
@@ -310,7 +310,7 @@ test.describe("register / login / logout / restore", () => {
     await page.getByRole("button", { name: "Start design session" }).click();
     await expect(page).toHaveURL(/\/login/);
 
-    await fillAuthForm(page, "probe@example.com", "supersecret1");
+    await fillAuthForm(page, "probe@example.com", "Supersecret1!");
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await expect(page).toHaveURL(/\/$/);

@@ -60,7 +60,7 @@ async function createTestApp(
 async function register(server: App, email: string): Promise<AuthResponse> {
   const response = await request(server)
     .post("/api/auth/register")
-    .send({ email, password: "password123" });
+    .send({ email, password: "Password123!" });
   expect(response.status).toBe(201);
   return (response.body as Envelope<AuthResponse>).data;
 }
@@ -155,7 +155,7 @@ describe("Billing (e2e)", () => {
   it("cancels the stub subscription and downgrades to Free", async () => {
     const login = await request(server)
       .post("/api/auth/login")
-      .send({ email: "billing-owner@example.com", password: "password123" });
+      .send({ email: "billing-owner@example.com", password: "Password123!" });
     const user = (login.body as Envelope<AuthResponse>).data;
 
     const canceled = await request(server)
@@ -178,7 +178,7 @@ describe("Billing (e2e)", () => {
   it("returns a portal URL and rejects an unsigned webhook", async () => {
     const login = await request(server)
       .post("/api/auth/login")
-      .send({ email: "billing@example.com", password: "password123" });
+      .send({ email: "billing@example.com", password: "Password123!" });
     const user = (login.body as Envelope<AuthResponse>).data;
 
     const portal = await request(server)

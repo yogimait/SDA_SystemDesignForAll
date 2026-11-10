@@ -15,7 +15,7 @@ async function journeyToWorkspace(page: Page): Promise<void> {
   const email = `wsux_${Date.now().toString(36)}@example.com`;
   await page.goto("/login");
   await page.getByRole("tab", { name: "Create account" }).click();
-  await fillAuthForm(page, email, "supersecret123", {
+  await fillAuthForm(page, email, "Supersecret123!", {
     confirm: true,
     mode: "register",
   });

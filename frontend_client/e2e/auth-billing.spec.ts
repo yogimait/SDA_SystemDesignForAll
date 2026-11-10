@@ -104,12 +104,12 @@ test.describe("password reset + verification", () => {
       return oh({})(route);
     });
     await page.goto("/reset-password?token=reset-token-0123456789");
-    await page.getByLabel("New password").fill("supersecret1");
-    await page.getByLabel("Confirm password").fill("supersecret1");
+    await page.getByLabel("New password").fill("Supersecret1!");
+    await page.getByLabel("Confirm password").fill("Supersecret1!");
     await page.getByRole("button", { name: "Set new password" }).click();
 
     await expect(page.getByText("Password updated.")).toBeVisible();
-    expect(bodies).toEqual([{ token: "reset-token-0123456789", password: "supersecret1" }]);
+    expect(bodies).toEqual([{ token: "reset-token-0123456789", password: "Supersecret1!" }]);
   });
 
   test("reset-password maps an invalid token to recovery copy", async ({ page }) => {
@@ -126,8 +126,8 @@ test.describe("password reset + verification", () => {
       }),
     );
     await page.goto("/reset-password?token=reset-token-0123456789");
-    await page.getByLabel("New password").fill("supersecret1");
-    await page.getByLabel("Confirm password").fill("supersecret1");
+    await page.getByLabel("New password").fill("Supersecret1!");
+    await page.getByLabel("Confirm password").fill("Supersecret1!");
     await page.getByRole("button", { name: "Set new password" }).click();
     const alert = page.getByRole("main").getByRole("alert");
     await expect(alert).toContainText("This reset link is invalid or has expired.");
@@ -216,12 +216,12 @@ test.describe("account deletion", () => {
     const confirm = dialog.getByRole("button", { name: "Delete account" });
     await expect(confirm).toBeDisabled();
 
-    await page.getByLabel("Password").fill("supersecret1");
+    await page.getByLabel("Password", { exact: true }).fill("Supersecret1!");
     await expect(confirm).toBeEnabled();
     await confirm.click();
 
     await expect(page).toHaveURL(/\/login$/);
-    expect(bodies).toEqual([{ password: "supersecret1" }]);
+    expect(bodies).toEqual([{ password: "Supersecret1!" }]);
     expect(await page.evaluate(() => window.sessionStorage.getItem("sda:auth:user"))).toBeNull();
   });
 });
@@ -440,7 +440,7 @@ test.describe("auth redirect hardening", () => {
     }));
 
     await page.goto("/login?next=%2F%2Fevil.example");
-    await fillAuthForm(page, "next@example.com", "supersecret1");
+    await fillAuthForm(page, "next@example.com", "Supersecret1!");
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await expect(page).toHaveURL(/\/library$/);

@@ -41,6 +41,22 @@ test.describe("pricing", () => {
 });
 
 test.describe("auth pages", () => {
+  test("login password can be revealed and the back link is button-styled", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/login");
+    const password = page.getByLabel("Password", { exact: true });
+    await expect(password).toHaveAttribute("type", "password");
+    await page.getByRole("button", { name: "Show password" }).click();
+    await expect(password).toHaveAttribute("type", "text");
+    await page.getByRole("button", { name: "Hide password" }).click();
+    await expect(password).toHaveAttribute("type", "password");
+    await expect(
+      page.getByRole("link", { name: "Back to the landing page" }),
+    ).toHaveClass(/inline-flex/);
+  });
+
   test("forgot-password: validation + 44px submit", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/forgot-password");
@@ -72,13 +88,15 @@ test.describe("auth pages", () => {
   test("reset-password: mismatch message is wired to the field", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/reset-password?token=a-token-of-sixteen-chars-long!!!");
-    await page.getByLabel("New password").fill("supersecret123");
+    await page.getByLabel("New password").fill("Supersecret123!");
     await page.getByLabel("Confirm password").fill("different-123");
     const confirm = page.getByLabel("Confirm password");
     await expect(confirm).toHaveAttribute("aria-invalid", "true");
-    await expect(
-      confirm.locator("xpath=following-sibling::p[@id='confirm-password-note']"),
-    ).toContainText("The passwords do not match.");
+    await expect(page.getByText("The passwords do not match.")).toBeVisible();
+    await expect(confirm).toHaveAttribute(
+      "aria-describedby",
+      "confirm-password-note",
+    );
     await expect(page.getByRole("button", { name: "Set new password" })).toBeDisabled();
   });
 

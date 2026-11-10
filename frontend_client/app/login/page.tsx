@@ -14,11 +14,14 @@ import { LightbulbIcon } from "lucide-react";
 import { useHydrated } from "@/hooks/use-session";
 import { peekPendingIdea } from "@/lib/session/keys";
 import { CircleAlertIcon, LogInIcon, UserPlusIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PasswordInput } from "@/components/auth/password-input";
+import { PasswordRules } from "@/components/auth/password-rules";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { authRateLimitCopy } from "@/lib/auth/messages";
+import { passwordIsValid } from "@/lib/auth/password";
 import { safeNextPath } from "@/lib/auth/safe-next";
 import { saveSession } from "@/lib/session/auth";
 import {
@@ -39,9 +42,23 @@ function AuthForms() {
 
   async function submit(mode: "login" | "register"): Promise<void> {
     setError(null);
-    if (email.trim() === "" || password.length < 8) {
+    if (email.trim() === "") {
       setError({
-        user: "Enter your email and a password of at least 8 characters.",
+        user: "Enter your email address.",
+        detail: "client-side check",
+      });
+      return;
+    }
+    if (password === "") {
+      setError({
+        user: "Enter your password.",
+        detail: "client-side check",
+      });
+      return;
+    }
+    if (mode === "register" && !passwordIsValid(password)) {
+      setError({
+        user: "Choose a password that meets all four requirements.",
         detail: "client-side check",
       });
       return;
@@ -122,32 +139,37 @@ function AuthForms() {
                     </Link>
                   ) : null}
                 </div>
-                <Input
+                <PasswordInput
                   id={`password-${mode}`}
-                  type="password"
                   autoComplete={mode === "login" ? "current-password" : "new-password"}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder={mode === "register" ? "At least 8 characters" : "Your password"}
+                  placeholder={
+                    mode === "register"
+                      ? "Create a strong password"
+                      : "Your password"
+                  }
                   className="mt-1.5 font-mono text-xs"
                   required
-                  minLength={8}
+                  minLength={mode === "register" ? 8 : undefined}
+                  maxLength={128}
                 />
+                {mode === "register" ? <PasswordRules value={password} /> : null}
               </div>
               {mode === "register" ? (
                 <div>
                   <label htmlFor="password-confirm" className="text-foreground text-sm font-medium">
                     Confirm password
                   </label>
-                  <Input
+                  <PasswordInput
                     id="password-confirm"
-                    type="password"
                     autoComplete="new-password"
                     value={passwordConfirm}
                     onChange={(event) => setPasswordConfirm(event.target.value)}
                     className="mt-1.5 font-mono text-xs"
                     required
                     minLength={8}
+                    maxLength={128}
                   />
                 </div>
               ) : null}
@@ -213,7 +235,7 @@ function LoginContent() {
       </p>
       <Link
         href="/"
-        className="text-primary hover:underline mt-4 inline-block text-sm underline-offset-4"
+        className={`${buttonVariants({ variant: "outline" })} mt-4 min-h-11 sm:min-h-9`}
       >
         Back to the landing page
       </Link>

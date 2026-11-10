@@ -9,8 +9,8 @@
 
 import { useState } from "react";
 import { CircleCheckIcon, CircleAlertIcon, TrashIcon } from "lucide-react";
+import { PasswordInput } from "@/components/auth/password-input";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogClose,
@@ -160,9 +160,8 @@ export function AccountCard() {
             <label htmlFor="delete-password" className="text-foreground text-sm font-medium">
               Password
             </label>
-            <Input
+            <PasswordInput
               id="delete-password"
-              type="password"
               autoComplete="current-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}

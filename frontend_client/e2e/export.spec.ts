@@ -333,7 +333,7 @@ test("?next= round-trip: signing in returns to the requested page", async ({ pag
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/\/login\?next=/);
 
-  await fillAuthForm(page, "export@example.com", "supersecret1");
+  await fillAuthForm(page, "export@example.com", "Supersecret1!");
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);

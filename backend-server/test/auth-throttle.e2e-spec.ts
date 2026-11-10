@@ -47,7 +47,7 @@ describe("Auth throttle (e2e)", () => {  let app: INestApplication<App>;
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const response = await request(server)
         .post("/api/auth/login")
-        .send({ email: "nobody@example.com", password: "password123" });
+        .send({ email: "nobody@example.com", password: "Password123!" });
       if (response.status === 429) {
         blocked = response;
         break;
@@ -64,7 +64,7 @@ describe("Auth throttle (e2e)", () => {  let app: INestApplication<App>;
   it("throttles the account-deletion password step-up", async () => {
     const registered = await request(server)
       .post("/api/auth/register")
-      .send({ email: `step-up-${Date.now()}@example.com`, password: "password123" });
+      .send({ email: `step-up-${Date.now()}@example.com`, password: "Password123!" });
     expect(registered.status).toBe(201);
     const token = (registered.body as Envelope<{ accessToken: string }>).data
       .accessToken;

@@ -16,7 +16,7 @@ async function registerViaUI(page: Page): Promise<void> {
   await page.addInitScript(PROVIDER_SETUP_SEED);
   await page.goto("/login");
   await page.getByRole("tab", { name: "Create account" }).click();
-  await fillAuthForm(page, email, "supersecret123", { confirm: true, mode: "register" });
+  await fillAuthForm(page, email, "Supersecret123!", { confirm: true, mode: "register" });
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL(/\/library$/);
 }

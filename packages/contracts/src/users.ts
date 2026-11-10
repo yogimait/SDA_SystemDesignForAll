@@ -7,8 +7,35 @@ export type UserId = z.infer<typeof UserIdSchema>;
 export const EmailSchema = z.string().trim().toLowerCase().email().max(254);
 export type Email = z.infer<typeof EmailSchema>;
 
-export const PasswordSchema = z.string().min(8).max(128);
+export const PASSWORD_PATTERNS = {
+  uppercase: /[A-Z]/,
+  number: /[0-9]/,
+  special: /[^A-Za-z0-9\s]/,
+} as const;
+
+export const PASSWORD_RULES = [
+  { id: "length", label: "At least 8 characters" },
+  { id: "uppercase", label: "One uppercase letter" },
+  { id: "number", label: "One number" },
+  { id: "special", label: "One special character" },
+] as const;
+
+/** New passwords (register/reset) must satisfy the four visible rules. */
+export const PasswordSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters.")
+  .max(128, "Password must be at most 128 characters.")
+  .regex(PASSWORD_PATTERNS.uppercase, "Password must include an uppercase letter.")
+  .regex(PASSWORD_PATTERNS.number, "Password must include a number.")
+  .regex(
+    PASSWORD_PATTERNS.special,
+    "Password must include a special character.",
+  );
 export type Password = z.infer<typeof PasswordSchema>;
+
+/** Existing passwords stay login-compatible after the policy change. */
+export const ExistingPasswordSchema = z.string().min(1).max(128);
+export type ExistingPassword = z.infer<typeof ExistingPasswordSchema>;
 
 export const PlanTierSchema = z.enum(["free", "pro"]);
 export type PlanTier = z.infer<typeof PlanTierSchema>;
@@ -32,7 +59,7 @@ export type RegisterUserRequest = z.infer<typeof RegisterUserRequestSchema>;
 
 export const LoginUserRequestSchema = z.object({
   email: EmailSchema,
-  password: PasswordSchema,
+  password: ExistingPasswordSchema,
 });
 export type LoginUserRequest = z.infer<typeof LoginUserRequestSchema>;
 
@@ -63,7 +90,7 @@ export const ResetPasswordRequestSchema = z.object({
 export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequestSchema>;
 
 export const DeleteAccountRequestSchema = z.object({
-  password: PasswordSchema,
+  password: ExistingPasswordSchema,
 });
 export type DeleteAccountRequest = z.infer<typeof DeleteAccountRequestSchema>;
 
