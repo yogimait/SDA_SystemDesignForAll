@@ -133,6 +133,11 @@ export const EnvSchema = z
     REFRESH_TOKEN_TTL: DurationSchema("30d"),
     REQUIRE_EMAIL_VERIFICATION: BooleanFlagSchema,
     APP_BASE_URL: z.string().trim().url().default("http://localhost:3000"),
+    // Real delivery is required outside the local outbox. Resend uses a plain
+    // HTTP API, so it does not add an SDK dependency.
+    EMAIL_PROVIDER: z.enum(["outbox", "resend"]).default("outbox"),
+    RESEND_API_KEY: OPTIONAL_SECRET,
+    EMAIL_FROM: z.string().trim().min(3).optional(),
     CSRF_SECRET: OPTIONAL_SECRET,
     // Account-scoped BYOK vault. Unset = saving keys is unavailable (503);
     // reading stored metadata still works.
@@ -163,6 +168,22 @@ export const EnvSchema = z
         path: ["CREDENTIALS_ENCRYPTION_KEY"],
         message: "CREDENTIALS_ENCRYPTION_KEY is required in production.",
       });
+    }
+    if (value.EMAIL_PROVIDER === "resend") {
+      if (!value.RESEND_API_KEY) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["RESEND_API_KEY"],
+          message: "RESEND_API_KEY is required when EMAIL_PROVIDER=resend.",
+        });
+      }
+      if (!value.EMAIL_FROM) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["EMAIL_FROM"],
+          message: "EMAIL_FROM is required when EMAIL_PROVIDER=resend.",
+        });
+      }
     }
   });
 

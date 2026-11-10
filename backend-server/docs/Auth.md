@@ -78,7 +78,14 @@ If the conditional rotation loses a race (`revokedAt` already set), the new row 
 
 ## Email delivery
 
-`EmailService` is the delivery boundary. The only implementation, `OutboxEmailService`, writes `dev_outbox` rows (kind, recipient, link) and logs metadata only. Outside production the stored link contains the raw token so a developer can follow it; in production the link is stored with `token=<redacted>` and a warning is logged, because no SMTP transport exists yet. Wire a real provider behind `EMAIL_SERVICE` before public launch.
+`EmailService` is the delivery boundary. `EMAIL_PROVIDER` selects the implementation:
+
+| Provider | Behavior |
+| --- | --- |
+| `outbox` (default) | Writes `dev_outbox` rows (kind, recipient, link) and logs metadata only. Outside production the stored link contains the raw token so a developer can follow it; in production the link is stored with `token=<redacted>`. |
+| `resend` | Sends verification and reset mail through the Resend HTTP API using `RESEND_API_KEY` and `EMAIL_FROM`. No SDK dependency. Provider failures map to `PROVIDER_UNAVAILABLE`; registration and forgot-password still return normally so account existence is not leaked. |
+
+Production should set `EMAIL_PROVIDER=resend`. The outbox is a local-development fallback, not a delivery transport.
 
 Links use `APP_BASE_URL`:
 `<APP_BASE_URL>/verify-email?token=…` and `<APP_BASE_URL>/reset-password?token=…`.

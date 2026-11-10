@@ -32,6 +32,7 @@ describe("loadConfig", () => {
       REFRESH_TOKEN_TTL: 30 * 24 * 60 * 60 * 1000,
       REQUIRE_EMAIL_VERIFICATION: false,
       APP_BASE_URL: "http://localhost:3000",
+      EMAIL_PROVIDER: "outbox",
       AUTH_THROTTLE_LIMIT: 5,
       AUTH_THROTTLE_TTL_MS: 60_000,
       TRUST_PROXY: false,
@@ -142,6 +143,28 @@ describe("loadConfig", () => {
         CREDENTIALS_ENCRYPTION_KEY: "not base64!",
       } as NodeJS.ProcessEnv),
     ).toThrow(/CREDENTIALS_ENCRYPTION_KEY/);
+  });
+
+  it("requires Resend credentials when the Resend provider is selected", () => {
+    expect(() =>
+      loadConfig({ EMAIL_PROVIDER: "resend" } as NodeJS.ProcessEnv),
+    ).toThrow(/RESEND_API_KEY/);
+    expect(() =>
+      loadConfig({
+        EMAIL_PROVIDER: "resend",
+        RESEND_API_KEY: "re_test",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/EMAIL_FROM/);
+    expect(
+      loadConfig({
+        EMAIL_PROVIDER: "resend",
+        RESEND_API_KEY: "re_test",
+        EMAIL_FROM: "SDA <no-reply@example.com>",
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      EMAIL_PROVIDER: "resend",
+      EMAIL_FROM: "SDA <no-reply@example.com>",
+    });
   });
 
   it("requires the credentials encryption key in production", () => {

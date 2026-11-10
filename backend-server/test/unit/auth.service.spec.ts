@@ -15,7 +15,12 @@ const CONFIG = {
   REFRESH_TOKEN_TTL: 30 * 24 * 60 * 60 * 1000,
 } as AppConfig;
 
-function makeService() {
+function makeService(
+  emailOverride?: {
+    sendVerification(input: { token: string }): Promise<void>;
+    sendPasswordReset(input: { token: string }): Promise<void>;
+  },
+) {
   const users = new Map<string, UserRow>();
   const sessions = new Map<string, SessionRow>();
   const refreshTokens = new Map<string, RefreshTokenRow>();
@@ -210,7 +215,7 @@ function makeService() {
     },
   };
 
-  const email = {
+  const email = emailOverride ?? {
     async sendVerification(input: { token: string }) {
       sent.push({ kind: "verification", token: input.token });
     },
@@ -329,6 +334,33 @@ describe("AuthService", () => {
     await expect(service.refresh(second.refreshToken)).rejects.toMatchObject({
       code: "AUTH_INVALID_CREDENTIALS",
     });
+  });
+
+  it("keeps registration and forgot-password non-enumerating when email delivery fails", async () => {
+    const failing = {
+      async sendVerification(): Promise<void> {
+        throw new Error("email provider down");
+      },
+      async sendPasswordReset(): Promise<void> {
+        throw new Error("email provider down");
+      },
+    };
+    const { service } = makeService(failing);
+
+    await expect(
+      service.register({
+        email: "email-down@example.com",
+        password: "password123",
+      }),
+    ).resolves.toMatchObject({
+      response: { user: { email: "email-down@example.com" } },
+    });
+    await expect(
+      service.forgotPassword("email-down@example.com"),
+    ).resolves.toBeUndefined();
+    await expect(
+      service.forgotPassword("missing@example.com"),
+    ).resolves.toBeUndefined();
   });
 
   it("uses password reset tokens once and revokes existing sessions", async () => {

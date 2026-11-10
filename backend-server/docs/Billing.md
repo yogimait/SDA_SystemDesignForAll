@@ -25,6 +25,21 @@ interface BillingProvider {
 
 The Stripe adapter uses form-encoded REST calls; no SDK dependency. `Stripe-Signature` is verified as HMAC-SHA256 over `<timestamp>.<raw body>` with a 5-minute tolerance; the raw body is captured by the shared JSON parser in `bootstrap.ts`.
 
+Live Stripe setup:
+
+```text
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_PRO=price_...
+```
+
+1. Create the recurring Pro price in Stripe.
+2. Add the webhook endpoint `POST https://api.<domain>/api/billing/webhook` with `checkout.session.completed`, `customer.subscription.updated`, and `customer.subscription.deleted`.
+3. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
+4. Set `APP_BASE_URL` to the public frontend origin.
+
+Checkout returns to `/billing/success`; cancellation returns to `/billing/cancel`; the billing portal returns to `/settings`. These routes exist in the frontend.
+
 ## State
 
 `billing_subscriptions` holds one row per user: plan, status, provider, external customer/subscription ids, period end, and `cancel_at_period_end`. `users.plan_tier` is the enforcement source used by `PlanService`.
@@ -82,7 +97,7 @@ Errors reuse `PROVIDER_UNAVAILABLE` (upstream billing failure), `VALIDATION_ERRO
 ## Known limits
 
 - The stub keeps checkout ids in process memory: a restart loses pending checkouts. It is disabled in production because there is no completion route there.
-- The Stripe path is implemented but not exercised against a live account in tests; only the webhook ledger, idempotency, and plan transitions are automated.
-- No proration, invoicing, tax, or dunning logic. `priceMonthlyUsd` is display-only.
+- The Stripe path is implemented but not exercised against a live account in tests; only checkout URLs, portal URL, webhook signatures, the webhook ledger, idempotency, and plan transitions are automated. A manual live-mode checkout + webhook smoke is still required.
+- No proration, invoicing, tax, or dunning logic. `priceMonthlyUsd` is display-only; the charged amount is the Stripe Price.
 
 Related: [[Home]] · [[API]] · [[Data-Model]] · [[Auth]] · [[Testing]]

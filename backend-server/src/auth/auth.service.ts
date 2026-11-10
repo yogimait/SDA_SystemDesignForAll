@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { Logger } from "@nestjs/common";
 import type {
   AuthResponse,
   LoginUserRequest,
@@ -47,6 +48,8 @@ export interface IssuedSession {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
@@ -78,7 +81,13 @@ export class AuthService {
       }
       throw error;
     }
-    await this.sendVerification(user);
+    try {
+      await this.sendVerification(user);
+    } catch (error) {
+      // The account exists; a provider outage must not turn registration into a
+      // failure. The user can request another verification email.
+      this.logEmailFailure("verification", user.id, error);
+    }
     return this.issueSession(user);
   }
 
@@ -183,11 +192,16 @@ export class AuthService {
       tokenHash: hashAccessToken(token),
       expiresAt: new Date(Date.now() + RESET_TTL_MS),
     });
-    await this.email.sendPasswordReset({
-      userId: user.id,
-      email: user.email,
-      token,
-    });
+    try {
+      await this.email.sendPasswordReset({
+        userId: user.id,
+        email: user.email,
+        token,
+      });
+    } catch (error) {
+      // Keep the endpoint indistinguishable for existing and unknown emails.
+      this.logEmailFailure("password reset", user.id, error);
+    }
   }
 
   /** Single use: the token is consumed before the password changes. */
@@ -213,6 +227,15 @@ export class AuthService {
       throw new AppError("AUTH_INVALID_CREDENTIALS");
     }
     await this.users.delete(user.id);
+  }
+
+  private logEmailFailure(
+    kind: string,
+    userId: string,
+    error: unknown,
+  ): void {
+    const message = error instanceof Error ? error.message : "unknown error";
+    this.logger.warn(`Could not send ${kind} email for user ${userId}: ${message}`);
   }
 
   private async sendVerification(user: UserRow): Promise<void> {

@@ -41,8 +41,8 @@ export class StripeBillingProvider implements BillingProvider {
     const base = this.config.APP_BASE_URL.replace(/\/$/, "");
     const body = new URLSearchParams({
       mode: "subscription",
-      success_url: `${base}/billing?status=success`,
-      cancel_url: `${base}/billing?status=cancelled`,
+      success_url: `${base}/billing/success`,
+      cancel_url: `${base}/billing/cancel`,
       client_reference_id: input.user.id,
       customer_email: input.user.email,
       "line_items[0][price]": price,
@@ -73,7 +73,7 @@ export class StripeBillingProvider implements BillingProvider {
       "/billing_portal/sessions",
       new URLSearchParams({
         customer: subscription.customerId,
-        return_url: `${base}/account/billing`,
+        return_url: `${base}/settings`,
       }),
     );
     if (typeof portal.url !== "string") {

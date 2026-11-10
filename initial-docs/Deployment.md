@@ -65,6 +65,12 @@ APP_BASE_URL=https://app.example.com
 COOKIE_DOMAIN=.example.com
 CREDENTIALS_ENCRYPTION_KEY=<32-byte base64>
 CSRF_SECRET=<random secret>
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=re_...
+EMAIL_FROM=SDA <no-reply@nerddog.me>
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_PRO=price_...
 ```
 
 `COOKIE_DOMAIN` must be the parent domain shared by the frontend and API
@@ -91,6 +97,13 @@ Then:
 - `OPENROUTER_API_KEY` / `GROQ_API_KEY` are not needed in production. Users
   either save an encrypted account key or send `x-provider-api-key`. The env
   fallback is disabled when `NODE_ENV=production`.
+- Set `EMAIL_PROVIDER=resend` and verify `EMAIL_FROM` on the Resend domain.
+  Once delivery works, set `REQUIRE_EMAIL_VERIFICATION=1`.
+- For Stripe, create the recurring Pro price and a webhook endpoint at
+  `https://api.example.com/api/billing/webhook` for
+  `checkout.session.completed`, `customer.subscription.updated`, and
+  `customer.subscription.deleted`. Put the signing secret in
+  `STRIPE_WEBHOOK_SECRET`.
 
 ## 3. Vercel frontend
 
@@ -139,10 +152,12 @@ Wait for TLS certificates to become active before testing auth.
 
 ## 6. Beta limitations to keep visible
 
-- Password reset and verification emails are still dev-outbox only. Keep
-  `REQUIRE_EMAIL_VERIFICATION=0`; do not promise password reset.
-- Stripe is not configured. The stub completion route is hidden in production;
-  do not advertise paid plans.
+- Email delivery and Stripe are implemented; live-mode smoke is still required.
+  Until Resend is verified, keep `REQUIRE_EMAIL_VERIFICATION=0` and do not promise
+  password reset. Until Stripe checkout + webhook are verified, do not advertise
+  paid plans.
+- Stripe tests cover signing, checkout URLs, portal return, webhook ledger, and
+  plan transitions; they do not create a live charge.
 - Supabase Free can pause; Render Free can sleep.
 - Groq free-tier keys cannot fit the full combined LLD/DSA generation.
 - Losing `CREDENTIALS_ENCRYPTION_KEY` makes every stored provider credential

@@ -53,6 +53,18 @@ services:
         value: "1"
       - key: REQUIRE_EMAIL_VERIFICATION
         value: "0"
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
       - key: THROTTLE_LIMIT
         value: "60"
       - key: AUTH_THROTTLE_LIMIT
