@@ -52,6 +52,19 @@ export function hldMustHaveIssues(
   );
 }
 
+export function lldMustHaveIssues(
+  hld: HldModel,
+  lld: LldModel,
+  spec: RequirementsSpec,
+): ValidationIssue[] {
+  return mustHaveCoverageIssues(
+    missingMustHaveRequirements(
+      [hld.components, hld.flows, lld.classes, lld.patterns],
+      spec,
+    ),
+  );
+}
+
 export function mergedMustHaveIssues(
   hld: HldModel,
   section: { lld: LldModel; dsa: DsaModel },

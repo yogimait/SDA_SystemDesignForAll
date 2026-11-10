@@ -3,8 +3,10 @@ import type {
   ConfirmedRequirements,
   DsaModel,
   HldModel,
+  LearningStep,
   LldDsaOutput,
   LldModel,
+  LldStageOutput,
   RegenerateScope,
   TokenUsage,
   ValidationIssue,
@@ -15,9 +17,10 @@ import type {
 import {
   ArchitectureModelSchema,
   DsaModelSchema,
+  DsaStageOutputSchema,
   HldModelSchema,
-  LldDsaOutputSchema,
-  LldModelSchema,
+  LearningOutputSchema,
+  LldStageOutputSchema,
 } from "@sda/contracts";
 import { AppError } from "../common/errors/app-error.js";
 import {
@@ -34,12 +37,16 @@ import { zodToJsonSchema } from "../providers/json-schema.js";
 import {
   buildRepairMessage,
   dsaRegenerateUserPrompt,
+  dsaSystemPrompt,
+  dsaUserPrompt,
   hldRegenerateUserPrompt,
   hldSystemPrompt,
   hldUserPrompt,
-  lldDsaSystemPrompt,
-  lldDsaUserPrompt,
+  learningSystemPrompt,
+  learningUserPrompt,
   lldRegenerateUserPrompt,
+  lldSystemPrompt,
+  lldUserPrompt,
 } from "../providers/prompts/index.js";
 import {
   compactHld,
@@ -51,11 +58,14 @@ import {
   pruneLearningSteps,
   toValidationReport,
   validateArchitectureModel,
+  validateDsaSection,
   validateHldSection,
-  validateLldDsaSection,
+  validateLearningSection,
+  validateLldSection,
 } from "../architecture/validator.js";
 import {
   hldMustHaveIssues,
+  lldMustHaveIssues,
   mergedMustHaveIssues,
 } from "../architecture/must-have-coverage.js";
 import { addUsage } from "./requirements.generator.js";
@@ -68,7 +78,9 @@ const LLD_DSA_TIMEOUT_MS = 900_000;
 // GLM-5.3 Flash truncated the HLD at 32k (finish_reason=length) on small ideas,
 // so the HLD budget now matches the LLD/DSA budget.
 const HLD_MAX_TOKENS = 64_000;
-const LLD_DSA_MAX_TOKENS = 64_000;
+const LLD_MAX_TOKENS = 64_000;
+const DSA_MAX_TOKENS = 64_000;
+const LEARNING_MAX_TOKENS = 64_000;
 
 /** Truncation retry: same budget, smaller expected output. */
 const HLD_TRUNCATION_RETRY = [
@@ -78,12 +90,33 @@ const HLD_TRUNCATION_RETRY = [
 ].join(" ");
 
 const HLD_SCHEMA = zodToJsonSchema(HldModelSchema);
-const LLD_DSA_SCHEMA = zodToJsonSchema(LldDsaOutputSchema);
-const LLD_SCHEMA = zodToJsonSchema(LldModelSchema);
+const LLD_STAGE_SCHEMA = zodToJsonSchema(LldStageOutputSchema);
+const LLD_SCHEMA = zodToJsonSchema(LldStageOutputSchema);
 const DSA_SCHEMA = zodToJsonSchema(DsaModelSchema);
+const DSA_STAGE_SCHEMA = zodToJsonSchema(DsaStageOutputSchema);
+const LEARNING_SCHEMA = zodToJsonSchema(LearningOutputSchema);
 
 export interface HldGeneration {
   hld: HldModel;
+  usage: TokenUsage;
+  attempts: number;
+}
+
+export interface LldGeneration {
+  meta: LldStageOutput["meta"];
+  lld: LldModel;
+  usage: TokenUsage;
+  attempts: number;
+}
+
+export interface DsaGeneration {
+  dsa: DsaModel;
+  usage: TokenUsage;
+  attempts: number;
+}
+
+export interface LearningGeneration {
+  learningSteps: LearningStep[];
   usage: TokenUsage;
   attempts: number;
 }
@@ -209,19 +242,19 @@ export class ArchitectureGenerator {
     );
   }
 
-  async generateLldDsa(
+  async generateLld(
     provider: ModelProvider,
     model: string,
     idea: string,
     requirements: ConfirmedRequirements,
     hld: HldModel,
     onAttempt?: GenerationAttemptListener,
-  ): Promise<LldDsaGeneration> {
-    const system = lldDsaSystemPrompt();
+  ): Promise<LldGeneration> {
+    const system = lldSystemPrompt();
     const messages: ChatMessage[] = [
       {
         role: "user",
-        content: lldDsaUserPrompt(
+        content: lldUserPrompt(
           idea,
           JSON.stringify(compactRequirements(requirements.spec)),
           JSON.stringify(compactHld(hld)),
@@ -230,7 +263,7 @@ export class ArchitectureGenerator {
     ];
     const usage = emptyUsage();
     let issues: ValidationIssue[] = [];
-    const stageName = "lld_dsa_model";
+    const stageName = "lld_model";
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       onAttempt?.(attempt);
@@ -240,40 +273,40 @@ export class ArchitectureGenerator {
           system,
           messages,
           schemaName: stageName,
-          jsonSchema: LLD_DSA_SCHEMA,
-          maxOutputTokens: LLD_DSA_MAX_TOKENS,
+          jsonSchema: LLD_STAGE_SCHEMA,
+          maxOutputTokens: LLD_MAX_TOKENS,
           timeoutMs: LLD_DSA_TIMEOUT_MS,
         });
         addUsage(usage, result.usage);
-        const parsed = LldDsaOutputSchema.safeParse(
-          sanitizeLearningRefs(
+        const parsed = LldStageOutputSchema.safeParse(
+          normalizeLldRelationships(
             normalizeRelationshipMultiplicities(
               sanitizeRequirementRefs(result.data, requirements),
             ),
-            hld,
           ),
         );
         if (!parsed.success) {
           issues = schemaIssues(parsed.error.issues);
         } else {
-          const validation = validateLldDsaSection(
-            parsed.data,
-            hld,
+          const validation = validateLldSection(
+            parsed.data.lld,
             requirements,
           );
-          if (validation.errors.length === 0) {
-            const coverage = mergedMustHaveIssues(
-              hld,
-              parsed.data,
-              requirements.spec,
-            );
-            if (coverage.length === 0) {
-              return { section: parsed.data, usage, attempts: attempt };
-            }
-            issues = coverage;
-          } else {
-            issues = validation.errors;
+          const coverage = lldMustHaveIssues(
+            hld,
+            parsed.data.lld,
+            requirements.spec,
+          );
+          if (validation.errors.length === 0 && coverage.length === 0) {
+            return {
+              meta: parsed.data.meta,
+              lld: parsed.data.lld,
+              usage,
+              attempts: attempt,
+            };
           }
+          issues =
+            validation.errors.length > 0 ? validation.errors : coverage;
         }
 
         if (attempt < MAX_ATTEMPTS) {
@@ -304,14 +337,286 @@ export class ArchitectureGenerator {
     throw new AppError(
       "GENERATION_REPAIR_FAILED",
       coverageOnly(issues)
-        ? "The LLD/DSA still ignores must-have requirements after two repair attempts."
-        : "The LLD/DSA output stayed invalid after two repair attempts.",
+        ? "The LLD still ignores must-have requirements after two repair attempts."
+        : "The LLD stayed invalid after two repair attempts.",
       {
-        stage: "lld_dsa_model",
+        stage: "lld_model",
         attempts: MAX_ATTEMPTS,
         issues: issues.slice(0, 12),
       },
     );
+  }
+
+  async generateDsa(
+    provider: ModelProvider,
+    model: string,
+    idea: string,
+    requirements: ConfirmedRequirements,
+    hld: HldModel,
+    lld: LldModel,
+    onAttempt?: GenerationAttemptListener,
+  ): Promise<DsaGeneration> {
+    const system = dsaSystemPrompt();
+    const messages: ChatMessage[] = [
+      {
+        role: "user",
+        content: dsaUserPrompt(
+          idea,
+          JSON.stringify(compactRequirements(requirements.spec)),
+          JSON.stringify(compactHld(hld)),
+          JSON.stringify(compactLld(lld)),
+        ),
+      },
+    ];
+    const usage = emptyUsage();
+    let issues: ValidationIssue[] = [];
+    const stageName = "dsa_model";
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      onAttempt?.(attempt);
+      try {
+        const result = await provider.generateStructured({
+          model,
+          system,
+          messages,
+          schemaName: stageName,
+          jsonSchema: DSA_STAGE_SCHEMA,
+          maxOutputTokens: DSA_MAX_TOKENS,
+          timeoutMs: LLD_DSA_TIMEOUT_MS,
+        });
+        addUsage(usage, result.usage);
+        const parsed = DsaStageOutputSchema.safeParse(
+          sanitizeRequirementRefs(result.data, requirements),
+        );
+        if (!parsed.success) {
+          issues = schemaIssues(parsed.error.issues);
+        } else {
+          const validation = validateDsaSection(
+            parsed.data,
+            requirements,
+          );
+          if (validation.errors.length === 0) {
+            return {
+              dsa: parsed.data,
+              usage,
+              attempts: attempt,
+            };
+          }
+          issues = validation.errors;
+        }
+
+        if (attempt < MAX_ATTEMPTS) {
+          messages.push({
+            role: "user",
+            content: buildRepairMessage(result.data, issues),
+          });
+        }
+      } catch (error) {
+        if (
+          error instanceof AppError &&
+          error.code === "INVALID_MODEL_OUTPUT"
+        ) {
+          const failure = invalidOutputRepair(error, stageName, attempt);
+          issues = [failure.issue];
+          if (attempt < MAX_ATTEMPTS) {
+            messages.push({
+              role: "user",
+              content: failure.message,
+            });
+          }
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new AppError(
+      "GENERATION_REPAIR_FAILED",
+      "The DSA stayed invalid after two repair attempts.",
+      {
+        stage: "dsa_model",
+        attempts: MAX_ATTEMPTS,
+        issues: issues.slice(0, 12),
+      },
+    );
+  }
+
+  async generateLearning(
+    provider: ModelProvider,
+    model: string,
+    idea: string,
+    requirements: ConfirmedRequirements,
+    hld: HldModel,
+    lld: LldModel,
+    dsa: DsaModel,
+    onAttempt?: GenerationAttemptListener,
+  ): Promise<LearningGeneration> {
+    const system = learningSystemPrompt();
+    const messages: ChatMessage[] = [
+      {
+        role: "user",
+        content: learningUserPrompt(
+          idea,
+          JSON.stringify(compactRequirements(requirements.spec)),
+          JSON.stringify(compactHld(hld)),
+          JSON.stringify(compactLld(lld)),
+          JSON.stringify(dsa),
+        ),
+      },
+    ];
+    const usage = emptyUsage();
+    let issues: ValidationIssue[] = [];
+    const stageName = "learning_model";
+    const known = collectElementIds({
+      meta: { title: "learning", summary: "learning" },
+      requirements,
+      hld,
+      lld,
+      dsa,
+      learningSteps: [],
+    });
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      onAttempt?.(attempt);
+      try {
+        const result = await provider.generateStructured({
+          model,
+          system,
+          messages,
+          schemaName: stageName,
+          jsonSchema: LEARNING_SCHEMA,
+          maxOutputTokens: LEARNING_MAX_TOKENS,
+          timeoutMs: LLD_DSA_TIMEOUT_MS,
+        });
+        addUsage(usage, result.usage);
+        const parsed = LearningOutputSchema.safeParse(
+          sanitizeLearningOutput(result.data, hld, lld, dsa),
+        );
+        if (!parsed.success) {
+          issues = schemaIssues(parsed.error.issues);
+        } else {
+          const validation = validateLearningSection(
+            parsed.data.learningSteps,
+            known,
+          );
+          if (validation.errors.length === 0) {
+            return {
+              learningSteps: parsed.data.learningSteps,
+              usage,
+              attempts: attempt,
+            };
+          }
+          issues = validation.errors;
+        }
+
+        if (attempt < MAX_ATTEMPTS) {
+          messages.push({
+            role: "user",
+            content: buildRepairMessage(result.data, issues),
+          });
+        }
+      } catch (error) {
+        if (
+          error instanceof AppError &&
+          error.code === "INVALID_MODEL_OUTPUT"
+        ) {
+          const failure = invalidOutputRepair(error, stageName, attempt);
+          issues = [failure.issue];
+          if (attempt < MAX_ATTEMPTS) {
+            messages.push({
+              role: "user",
+              content: failure.message,
+            });
+          }
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new AppError(
+      "GENERATION_REPAIR_FAILED",
+      "The learning steps stayed invalid after two repair attempts.",
+      {
+        stage: "learning_model",
+        attempts: MAX_ATTEMPTS,
+        issues: issues.slice(0, 12),
+      },
+    );
+  }
+
+  async generateLldDsa(
+    provider: ModelProvider,
+    model: string,
+    idea: string,
+    requirements: ConfirmedRequirements,
+    hld: HldModel,
+    onAttempt?: GenerationAttemptListener,
+  ): Promise<LldDsaGeneration> {
+    const lld = await this.generateLld(
+      provider,
+      model,
+      idea,
+      requirements,
+      hld,
+      onAttempt,
+    );
+    const dsa = await this.generateDsa(
+      provider,
+      model,
+      idea,
+      requirements,
+      hld,
+      lld.lld,
+      onAttempt,
+    );
+    const learning = await this.generateLearning(
+      provider,
+      model,
+      idea,
+      requirements,
+      hld,
+      lld.lld,
+      dsa.dsa,
+      onAttempt,
+    );
+    const section: LldDsaOutput = {
+      meta: lld.meta,
+      lld: lld.lld,
+      dsa: dsa.dsa,
+      learningSteps: learning.learningSteps,
+    };
+    const coverage = mergedMustHaveIssues(
+      hld,
+      section,
+      requirements.spec,
+    );
+    const attempts =
+      1 +
+      Math.max(0, lld.attempts - 1) +
+      Math.max(0, dsa.attempts - 1) +
+      Math.max(0, learning.attempts - 1);
+    if (coverage.length > 0) {
+      throw new AppError(
+        "GENERATION_REPAIR_FAILED",
+        "The split architecture stages left a must-have requirement uncovered.",
+        {
+          stage: "lld_dsa_model",
+          attempts,
+          issues: coverage.slice(0, 12),
+        },
+      );
+    }
+
+    const usage = emptyUsage();
+    addUsage(usage, lld.usage);
+    addUsage(usage, dsa.usage);
+    addUsage(usage, learning.usage);
+    return {
+      section,
+      usage,
+      attempts,
+    };
   }
 
   buildModel(
@@ -387,8 +692,10 @@ export class ArchitectureGenerator {
       }
 
       const parsed = configuration.parse(
-        normalizeRelationshipMultiplicities(
-          sanitizeRequirementRefs(sectionData, requirements),
+        normalizeLldRelationships(
+          normalizeRelationshipMultiplicities(
+            sanitizeRequirementRefs(sectionData, requirements),
+          ),
         ),
       );
       if (!parsed.success) {
@@ -449,8 +756,10 @@ interface ScopedConfiguration {
   maxOutputTokens: number;
   parse: (
     data: unknown,
-  ) => { success: true; data: HldModel | LldModel | DsaModel } | { success: false; error: ZodError };
-  merge: (data: HldModel | LldModel | DsaModel) => MergeResult;
+  ) =>
+    | { success: true; data: HldModel | LldStageOutput | DsaModel }
+    | { success: false; error: ZodError };
+  merge: (data: HldModel | LldStageOutput | DsaModel) => MergeResult;
 }
 
 type MergeResult =
@@ -486,7 +795,7 @@ function scopedConfiguration(
 
   if (scope === "lld") {
     return {
-      system: lldDsaSystemPrompt(),
+      system: lldSystemPrompt(),
       userPrompt: lldRegenerateUserPrompt(
         idea,
         JSON.stringify(compactRequirements(requirements.spec)),
@@ -495,10 +804,10 @@ function scopedConfiguration(
       ),
       schemaName: "lld_model",
       jsonSchema: LLD_SCHEMA,
-      maxOutputTokens: LLD_DSA_MAX_TOKENS,
-      parse: (data) => parseWith(LldModelSchema, data),
+      maxOutputTokens: LLD_MAX_TOKENS,
+      parse: (data) => parseWith(LldStageOutputSchema, data),
       merge: (data) => {
-        const lld = data as LldModel;
+        const lld = (data as LldStageOutput).lld;
         const draft: ArchitectureModel = { ...current, lld };
         return mergeWithPrunedLearning(draft);
       },
@@ -506,7 +815,7 @@ function scopedConfiguration(
   }
 
   return {
-    system: lldDsaSystemPrompt(),
+    system: dsaSystemPrompt(),
     userPrompt: dsaRegenerateUserPrompt(
       idea,
       JSON.stringify(compactRequirements(requirements.spec)),
@@ -516,7 +825,7 @@ function scopedConfiguration(
     ),
     schemaName: "dsa_model",
     jsonSchema: DSA_SCHEMA,
-    maxOutputTokens: LLD_DSA_MAX_TOKENS,
+    maxOutputTokens: DSA_MAX_TOKENS,
     parse: (data) => parseWith(DsaModelSchema, data),
     merge: (data) => {
       const dsa = data as DsaModel;
@@ -617,6 +926,72 @@ function normalizeRelationshipMultiplicities<T>(value: T): T {
     return record;
   };
   return visit(value) as T;
+}
+
+/**
+ * Converts a relationship whose declared UML kind is impossible for its
+ * endpoints into an association. The design intent is preserved, and the
+ * validator no longer spends a repair call on a deterministic mismatch.
+ */
+function normalizeLldRelationships<T>(value: T): T {
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  const lld = (value as { lld?: LldModel }).lld;
+  if (!lld || !Array.isArray(lld.classes) || !Array.isArray(lld.relationships)) {
+    return value;
+  }
+  const classes = new Map(lld.classes.map((item) => [item.id, item]));
+  const classLike = (kind: string): boolean =>
+    kind === "class" || kind === "abstract";
+  const structural = (kind: string): boolean =>
+    classLike(kind) || kind === "value_object";
+
+  for (const relationship of lld.relationships) {
+    const source = classes.get(relationship.sourceId);
+    const target = classes.get(relationship.targetId);
+    if (!source || !target) continue;
+    if (
+      ["aggregation", "composition"].includes(relationship.kind) &&
+      (!structural(source.kind) || !structural(target.kind))
+    ) {
+      relationship.kind = "association";
+    }
+    if (
+      relationship.kind === "realization" &&
+      (target.kind !== "interface" || source.kind === "interface")
+    ) {
+      relationship.kind = "association";
+    }
+    if (
+      relationship.kind === "inheritance" &&
+      (!classLike(source.kind) ||
+        !classLike(target.kind) ||
+        source.id === target.id)
+    ) {
+      relationship.kind = "association";
+    }
+  }
+  return value;
+}
+
+function sanitizeLearningOutput(
+  value: unknown,
+  hld: HldModel,
+  lld: LldModel,
+  dsa: DsaModel,
+): unknown {
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  return sanitizeLearningRefs(
+    {
+      ...(value as Record<string, unknown>),
+      lld,
+      dsa,
+    },
+    hld,
+  );
 }
 
 /**

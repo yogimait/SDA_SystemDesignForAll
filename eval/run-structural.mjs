@@ -3,8 +3,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { loadEnvFile } from "node:process";
 import { dirname, join, resolve } from "node:path";
 import {
+  DsaModelSchema,
   HldModelSchema,
+  LearningOutputSchema,
   LldDsaOutputSchema,
+  LldStageOutputSchema,
   RequirementsSpecSchema,
 } from "@sda/contracts";
 import { RequirementsGenerator } from "../backend-server/dist/generation/requirements.generator.js";
@@ -13,11 +16,15 @@ import { OpenRouterProvider } from "../backend-server/dist/providers/openrouter/
 import {
   collectElementIds,
   validateArchitectureModel,
+  validateDsaSection,
   validateHldSection,
+  validateLearningSection,
   validateLldDsaSection,
+  validateLldSection,
 } from "../backend-server/dist/architecture/validator.js";
 import {
   hldMustHaveIssues,
+  lldMustHaveIssues,
   mergedMustHaveIssues,
 } from "../backend-server/dist/architecture/must-have-coverage.js";
 
@@ -49,8 +56,20 @@ const output = resolve(
     ),
 );
 
-if (!["requirements", "hld", "lld_dsa", "architecture"].includes(stageMode)) {
-  throw new Error("--stage must be requirements, hld, lld_dsa, or architecture");
+if (
+  ![
+    "requirements",
+    "hld",
+    "lld",
+    "dsa",
+    "learning",
+    "lld_dsa",
+    "architecture",
+  ].includes(stageMode)
+) {
+  throw new Error(
+    "--stage must be requirements, hld, lld, dsa, learning, lld_dsa, or architecture",
+  );
 }
 if (!Number.isInteger(limit) || limit < 1) {
   throw new Error("--limit must be a positive integer");
@@ -156,6 +175,44 @@ function metricsForHld(hld) {
     technologyDecisions: hld.technologyDecisions.length,
     scalabilityNotes: hld.scalabilityNotes.length,
     failureScenarios: hld.failureScenarios.length,
+  };
+}
+
+function metricsForLld(stage) {
+  return {
+    classes: stage.lld.classes.length,
+    relationships: stage.lld.relationships.length,
+    patterns: stage.lld.patterns.length,
+    classesWithRefs: stage.lld.classes.filter(
+      (entry) => entry.requirementRefs.length > 0,
+    ).length,
+  };
+}
+
+function metricsForDsa(dsa) {
+  return {
+    recommendations: dsa.recommendations.length,
+    algorithmicPatterns: dsa.algorithmicPatterns.length,
+    withComplexity: dsa.recommendations.filter(
+      (entry) => entry.complexity.average !== "" && entry.complexity.worst !== "",
+    ).length,
+    withRefs: dsa.recommendations.filter(
+      (entry) => entry.requirementRefs.length > 0,
+    ).length,
+  };
+}
+
+function metricsForLearningSteps(steps, known) {
+  const refs = steps.flatMap((step) => step.elementRefs);
+  const uniqueRefs = new Set(refs);
+  const resolvedRefs = refs.filter((ref) => known.has(ref));
+  return {
+    steps: steps.length,
+    refs: refs.length,
+    uniqueRefs: uniqueRefs.size,
+    resolvedRefs: resolvedRefs.length,
+    unresolvedRefs: refs.length - resolvedRefs.length,
+    refsResolvedRate: refs.length === 0 ? 0 : resolvedRefs.length / refs.length,
   };
 }
 
@@ -274,7 +331,14 @@ for (const item of cases) {
       record.raw.requirements = generated.spec;
     }
 
-    if (stageMode === "hld" || stageMode === "lld_dsa" || stageMode === "architecture") {
+    if (
+      stageMode === "hld" ||
+      stageMode === "lld" ||
+      stageMode === "dsa" ||
+      stageMode === "learning" ||
+      stageMode === "lld_dsa" ||
+      stageMode === "architecture"
+    ) {
       const hldStart = performance.now();
       const hld = await architectureGenerator.generateHld(
         provider,
@@ -306,7 +370,148 @@ for (const item of cases) {
       record.structural.warnings.push(...issueSummary(hldValidation.warnings));
       record.structural.must_have_issues.push(...issueSummary(hldCoverage));
 
-      if (stageMode === "lld_dsa" || stageMode === "architecture") {
+      if (
+        stageMode === "lld" ||
+        stageMode === "dsa" ||
+        stageMode === "learning"
+      ) {
+        let valid =
+          hldSchema.success &&
+          hldValidation.errors.length === 0 &&
+          hldCoverage.length === 0;
+
+        const lldStart = performance.now();
+        const lldStage = await architectureGenerator.generateLld(
+          provider,
+          model,
+          item.idea,
+          confirmed,
+          hld.hld,
+        );
+        const lldOutput = { meta: lldStage.meta, lld: lldStage.lld };
+        const lldSchema = LldStageOutputSchema.safeParse(lldOutput);
+        const lldValidation = lldSchema.success
+          ? validateLldSection(lldSchema.data.lld, confirmed)
+          : { errors: [], warnings: [] };
+        const lldCoverage = lldSchema.success
+          ? lldMustHaveIssues(hld.hld, lldSchema.data.lld, confirmed.spec)
+          : [];
+        record.stages.lld = {
+          ok: lldSchema.success,
+          attempts: lldStage.attempts,
+          duration_ms: Math.round(performance.now() - lldStart),
+          usage: lldStage.usage,
+          metrics: lldSchema.success ? metricsForLld(lldOutput) : null,
+          errors: issueSummary(lldValidation.errors),
+          warnings: issueSummary(lldValidation.warnings),
+          must_have_issues: issueSummary(lldCoverage),
+        };
+        addUsage(lldStage.usage);
+        record.component_metrics.lld = record.stages.lld.metrics;
+        record.raw.lld_stage = lldOutput;
+        record.structural.errors.push(...issueSummary(lldValidation.errors));
+        record.structural.warnings.push(...issueSummary(lldValidation.warnings));
+        record.structural.must_have_issues.push(...issueSummary(lldCoverage));
+        valid =
+          valid &&
+          lldSchema.success &&
+          lldValidation.errors.length === 0 &&
+          lldCoverage.length === 0;
+
+        let dsa = null;
+        if (stageMode === "dsa" || stageMode === "learning") {
+          const dsaStart = performance.now();
+          const dsaStage = await architectureGenerator.generateDsa(
+            provider,
+            model,
+            item.idea,
+            confirmed,
+            hld.hld,
+            lldStage.lld,
+          );
+          const dsaSchema = DsaModelSchema.safeParse(dsaStage.dsa);
+          const dsaValidation = dsaSchema.success
+            ? validateDsaSection(dsaSchema.data, confirmed)
+            : { errors: [], warnings: [] };
+          record.stages.dsa = {
+            ok: dsaSchema.success,
+            attempts: dsaStage.attempts,
+            duration_ms: Math.round(performance.now() - dsaStart),
+            usage: dsaStage.usage,
+            metrics: dsaSchema.success ? metricsForDsa(dsaStage.dsa) : null,
+            errors: issueSummary(dsaValidation.errors),
+            warnings: issueSummary(dsaValidation.warnings),
+          };
+          addUsage(dsaStage.usage);
+          record.component_metrics.dsa = record.stages.dsa.metrics;
+          record.raw.dsa = dsaStage.dsa;
+          dsa = dsaStage.dsa;
+          record.structural.errors.push(...issueSummary(dsaValidation.errors));
+          record.structural.warnings.push(...issueSummary(dsaValidation.warnings));
+          valid =
+            valid && dsaSchema.success && dsaValidation.errors.length === 0;
+        }
+
+        if (stageMode === "learning" && dsa) {
+          const learningStart = performance.now();
+          const learningStage = await architectureGenerator.generateLearning(
+            provider,
+            model,
+            item.idea,
+            confirmed,
+            hld.hld,
+            lldStage.lld,
+            dsa,
+          );
+          const learningOutput = {
+            learningSteps: learningStage.learningSteps,
+          };
+          const learningSchema = LearningOutputSchema.safeParse(learningOutput);
+          const known = collectElementIds({
+            meta: lldStage.meta,
+            requirements: confirmed,
+            hld: hld.hld,
+            lld: lldStage.lld,
+            dsa,
+            learningSteps: [],
+          });
+          const learningValidation = learningSchema.success
+            ? validateLearningSection(learningSchema.data.learningSteps, known)
+            : { errors: [], warnings: [] };
+          record.stages.learning = {
+            ok: learningSchema.success,
+            attempts: learningStage.attempts,
+            duration_ms: Math.round(performance.now() - learningStart),
+            usage: learningStage.usage,
+            metrics: learningSchema.success
+              ? metricsForLearningSteps(learningSchema.data.learningSteps, known)
+              : null,
+            errors: issueSummary(learningValidation.errors),
+            warnings: issueSummary(learningValidation.warnings),
+          };
+          addUsage(learningStage.usage);
+          record.component_metrics.learning = record.stages.learning.metrics;
+          record.raw.learning_steps = learningStage.learningSteps;
+          record.raw.lld_dsa = {
+            meta: lldStage.meta,
+            lld: lldStage.lld,
+            dsa,
+            learningSteps: learningStage.learningSteps,
+          };
+          record.structural.errors.push(
+            ...issueSummary(learningValidation.errors),
+          );
+          record.structural.warnings.push(
+            ...issueSummary(learningValidation.warnings),
+          );
+          valid =
+            valid &&
+            learningSchema.success &&
+            learningValidation.errors.length === 0;
+        }
+
+        record.structural.valid = valid;
+      } else if (stageMode === "lld_dsa" || stageMode === "architecture") {
         const lldStart = performance.now();
         const section = await architectureGenerator.generateLldDsa(
           provider,
@@ -392,6 +597,7 @@ const uniqueCaseIds = [...new Set(results.map((record) => record.case_id))];
 const byCase = Object.groupBy(results, (record) => record.case_id);
 const summary = {
   ok: results.every((record) => record.structural.valid),
+  generated_at: new Date().toISOString(),
   output,
   model,
   stage_mode: stageMode,

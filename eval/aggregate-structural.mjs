@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,7 +27,11 @@ const bestByModel = new Map();
 for (const entry of summaries) {
   if (!entry.summary.model) continue;
   const current = bestByModel.get(entry.summary.model);
-  const entryScore = [entry.summary.unique_cases ?? 0, entry.summary.repeats ?? 1, entry.summary.timestamp ?? ""];
+  const entryScore = [
+    entry.summary.unique_cases ?? 0,
+    entry.summary.repeats ?? 1,
+    statSync(entry.path).mtimeMs,
+  ];
   const currentScore = current
     ? [current.summary.unique_cases ?? 0, current.summary.repeats ?? 1, current.summary.timestamp ?? ""]
     : null;
@@ -37,7 +41,7 @@ for (const entry of summaries) {
     (entryScore[0] === currentScore[0] && entryScore[1] > currentScore[1]) ||
     (entryScore[0] === currentScore[0] &&
       entryScore[1] === currentScore[1] &&
-      String(entryScore[2]) > String(currentScore[2]));
+      entryScore[2] > currentScore[2]);
   if (better) bestByModel.set(entry.summary.model, entry);
 }
 

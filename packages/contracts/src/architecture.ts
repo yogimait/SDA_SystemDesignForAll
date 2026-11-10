@@ -234,8 +234,8 @@ export const DsaLayerSchema = z.enum(["lld", "hld", "shared"]);
 export type DsaLayer = z.infer<typeof DsaLayerSchema>;
 
 export const ComplexitySchema = z.object({
-  average: z.string().trim().min(1).max(120),
-  worst: z.string().trim().min(1).max(120),
+  average: z.string().trim().min(1).max(240),
+  worst: z.string().trim().min(1).max(240),
   notes: z.string().trim().max(300).default(""),
 });
 export type Complexity = z.infer<typeof ComplexitySchema>;
@@ -270,6 +270,16 @@ export const DsaModelSchema = z.object({
 });
 export type DsaModel = z.infer<typeof DsaModelSchema>;
 
+/** Phase B2 provider output: bounded DSA analysis. */
+export const DsaStageOutputSchema = DsaModelSchema.extend({
+  recommendations: z.array(DsaRecommendationSchema).min(1).max(6),
+  algorithmicPatterns: z
+    .array(AlgorithmicPatternSchema)
+    .max(6)
+    .default([]),
+});
+export type DsaStageOutput = z.infer<typeof DsaStageOutputSchema>;
+
 // ---------------------------------------------------------------------------
 // Learning + canonical model
 // ---------------------------------------------------------------------------
@@ -286,6 +296,24 @@ export const ArchitectureMetaSchema = z.object({
   title: z.string().trim().min(1).max(160),
   summary: z.string().trim().min(1).max(1200),
 });
+export type ArchitectureMeta = z.infer<typeof ArchitectureMetaSchema>;
+
+/** Phase B1 provider output: classes, relationships, patterns, and meta. */
+export const LldStageOutputSchema = z.object({
+  meta: ArchitectureMetaSchema,
+  lld: LldModelSchema.extend({
+    classes: z.array(LldClassSchema).min(1).max(18),
+    relationships: z.array(LldRelationshipSchema).max(30),
+    patterns: z.array(DesignPatternSchema).max(6).default([]),
+  }),
+});
+export type LldStageOutput = z.infer<typeof LldStageOutputSchema>;
+
+/** Phase B3 provider output: learning steps pinned to the final model. */
+export const LearningOutputSchema = z.object({
+  learningSteps: z.array(LearningStepSchema).min(1).max(30),
+});
+export type LearningOutput = z.infer<typeof LearningOutputSchema>;
 
 export const ArchitectureModelSchema = z.object({
   meta: ArchitectureMetaSchema,

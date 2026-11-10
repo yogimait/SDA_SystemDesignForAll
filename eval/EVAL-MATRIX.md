@@ -10,6 +10,19 @@
 | DSA | operation/layer present, structure/algorithm present, average/worst complexity, refs valid | correctness, honesty, assumptions, alternatives, limitations | DSA JSON, validator issues |
 | Learning | refs resolve to final model, no requirement IDs in element refs, sequence non-empty | grounding, progression, accuracy, interview usefulness | learning JSON |
 
+### Current component results
+
+| Stage | Result |
+|---|---|
+| Requirements structural | 24/24 GLM outputs valid |
+| Requirements semantic | Claude 3.432/5, GPT 3.667/5, 24 outputs |
+| HLD structural | 11/12 split runs valid; one LLD failure, not HLD |
+| LLD structural | 11/12 first-pass valid; `TC-OBS-010` passed on retry |
+| DSA structural | 11/12 first-pass valid; all DSA complexity fields present |
+| Learning structural | 11/12 first-pass valid; 0 unresolved refs |
+| Split semantic | Claude 3.148/5, GPT 3.909/5, 11 outputs |
+| Combined architecture semantic | Claude 3.182/5, GPT 4.042/5, 24 outputs |
+
 ## Judge reliability evals
 
 The semantic judge itself is evaluated without human labels:
@@ -31,6 +44,9 @@ regression and defect discovery only. The full v3 panel is in
 ## Pipeline evals
 
 - Requirements confirmation is the only context passed to HLD.
+- Production now calls HLD -> LLD -> DSA -> learning separately.
+- Split pipeline: 11/12 first-pass valid, 12/12 after retrying `TC-OBS-010`.
+- Requirements-to-architecture handoff is still not a separate pipeline run.
 - HLD IDs are pinned for LLD and DSA.
 - LLD and DSA do not invent components or requirements.
 - Learning refs resolve in the merged model.

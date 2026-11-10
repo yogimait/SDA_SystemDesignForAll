@@ -20,6 +20,7 @@
   ],
   "rubric_version": "architecture-v1",
   "judge_prompt_version": "architecture-judge-v3",
+  "requirements_judge_prompt_version": "requirements-judge-v1",
   "holdout": {
     "in_git": false,
     "file_sha256": null,

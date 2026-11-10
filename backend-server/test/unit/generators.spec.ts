@@ -1,4 +1,10 @@
-import type { HldModel, LldDsaOutput } from "@sda/contracts";
+import type {
+  DsaModel,
+  HldModel,
+  LearningOutput,
+  LldDsaOutput,
+  LldStageOutput,
+} from "@sda/contracts";
 import { describe, expect, it } from "vitest";
 import { AppError } from "../../src/common/errors/app-error.js";
 import { ArchitectureGenerator } from "../../src/generation/architecture.generator.js";
@@ -104,6 +110,19 @@ async function mockLldDsa(): Promise<LldDsaOutput> {
       timeoutMs: 1000,
     })
   ).data as LldDsaOutput;
+}
+
+async function mockSplitStages(): Promise<{
+  lld: LldStageOutput;
+  dsa: DsaModel;
+  learning: LearningOutput;
+}> {
+  const section = await mockLldDsa();
+  return {
+    lld: { meta: section.meta, lld: section.lld },
+    dsa: section.dsa,
+    learning: { learningSteps: section.learningSteps },
+  };
 }
 
 /** The fixture has no refs; coverage enforcement needs the sole must-have. */
@@ -296,16 +315,20 @@ describe("ArchitectureGenerator repair path", () => {
 
   it("normalizes deterministic relationship mistakes and drops invalid learning refs", async () => {
     const hld = await mockHldWithMustRefs();
-    const section = await mockLldDsa();
-    const composition = section.lld.relationships.find(
+    const split = await mockSplitStages();
+    const composition = split.lld.lld.relationships.find(
       (relationship) => relationship.kind === "composition",
     );
     expect(composition).toBeDefined();
     composition!.sourceMultiplicity = "1..*";
-    section.learningSteps[0].elementRefs = ["nfr_missing"];
-    section.learningSteps[1].elementRefs = ["cmp_client"];
+    split.learning.learningSteps[0].elementRefs = ["nfr_missing"];
+    split.learning.learningSteps[1].elementRefs = ["cmp_client"];
 
-    const provider = new ScriptedProvider([section]);
+    const provider = new ScriptedProvider([
+      split.lld,
+      split.dsa,
+      split.learning,
+    ]);
     const generator = new ArchitectureGenerator();
     const result = await generator.generateLldDsa(
       provider,
@@ -325,9 +348,42 @@ describe("ArchitectureGenerator repair path", () => {
       ),
     ).toBe(false);
     expect(result.section.learningSteps.length).toBeGreaterThan(0);
+    expect(provider.calls.map((call) => call.schemaName)).toEqual([
+      "lld_model",
+      "dsa_model",
+      "learning_model",
+    ]);
   });
 
-  it("fails fast when the LLD/DSA output is truncated", async () => {
+  it("normalizes an impossible UML relationship kind to association", async () => {
+    const hld = await mockHldWithMustRefs();
+    const split = await mockSplitStages();
+    const relationship = split.lld.lld.relationships[0];
+    relationship.kind = "aggregation";
+    const target = split.lld.lld.classes.find(
+      (item) => item.id === relationship.targetId,
+    );
+    expect(target).toBeDefined();
+    target!.kind = "interface";
+    const provider = new ScriptedProvider([
+      split.lld,
+      split.dsa,
+      split.learning,
+    ]);
+    const generator = new ArchitectureGenerator();
+
+    const result = await generator.generateLldDsa(
+      provider,
+      "test/model",
+      "An idea.",
+      requirements,
+      hld,
+    );
+
+    expect(result.section.lld.relationships[0]?.kind).toBe("association");
+  });
+
+  it("fails fast when the split LLD output is truncated", async () => {
     const hld = await mockHldWithMustRefs();
     const provider = new ScriptedProvider([truncatedOutput()]);
     const generator = new ArchitectureGenerator();
@@ -343,7 +399,7 @@ describe("ArchitectureGenerator repair path", () => {
     ).rejects.toMatchObject({
       code: "GENERATION_REPAIR_FAILED",
       details: {
-        stage: "lld_dsa_model",
+        stage: "lld_model",
         attempts: 1,
         issues: [{ rule: "truncated_output" }],
       },
@@ -353,13 +409,18 @@ describe("ArchitectureGenerator repair path", () => {
     expect(provider.calls[0].timeoutMs).toBe(900_000);
   });
 
-  it("repairs LLD/DSA that leaves a must-have requirement uncovered", async () => {
-    // The pinned HLD has no refs, so the merged model depends on this section.
+  it("repairs the LLD stage when a must-have requirement is uncovered", async () => {
+    // The pinned HLD has no refs, so the LLD must cover fr_one.
     const hld = await mockHld();
-    const missing = await mockLldDsa();
-    const fixed = await mockLldDsa();
-    fixed.lld.classes[0].requirementRefs = ["fr_one"];
-    const provider = new ScriptedProvider([missing, fixed]);
+    const missing = await mockSplitStages();
+    const fixed = await mockSplitStages();
+    fixed.lld.lld.classes[0].requirementRefs = ["fr_one"];
+    const provider = new ScriptedProvider([
+      missing.lld,
+      fixed.lld,
+      fixed.dsa,
+      fixed.learning,
+    ]);
     const generator = new ArchitectureGenerator();
 
     const result = await generator.generateLldDsa(

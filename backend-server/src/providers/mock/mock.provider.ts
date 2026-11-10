@@ -2,8 +2,9 @@ import { Injectable } from "@nestjs/common";
 import type {
   DsaModel,
   HldModel,
+  LearningOutput,
   LldDsaOutput,
-  LldModel,
+  LldStageOutput,
   RequirementsAnalysisOutput,
 } from "@sda/contracts";
 import type {
@@ -280,10 +281,22 @@ export class MockProvider implements ModelProvider {
         return { data: REQUIREMENTS, usage: USAGE };
       case "hld_model":
         return { data: withHldRefs(input), usage: USAGE };
-      case "lld_model":
-        return { data: withLldRefs(input).lld as LldModel, usage: USAGE };
+      case "lld_model": {
+        const output = withLldRefs(input);
+        return {
+          data: { meta: output.meta, lld: output.lld } as LldStageOutput,
+          usage: USAGE,
+        };
+      }
       case "dsa_model":
         return { data: withLldRefs(input).dsa as DsaModel, usage: USAGE };
+      case "learning_model":
+        return {
+          data: {
+            learningSteps: withLldRefs(input).learningSteps,
+          } as LearningOutput,
+          usage: USAGE,
+        };
       case "lld_dsa_model":
         return { data: withLldRefs(input), usage: USAGE };
       default:

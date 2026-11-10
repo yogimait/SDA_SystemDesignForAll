@@ -94,15 +94,21 @@ flowchart LR
 ```
 
 - Phase A (`hld_model`) generates components, connections, flows, technology decisions, scalability notes, and failure scenarios. Budget: 64k output tokens, 900s. The prompt targets 6-12 components, 8-16 connections, and 1-2 flows; every component must appear in a connection. A `finish_reason: length` truncation is retried once with a compact-output instruction (≤8 components, ≤10 connections, 1-2 flows); repeated truncation fails with `GENERATION_REPAIR_FAILED`. Must-have functional requirements must be referenced by at least one component or flow: uncovered ids are fed into the bounded repair message, and persistent omission fails the run instead of persisting an architecture that ignores them.
-- Phase B (`lld_dsa_model`) generates classes, relationships, patterns, DSA recommendations, learning steps, and model metadata, with the HLD pinned as context. Budget: 64k output tokens, 900s. The prompt targets 8-14 classes, 10-20 relationships, 2-5 patterns, 3-5 DSA recommendations, and 4-8 learning steps. Reasoning effort defaults to `low` on OpenRouter, but reasoning tokens still share the output budget. A truncated response fails fast instead of repeating the same over-budget repair. The merged model (HLD + classes + patterns + DSA recommendations) is re-checked for must-have coverage; gaps are repaired within the same 3-attempt bound.
-- Each phase gets at most 3 attempts: initial + 2 repairs. Repairs include the exact validation issue list and the previous output.
+- Phase B is one persisted `lld_dsa_model` stage but now makes three separate provider calls:
+  - **LLD** (`lld_model`) generates model metadata, classes, relationships, and patterns with the HLD pinned. The stage contract caps output at 18 classes, 30 relationships, and 6 patterns. Budget: 64k tokens, 900s. Must-have requirements not covered by HLD components/flows must be referenced by a class or pattern.
+  - **DSA** (`dsa_model`) generates operation-scoped recommendations and algorithmic patterns with HLD and LLD pinned. The provider schema caps recommendations and algorithmic patterns at 6 each. Budget: 64k tokens, 900s.
+  - **Learning** (`learning_model`) generates only learning steps with HLD, LLD, and DSA pinned. It validates every `elementRefs` id against the merged element set. Budget: 64k tokens, 900s.
+- Each split phase gets at most 3 attempts: initial + 2 repairs. Repairs include the exact validation issue list and the previous output. The persisted stage attempt count is the sum of repair rounds across the three phases plus one.
+- The merged model (HLD + classes + patterns + DSA recommendations) is re-checked for must-have coverage; a final gap fails the run.
+- Deterministic normalization before schema parsing also converts an impossible UML relationship kind (for example aggregation with an interface endpoint) to an association. This avoids paying for repairs on a deterministic formatting mistake.
 
 ### Must-have coverage
 
 `unreferenced_must_requirement` means a `must` functional requirement is not in any component/flow (HLD) or class/pattern/DSA recommendation (merged LLD/DSA) `requirementRefs`. The validator keeps it as a warning for arbitrary models, but generation promotes it to a repairable error:
 
 - after the HLD validates, uncovered ids and their text are added to the repair message;
-- after the merged LLD/DSA validates, the same check runs across both sections;
+- during the split LLD phase, the check covers HLD components/flows plus LLD classes/patterns; gaps are repaired before DSA starts;
+- after the merged LLD/DSA/learning section is assembled, the same check runs across all sections;
 - persistent omission ends with `GENERATION_REPAIR_FAILED` (`issues[].rule = "unreferenced_must_requirement"`) and no version is persisted.
 
 Prompts state the rule and forbid invented refs. A successful generation therefore has full must-have coverage and does not carry this warning.
@@ -116,25 +122,28 @@ Prompts state the rule and forbid invented refs. A successful generation therefo
 
 ### Provider calls per run
 
-Only requirements, HLD, and LLD/DSA call the model. Validation and persistence are local.
+Only requirements, HLD, LLD, DSA, and learning call the model. Validation and persistence are local.
 
 | Phase | Provider calls | Notes |
 | --- | --- | --- |
 | Project creation | 0 | Local DB write. |
 | Requirements analysis | 1 + up to 1 repair = 1–2 | `analyze_idea` stage. |
 | HLD | 1 + up to 2 repairs = 1–3 | `hld_model` stage. Skipped when a compatible HLD is reused. |
-| LLD + DSA + learning | 1 + up to 2 repairs = 1–3 | One combined `lld_dsa_model` stage. |
+| LLD | 1 + up to 2 repairs = 1–3 | `lld_model` provider call inside the persisted `lld_dsa_model` stage. |
+| DSA | 1 + up to 2 repairs = 1–3 | `dsa_model` provider call inside the same persisted stage. |
+| Learning | 1 + up to 2 repairs = 1–3 | `learning_model` provider call inside the same persisted stage. |
 | Validation + persistence | 0 | Local code. |
 
-A full architecture from an idea is therefore **3–8 model calls** including requirements. A retry with HLD reuse is **2–5 calls**. Each repair is another full model request with the previous output and the failing issues; calls run sequentially, never in parallel. In a local sample of successful runs, requirements used 1 call, HLD used 3 (when newly generated), and LLD/DSA used 3; the latest run reused HLD and used 3 LLD/DSA calls, totaling 64,230 tokens. A 2026-10-30 smoke with the 64k HLD budget completed in 81.5 s: requirements 701 tokens (1 call), HLD 4,188 tokens (1 call), LLD/DSA 24,502 tokens (2 attempts), 28,690 tokens total, valid version 1 with 0 errors and 0 warnings.
+A full architecture from an idea now uses **5–14 model calls** including requirements: requirements, HLD, LLD, DSA, and learning, plus up to two repairs per phase. A retry with HLD reuse uses **4–11 calls**. Each repair is another full model request with the previous output and the failing issues; calls run sequentially, never in parallel. The split component eval over 12 dev cases used 373,061 tokens and $0.117237 for 11 first-pass valid runs (12/12 after retrying `TC-OBS-010`).
 
 ### Token optimizations
 
 - **Previous output is sent once per repair.** The repair user message contains it; the generator no longer also adds it as an assistant message.
 - **Prompt context is compacted.** LLD/DSA prompts receive ids, names, types, relationships, and short intent instead of the full HLD/LLD rationale/trade-off prose. This cuts the HLD JSON about 40% and the LLD JSON about 53% on the live sample. A scoped LLD regeneration after these changes used **2 attempts, 10,208 prompt + 11,987 completion = 22,195 tokens**, versus the previous full LLD stage at **3 attempts, 45,283 + 18,947 = 64,230 tokens**.
-- **Deterministic validation mistakes are normalized before parsing.** Composition/aggregation source multiplicity becomes `"1"`; inheritance/realization becomes `"1"` on both ends. Learning refs that are not architecture element ids are dropped; steps with no valid refs are removed. Invalid requirement refs are filtered.
+- **Deterministic validation mistakes are normalized before parsing.** Composition/aggregation source multiplicity becomes `"1"`; inheritance/realization becomes `"1"` on both ends. An impossible UML relationship kind is converted to an association. Learning refs that are not architecture element ids are dropped; steps with no valid refs are removed. Invalid requirement refs are filtered.
+- **Bounded stage schemas.** The full LLD stage is capped at 18 classes, 30 relationships, and 6 patterns; DSA is capped at 6 recommendations and 6 algorithmic patterns. This prevents a model loop from consuming the full 64k output budget. Complexity strings allow up to 240 characters so honest worst-case explanations are not forced into repair.
 - **HLD reuse** skips the HLD call on retry when the requirements hash and a valid HLD match.
-- **Concise targets**: HLD 6–12 components / 8–16 connections / 1–2 flows; LLD 8–14 classes / 10–20 relationships / 2–5 patterns / 3–5 DSA recommendations / 4–8 learning steps. `max_tokens` is a cap, not a reservation; actual output is billed.
+- **Concise targets**: HLD 6-12 components / 8-16 connections / 1-2 flows; LLD 8-14 classes / 10-20 relationships / 2-5 patterns; DSA 3-6 recommendations / at most 4 algorithmic patterns; learning 4-8 steps. `max_tokens` is a cap, not a reservation; actual output is billed.
 
 ## Scoped regeneration
 

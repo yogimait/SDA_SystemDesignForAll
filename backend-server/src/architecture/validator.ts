@@ -567,6 +567,33 @@ export function validateHldSection(
   return collector.result();
 }
 
+export function validateLldSection(
+  lld: LldModel,
+  requirements: ConfirmedRequirements,
+): ValidationResult {
+  const collector = new Collector();
+  validateLld(lld, requirements.spec, collector);
+  return collector.result();
+}
+
+export function validateDsaSection(
+  dsa: DsaModel,
+  requirements: ConfirmedRequirements,
+): ValidationResult {
+  const collector = new Collector();
+  validateDsa(dsa, requirements.spec, collector);
+  return collector.result();
+}
+
+export function validateLearningSection(
+  steps: LearningStep[],
+  knownElementIds: Set<string>,
+): ValidationResult {
+  const collector = new Collector();
+  validateLearningSteps(steps, knownElementIds, collector);
+  return collector.result();
+}
+
 export function validateLldDsaSection(
   section: {
     lld: LldModel;

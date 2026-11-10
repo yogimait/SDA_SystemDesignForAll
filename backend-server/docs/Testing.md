@@ -52,7 +52,7 @@ Each e2e file builds its own Nest app with `configureApp()` and `app.init()`, so
 | `openrouter.provider.spec.ts` | Request shape, BYOK header, ladder fallback and caching, every normalized error branch (including context length and oversized output), tolerant extraction, usage. |
 | `groq.provider.spec.ts` | Groq endpoint/request fields; strict-schema mismatch downgrades to json_object; prompt-mode mismatch is repairable `INVALID_MODEL_OUTPUT`. |
 | `validator.spec.ts` | Structural errors, semantic warnings, section validators, learning-ref pruning. |
-| `generators.spec.ts` | Repair exhaustion for requirements and HLD, success after one repair, HLD truncation compact retry at the 64k budget, bounded HLD truncation failure, must-have coverage repair and bounded omission failure in HLD and LLD/DSA. |
+| `generators.spec.ts` | Repair exhaustion for requirements and HLD, success after one repair, HLD truncation compact retry at the 64k budget, bounded HLD truncation failure, must-have coverage repair in HLD and split LLD, deterministic relationship/ref normalization, and split LLD → DSA → learning schema calls. |
 | `failure-usage.spec.ts` | Usage extraction from failure details and nested `providerOutput`; non-errors ignored. |
 | `all-exceptions.filter.spec.ts` | Envelope mapping, details, redaction, hidden 500 details, database/payload translation. |
 | `api-response.interceptor.spec.ts` | Success wrapping and no double-wrap. |

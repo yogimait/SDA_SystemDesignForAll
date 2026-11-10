@@ -8,7 +8,7 @@ const dir = resolve(
     ? process.argv[process.argv.indexOf("--dir") + 1]
     : "eval/artifacts/judge/v3-panel",
 );
-const dimensions = [
+const DEFAULT_DIMENSIONS = [
   "traceability",
   "hld_boundaries",
   "lld_responsibility",
@@ -79,15 +79,23 @@ const judges = files.map((name) => {
         .length,
       mean: mean(scored.map((row) => row.mean)),
       dimension_means: Object.fromEntries(
-        dimensions.map((key) => [
-          key,
-          mean(scored.map((row) => row.scores[key])),
-        ]),
+        [...new Set(scored.flatMap((row) => Object.keys(row.scores)))].map(
+          (key) => [key, mean(scored.map((row) => row.scores[key]))],
+        ),
       ),
       flag_counts: flags,
     },
   };
 });
+
+const dimensions = [
+  ...new Set(
+    judges.flatMap((judge) =>
+      judge.scored.flatMap((row) => Object.keys(row.scores)),
+    ),
+  ),
+];
+if (dimensions.length === 0) dimensions.push(...DEFAULT_DIMENSIONS);
 
 const keys = [
   ...new Set(

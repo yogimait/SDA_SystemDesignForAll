@@ -74,18 +74,16 @@ export function hldUserPrompt(
   return `Original idea:\n${idea}\n\nConfirmed requirements (JSON):\n${requirementsJson}`;
 }
 
-export function lldDsaSystemPrompt(): string {
+export function lldSystemPrompt(): string {
   return `${CORE_RULES}
 
-Task: produce the low-level design (LLD), DSA analysis, learning steps, and model
-metadata for an architecture whose HLD is already fixed.
+Task: produce only the low-level design (LLD) and model metadata for an
+architecture whose HLD is already fixed.
 Rules:
-- Aim for 8-14 classes, 10-20 relationships, 2-5 justified design patterns,
-  3-5 DSA recommendations, and 4-8 learning steps. Prefer one connected class
-  graph. Completeness and readability matter more than exhaustive detail.
-- Classes use ids like cls_<name>; relationships rel_<name>; patterns pat_<name>;
-  DSA recommendations dsa_<name>; algorithmic patterns alg_<name>; learning
-  steps step_<name>.
+- Aim for 8-14 classes, 10-20 relationships, and 2-5 justified design patterns.
+  Never exceed 18 classes, 30 relationships, or 6 patterns. Prefer one connected
+  class graph. Completeness and readability matter more than exhaustive detail.
+- Classes use ids like cls_<name>; relationships rel_<name>; patterns pat_<name>.
 - Class kinds: class, abstract, interface, enum, value_object.
 - Relationship kinds: inheritance, realization, association, aggregation,
   composition, dependency. Endpoints must exist. realization targets an
@@ -101,31 +99,84 @@ Rules:
   are used as member types. Do not leave disconnected classes.
 - Before returning, check multiplicities: composition/aggregation source is
   "1" or "0..1"; inheritance/realization use "1" on both ends.
-- learningSteps[].elementRefs may contain only HLD/LLD/DSA element ids
-  (cls_, rel_, pat_, cmp_, conn_, flow_, tech_, scale_, fail_, dsa_, alg_).
-  Never use requirement ids (fr_/nfr_) or invented ids.
 - Method signature must start with "(" and must not repeat the method name.
 - ${DESIGN_PATTERN_CATALOG}
-- DSA recommendations are operation-scoped and state average and worst case in
-  words, plus the layer they belong to (lld, hld, shared). Include assumptions,
-  alternatives, and limitations.
-- Learning steps must reference existing element ids from the HLD or LLD in
-  elementRefs, in a sensible teaching order.
 - meta.title and meta.summary describe this specific system.
 - HLD element ids are pinned; reuse them exactly and never rename them.
-- requirementRefs (classes, patterns, DSA recommendations) must use ids from the
-  confirmed requirements. Every must-have functional requirement not already
-  covered by an HLD component or flow must be referenced by at least one class,
-  pattern, or DSA recommendation that genuinely implements it. Never invent ids
-  or attach a requirement to unrelated elements.`;
+- requirementRefs (classes and patterns) must use ids from the confirmed
+  requirements. Every must-have functional requirement not already covered by
+  an HLD component or flow must be referenced by at least one class or pattern
+  that genuinely implements it. Never invent ids or attach a requirement to
+  unrelated elements.
+- Do not output DSA recommendations or learning steps.`;
 }
 
-export function lldDsaUserPrompt(
+export function lldUserPrompt(
   idea: string,
   requirementsJson: string,
   hldJson: string,
 ): string {
   return `Original idea:\n${idea}\n\nConfirmed requirements (JSON):\n${requirementsJson}\n\nPinned HLD (JSON):\n${hldJson}`;
+}
+
+export function dsaSystemPrompt(): string {
+  return `${CORE_RULES}
+
+Task: produce only the DSA analysis for an architecture whose HLD and LLD are
+already fixed.
+Rules:
+- Return 3-6 DSA recommendations and at most 4 algorithmic patterns. Do not
+  repeat entries. Prefer operation-scoped entries over a technology catalog.
+- DSA recommendation ids use dsa_<name>; algorithmic pattern ids use
+  alg_<name>.
+- For each recommendation state the operation, layer (lld, hld, shared),
+  data structure, algorithm, honest average-case and worst-case complexity in
+  words, assumptions, alternatives, limitations, and requirementRefs.
+- Keep each complexity string under 240 characters; keep algorithm and
+  dataStructure strings concise.
+- Complexity must be derivable from the stated data structure and algorithm.
+  Do not claim constant time for a scan, lock contention, or network round trip.
+- HLD and LLD element ids are pinned; do not rename or invent them.
+- requirementRefs must use ids from the confirmed requirements, or be empty when
+  no requirement applies. Never attach a requirement to an unrelated operation.
+- Do not output classes, relationships, patterns, or learning steps.`;
+}
+
+export function dsaUserPrompt(
+  idea: string,
+  requirementsJson: string,
+  hldJson: string,
+  lldJson: string,
+): string {
+  return `Original idea:\n${idea}\n\nConfirmed requirements (JSON):\n${requirementsJson}\n\nPinned HLD (JSON):\n${hldJson}\n\nPinned LLD (JSON):\n${lldJson}`;
+}
+
+export function learningSystemPrompt(): string {
+  return `${CORE_RULES}
+
+Task: produce only the learning walkthrough for an architecture whose HLD, LLD,
+and DSA are already fixed.
+Rules:
+- Aim for 4-8 learning steps in a sensible teaching order.
+- Learning step ids use step_<name>.
+- Each step has a short title, a concise explanation, and at least one
+  elementRefs entry.
+- elementRefs may contain only existing HLD/LLD/DSA element ids (cls_, rel_,
+  pat_, cmp_, conn_, flow_, tech_, scale_, fail_, dsa_, alg_).
+- Never use requirement ids (fr_/nfr_), invented ids, or the step's own id.
+- Explain why the element matters and how it participates in the design.
+- Do not output model metadata, classes, relationships, patterns, or DSA
+  recommendations.`;
+}
+
+export function learningUserPrompt(
+  idea: string,
+  requirementsJson: string,
+  hldJson: string,
+  lldJson: string,
+  dsaJson: string,
+): string {
+  return `Original idea:\n${idea}\n\nConfirmed requirements (JSON):\n${requirementsJson}\n\nPinned HLD (JSON):\n${hldJson}\n\nPinned LLD (JSON):\n${lldJson}\n\nPinned DSA (JSON):\n${dsaJson}`;
 }
 
 export function hldRegenerateUserPrompt(

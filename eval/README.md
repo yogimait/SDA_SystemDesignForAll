@@ -157,12 +157,15 @@ Suggested initial gates, to be recalibrated after the baseline run:
 npm run eval:validate
 npm run eval:build
 npm run eval:structural -- --model z-ai/glm-5.3-flash --stage architecture --limit 1
-npm run eval:aggregate -- --stage requirements
+npm run eval:structural -- --model z-ai/glm-5.3-flash --stage learning --limit 12
+npm run eval:aggregate -- --stage learning
+npm run eval:regression
 
 # Semantic judge (Python sidecar; no generation calls)
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r judge-requirements.txt
 .venv\Scripts\python.exe judge_architecture.py
+.venv\Scripts\python.exe judge_requirements.py
 node aggregate-judge.mjs
 
 # Judge sensitivity (mutation test; no generation calls)
@@ -203,6 +206,9 @@ generation.
 - Mutation artifacts: `eval/artifacts/mutation/architecture-v1-v3/` and `eval/artifacts/mutation/heldout-v1/` (gitignored)
 - Full judge panel artifacts: `eval/artifacts/judge/v3-panel/` (gitignored)
 - Human calibration: pack generated at `eval/artifacts/calibration/architecture-glm-v1/`; not used because human judging is disabled.
-- LLD/DSA split: still pending; independent component attribution is blocked.
+- LLD/DSA/learning split: implemented; independent component eval complete on 12 dev cases (11/12 first-pass valid, 12/12 with one retry).
+- Split semantic panel: 11 valid outputs; Claude mean 3.148, GPT mean 3.909, inter-judge difference 0.761/5.
+- Requirements semantic panel: 24 outputs; Claude mean 3.432, GPT mean 3.667, inter-judge difference 0.38/5.
+- Regression gate: `npm run eval:regression` compares latest split component aggregate against the frozen baseline; current check passes.
 - Validation and holdout cases: not populated; final generalization gate cannot run.
 - LangSmith tracing: after validation/holdout and a stable judge policy.

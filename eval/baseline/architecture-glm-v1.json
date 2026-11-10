@@ -22,7 +22,7 @@
     "cost_per_valid": 0.010266,
     "component_averages": {
       "hld_components": 10.083,
-      "hld_connections": 14.0,
+      "hld_connections": 14,
       "hld_flows": 1.875,
       "lld_classes": 15.542,
       "lld_relationships": 19.083,
@@ -106,5 +106,54 @@
     "absolute_release_gate": false,
     "relative_regression_use": true,
     "reason": "Both judges detect most injected defects, but control scores and hard flags are unstable, localization fails, and the two judges disagree by 0.859/5 on paired outputs. No human labels are available to establish validity."
+  },
+  "split_component_eval": {
+    "stage": "learning",
+    "artifact": "eval/artifacts/structural/2026-11-10T06-42-19-983Z-z_ai_glm_5_3_flash.jsonl",
+    "runs": 12,
+    "valid_runs": 11,
+    "pass_at_1": 11,
+    "failed_runs": 1,
+    "retry_success": {
+      "case_id": "TC-OBS-010",
+      "valid": true
+    },
+    "avg_duration_ms": 175651,
+    "p95_duration_ms": 407382,
+    "total_tokens": 373061,
+    "cost_usd": 0.117237,
+    "cost_per_valid": 0.010658,
+    "component_averages": {
+      "hld_components": 10.583,
+      "hld_connections": 14,
+      "hld_flows": 2.083,
+      "lld_classes": 14.545,
+      "lld_relationships": 18.364,
+      "lld_patterns": 2.636,
+      "dsa_recommendations": 5.909,
+      "dsa_algorithmic_patterns": 3.636,
+      "learning_steps": 7.636,
+      "learning_unresolved_refs": 0
+    }
+  },
+  "requirements_semantic": {
+    "prompt": "requirements-judge-v1",
+    "paired_outputs": 24,
+    "mean_absolute_difference": 0.38,
+    "judges": {
+      "anthropic/claude-haiku-5.5": 3.432,
+      "openai/gpt-5-nano": 3.667
+    },
+    "status": "uncalibrated"
+  },
+  "split_semantic": {
+    "prompt": "architecture-judge-v3",
+    "paired_outputs": 11,
+    "mean_absolute_difference": 0.761,
+    "judges": {
+      "anthropic/claude-haiku-5.5": 3.148,
+      "openai/gpt-5-nano": 3.909
+    },
+    "status": "uncalibrated"
   }
 }

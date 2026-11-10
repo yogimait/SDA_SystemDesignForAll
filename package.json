@@ -19,6 +19,7 @@
     "eval:mutations:heldout": "node eval/make-mutations.mjs --batch heldout-v1",
     "eval:mutations:report": "node eval/aggregate-mutations.mjs",
     "eval:judge:panel": "node eval/aggregate-judge-panel.mjs",
+    "eval:regression": "node eval/check-regression.mjs",
     "postinstall": "npm run build --workspace @sda/contracts"
   }
 }
