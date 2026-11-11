@@ -157,6 +157,9 @@ export default function PricingPage() {
                   <p className="text-foreground mt-4 text-2xl font-semibold tracking-tight">
                     {formatPrice(plan)}
                   </p>
+                  {pro ? (
+                    <p className="text-success mt-1 text-xs">No setup fee</p>
+                  ) : null}
 
                   <ul className="text-muted-foreground mt-4 grid gap-1.5 text-sm">
                     {plan.features.map((feature) => (

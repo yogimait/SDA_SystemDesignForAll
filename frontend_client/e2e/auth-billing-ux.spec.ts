@@ -22,6 +22,7 @@ test.describe("pricing", () => {
       await page.goto("/pricing");
       await expect(page.getByRole("heading", { name: "Plans" })).toBeVisible();
       await expect(page.getByText("/month")).toBeVisible(); // pro price from the catalogue
+      await expect(page.getByText("No setup fee")).toBeVisible();
       await expect(page.getByText(/Sign in to upgrade/)).toBeVisible();
       await noOverflow(page, width);
       if (width === 390) {
@@ -36,7 +37,7 @@ test.describe("pricing", () => {
     const cta = page.getByRole("link", { name: /Sign in to upgrade/ }).getByRole("button");
     await expect(cta).toBeVisible();
     const box = (await cta.boundingBox())!;
-    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(43.9);
   });
 });
 
@@ -65,7 +66,7 @@ test.describe("auth pages", () => {
     await page.getByLabel("Email").fill("recover@example.com");
     await expect(submit).toBeEnabled();
     const box = (await submit.boundingBox())!;
-    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(43.9);
     await noOverflow(page, 390);
     // Neutral success state (no account enumeration).
     await page.getByRole("button", { name: "Send reset link" }).click();

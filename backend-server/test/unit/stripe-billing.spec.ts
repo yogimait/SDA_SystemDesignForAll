@@ -44,6 +44,7 @@ describe("StripeBillingProvider", () => {
     await provider.createCheckout({
       user: { id: "usr_1", email: "one@example.com" } as never,
       plan: "pro",
+      customerId: "cus_existing",
     });
 
     expect(calls[0]?.url).toBe("https://api.stripe.com/v1/checkout/sessions");
@@ -51,7 +52,28 @@ describe("StripeBillingProvider", () => {
     expect(body.get("success_url")).toBe("https://sda.example/billing/success");
     expect(body.get("cancel_url")).toBe("https://sda.example/billing/cancel");
     expect(body.get("client_reference_id")).toBe("usr_1");
+    expect(body.get("customer")).toBe("cus_existing");
+    expect(body.get("customer_email")).toBeNull();
     expect(body.get("line_items[0][price]")).toBe("price_pro");
+    // No one-time setup fee: the checkout has one recurring line item only.
+    expect(body.get("line_items[1][price]")).toBeNull();
+  });
+
+  it("uses customer_email for a first-time checkout", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const provider = new StripeBillingProvider(config(), async (url, init) => {
+      calls.push({ url: requestUrl(url), init: init ?? {} });
+      return jsonResponse({ id: "cs_1", url: "https://checkout.stripe.test/cs_1" });
+    });
+
+    await provider.createCheckout({
+      user: { id: "usr_1", email: "one@example.com" } as never,
+      plan: "pro",
+    });
+
+    const body = requestBody(calls[0]?.init);
+    expect(body.get("customer")).toBeNull();
+    expect(body.get("customer_email")).toBe("one@example.com");
   });
 
   it("returns to settings from the billing portal", async () => {

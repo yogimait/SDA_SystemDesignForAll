@@ -15,6 +15,11 @@ Client surfaces for the backend billing slice (see `backend-server/docs/Billing.
 
 `POST /api/billing/checkout {plan:"pro"}` → `{checkoutId, url, provider}`. `lib/billing/checkout.ts` resolves the target purely: same-origin URLs (the stub) navigate in-app; Stripe-hosted URLs get a full external redirect. Only `http:`/`https:` targets are navigable — `javascript:`, `data:` and malformed values resolve to `kind: "invalid"` and both callers (pricing checkout, settings portal) refuse the redirect instead of assigning it. The stub then completes through the non-production `POST /api/billing/checkout/:id/complete`.
 
+## Fees
+
+Pro is one recurring subscription price with no setup fee. Stripe's normal
+per-transaction processing fee still applies.
+
 ## Settings → Billing
 
 `GET /api/billing/subscription` drives the card: plan tier, subscription status, period end / cancel-at-period-end. Stripe deployments show **Manage billing** (`POST /api/billing/portal`, hosted portal) and **Cancel plan** (`POST /api/billing/cancel`, behind a focused confirm dialog that restates the consequence — stub downgrades immediately, Stripe keeps Pro until period end). The stub provider hides the portal control (its `/account/billing` URL is not part of this app) — no dead controls. Free accounts link to `/pricing`.

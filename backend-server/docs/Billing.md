@@ -90,6 +90,13 @@ Handled types: `checkout.session.completed` (activate Pro using `client_referenc
 
 Errors reuse `PROVIDER_UNAVAILABLE` (upstream billing failure), `VALIDATION_ERROR` with `reason: "webhook_invalid"`, and `ROUTE_NOT_FOUND` (hidden stub route).
 
+## Fees
+
+There is no application setup fee and no one-time Stripe line item. Pro is a
+single recurring subscription price. Stripe still charges its normal payment
+processing fee per successful transaction; that is deducted by Stripe, not
+added as an application setup charge.
+
 ## Limits and upgrades
 
 `PlanService` reads `PLAN_LIMITS`, derived from `PLAN_CATALOG`, so a plan change in contracts updates both the marketing catalogue and enforcement. Checkout completion or a webhook updates `users.plan_tier`; the next request sees the new limits with no restart.

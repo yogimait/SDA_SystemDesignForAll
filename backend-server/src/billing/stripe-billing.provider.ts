@@ -44,10 +44,14 @@ export class StripeBillingProvider implements BillingProvider {
       success_url: `${base}/billing/success`,
       cancel_url: `${base}/billing/cancel`,
       client_reference_id: input.user.id,
-      customer_email: input.user.email,
       "line_items[0][price]": price,
       "line_items[0][quantity]": "1",
     });
+    if (input.customerId) {
+      body.set("customer", input.customerId);
+    } else {
+      body.set("customer_email", input.user.email);
+    }
     const session = await this.request("/checkout/sessions", body);
     if (typeof session.id !== "string" || typeof session.url !== "string") {
       throw new AppError(

@@ -17,6 +17,8 @@ export interface WebhookEvent {
 export interface CheckoutInput {
   user: UserRow;
   plan: PlanTier;
+  /** Reuse an existing provider customer when the account has one. */
+  customerId?: string | null;
 }
 
 /**

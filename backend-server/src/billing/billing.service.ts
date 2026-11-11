@@ -60,7 +60,12 @@ export class BillingService {
         "Billing is not configured on this deployment.",
       );
     }
-    const session = await this.provider.createCheckout({ user, plan });
+    const existing = await this.billing.getSubscription(user.id);
+    const session = await this.provider.createCheckout({
+      user,
+      plan,
+      customerId: existing?.customerId ?? null,
+    });
     return {
       checkoutId: session.checkoutId,
       url: session.url,
