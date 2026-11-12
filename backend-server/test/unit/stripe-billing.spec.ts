@@ -92,6 +92,35 @@ describe("StripeBillingProvider", () => {
     expect(body.get("return_url")).toBe("https://sda.example/settings");
   });
 
+  it("explains an unknown price instead of a generic 502", async () => {
+    const provider = new StripeBillingProvider(config(), async () =>
+      jsonResponse(
+        {
+          error: {
+            code: "resource_missing",
+            param: "line_items[0][price]",
+          },
+        },
+        404,
+      ),
+    );
+
+    await expect(
+      provider.createCheckout({
+        user: { id: "usr_1", email: "one@example.com" } as never,
+        plan: "pro",
+      }),
+    ).rejects.toMatchObject({
+      code: "PROVIDER_UNAVAILABLE",
+      message: expect.stringContaining("STRIPE_PRICE_PRO"),
+      details: {
+        providerStatus: 404,
+        stripeCode: "resource_missing",
+        stripeParam: "line_items[0][price]",
+      },
+    });
+  });
+
   it("verifies the Stripe webhook signature", async () => {
     const provider = new StripeBillingProvider(config(), async () =>
       jsonResponse({}),

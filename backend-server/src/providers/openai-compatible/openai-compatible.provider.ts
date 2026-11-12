@@ -50,7 +50,7 @@ interface RequestOutcome {
 }
 
 /**
- * Shared OpenAI-compatible adapter for OpenRouter and Groq. BYOK: the key is
+ * Shared OpenAI-compatible adapter for OpenRouter and Groq. The hosted key is
  * bound per request by the registry and is never stored or logged. Falls back
  * down the structured-output ladder when a model does not support the stricter
  * mode, remembering the result per model.
@@ -80,7 +80,7 @@ export class OpenAiCompatibleProvider {
     if (!apiKey.trim()) {
       throw new AppError(
         "PROVIDER_AUTH_FAILED",
-        "A provider API key is required in the x-provider-api-key header.",
+        "The hosted model provider key is not configured on this deployment.",
       );
     }
 

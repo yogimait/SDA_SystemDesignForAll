@@ -1,5 +1,4 @@
 import { Module } from "@nestjs/common";
-import { CredentialsModule } from "../credentials/credentials.module.js";
 import { ProvidersModule } from "../providers/providers.module.js";
 import { ArchitectureGenerator } from "./architecture.generator.js";
 import { GenerationWorker } from "./generation.worker.js";
@@ -9,7 +8,7 @@ import { RunEventsService } from "./run-events.service.js";
 import { RunService } from "./run.service.js";
 
 @Module({
-  imports: [ProvidersModule, CredentialsModule],
+  imports: [ProvidersModule],
   controllers: [RunController],
   providers: [
     RequirementsGenerator,

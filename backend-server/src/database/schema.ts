@@ -172,8 +172,8 @@ export const userPreferences = pgTable("user_preferences", {
 });
 
 /**
- * Account-scoped BYOK vault. Only AES-256-GCM ciphertext and its IV/tag are
- * stored; the plaintext key never touches the database or the logs.
+ * Legacy account-scoped BYOK table. Generation uses the hosted server key, so
+ * no application path writes here; kept to avoid a destructive migration.
  */
 export const userProviderCredentials = pgTable(
   "user_provider_credentials",

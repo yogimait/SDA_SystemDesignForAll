@@ -54,7 +54,6 @@ export function configureApp(app: INestApplication): void {
     allowedHeaders: [
       "content-type",
       "authorization",
-      "x-provider-api-key",
       "x-project-key",
       "x-csrf-token",
     ],

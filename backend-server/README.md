@@ -40,16 +40,16 @@ Configuration is Zod-validated at boot; invalid values stop the process with a r
 | `PGLITE_DATA_DIR` | `.data/pglite` | PGlite data directory; `memory://` for tests. |
 | `DATABASE_URL` | — | Required when `DATABASE_DRIVER=postgres`. |
 | `MOCK_PROVIDER` | `0` | Explicit deterministic provider for demos/tests. |
-| `DEFAULT_PROVIDER` | `openrouter` | Provider when a request omits one: `openrouter` or `groq`. |
-| `DEFAULT_MODEL` | `z-ai/glm-5.3-flash` | Active model when a request omits one. |
+| `DEFAULT_PROVIDER` | `openrouter` | Hosted provider: `openrouter` or `groq`. |
+| `DEFAULT_MODEL` | `z-ai/glm-5.3-flash` | Active hosted model. |
 | `OPENROUTER_MODELS` | `z-ai/glm-5.3-flash,...` | Comma-separated OpenRouter model catalog shown by `GET /api/providers`. |
 | `GROQ_MODELS` | `openai/gpt-oss-120b,...` | Comma-separated Groq model catalog shown by `GET /api/providers`. |
-
-`OPENROUTER_MODEL` and `GROQ_MODEL` were renamed to the plural forms above. The old singular names are ignored; move existing values into the comma-separated catalogs. Keep `DEFAULT_MODEL` inside the selected provider's catalog so the dropdown shows the active default.
 | `OPENROUTER_REASONING_EFFORT` | `low` | `off`, `low`, `medium`, `high`, or `max`; reasoning tokens share `max_tokens`. |
 | `GROQ_REASONING_EFFORT` | `low` | `off`, `low`, `medium`, or `high`; sent as `reasoning_effort`. |
-| `OPENROUTER_API_KEY` | — | Local development fallback only. The `x-provider-api-key` header wins; ignored when `NODE_ENV=production`. |
-| `GROQ_API_KEY` | — | Local development fallback only. The `x-provider-api-key` header wins; ignored when `NODE_ENV=production`. |
+| `OPENROUTER_API_KEY` | - | Hosted OpenRouter key used by generation. Required for the default provider. |
+| `GROQ_API_KEY` | - | Hosted Groq key; required only when `DEFAULT_PROVIDER=groq`. |
+
+`OPENROUTER_MODEL` and `GROQ_MODEL` were renamed to the plural forms above. The old singular names are ignored; move existing values into the comma-separated catalogs.
 | `GENERATION_CONCURRENCY` | `1` | Reserved; the worker is single-run. |
 | `GENERATION_POLL_INTERVAL_MS` | `100` | Worker polling cadence. |
 | `MAX_REQUEST_BYTES` | `1000000` | JSON body limit. |
@@ -68,9 +68,16 @@ Configuration is Zod-validated at boot; invalid values stop the process with a r
 
 ## Real provider runs
 
-The production path is BYOK: send the OpenRouter key as `x-provider-api-key` when starting a run. It stays in memory for that run, is never persisted, and is redacted from logs. With `MOCK_PROVIDER=1`, no key is needed and the mock provider wins over any request value.
+Generation is paid and hosted: the server uses `OPENROUTER_API_KEY` (or
+`GROQ_API_KEY` when Groq is selected) for every run. The key stays in memory for
+that run, is never persisted, and is redacted from logs. The frontend never
+asks for a provider key. With `MOCK_PROVIDER=1`, no key is needed and the mock
+provider wins over any request value.
 
-For local development, you can put `OPENROUTER_API_KEY` and/or `GROQ_API_KEY` in `backend-server/.env` instead of using the provider dialog on every run. The request header still wins; production ignores the env fallback. Never commit `.env` or set these variables in a deployed environment. Groq's free GPT-OSS 120B key is limited to 8k TPM, so it cannot run the full 64k LLD/DSA stage in one request; use OpenRouter, upgrade Groq, or split the stage.
+Set the hosted key in `backend-server/.env` for local development and in the
+Render environment for production. Never commit `.env`. Groq's free GPT-OSS 120B
+key is limited to 8k TPM, so it cannot run the full 64k LLD/DSA stage in one
+request; use OpenRouter, upgrade Groq, or split the stage.
 
 ```http
 POST /api/projects
@@ -101,7 +108,7 @@ The response contains a one-time `accessKey`; send it as `x-project-key` on ever
 | `POST` | `/api/projects` | Create project; owner when authenticated; access key once. |
 | `GET` | `/api/projects` | List owned projects with cursor/limit/status. |
 | `GET` | `/api/projects/:id` | Project state. |
-| `GET`/`PUT` | `/api/provider-config` | Read/save non-secret provider selection. |
+| `GET`/`PUT` | `/api/provider-config` | Legacy non-secret provider selection (not used by the UI). |
 | `GET`/`PUT` | `/api/preferences` | Read/merge user preferences. |
 | `GET` | `/api/dashboard` | Usage totals, buckets, top models, recent runs. |
 | `POST` | `/api/projects/:id/requirements` | Start requirements generation. |
@@ -189,7 +196,7 @@ Start at [docs/Home.md](docs/Home.md): architecture, API, data model, generation
 
 - Project access keys are random 256-bit values, stored only as SHA-256 hashes and compared in constant time.
 - Passwords use scrypt with per-password salt; session tokens are opaque and stored only as SHA-256 hashes.
-- Provider keys are never logged, persisted, or included in error details.
+- The hosted provider key is never logged, persisted, or included in error details; clients cannot supply keys.
 - Request bodies are capped; error messages are redacted and bounded.
 - Login performs a dummy scrypt verification for unknown emails so response timing does not reveal account existence.
 - API responses set `nosniff`, frame-deny, no-referrer, restrictive CSP/Permissions-Policy headers, and omit `X-Powered-By`.

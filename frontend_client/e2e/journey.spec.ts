@@ -6,7 +6,7 @@
  * of the planner's viewport sweep; manual sweeps stay in the planner).
  */
 import { expect, test, type Page } from "@playwright/test";
-import { fillAuthForm, PROVIDER_SETUP_SEED } from "./helpers";
+import { fillAuthForm } from "./helpers";
 
 const IDE_TEXT =
   "Design a distributed rate limiter for a public API with sliding windows and a Redis backing store.";
@@ -14,8 +14,6 @@ const IDE_TEXT =
 /** Drive landing → requirements → confirm → workspace. */
 async function registerViaUI(page: Page): Promise<void> {
   const email = `journey_${Date.now().toString(36)}@example.com`;
-  // A run needs provider + model + key in this tab (requirements gate).
-  await page.addInitScript(PROVIDER_SETUP_SEED);
   await page.goto("/login");
   await page.getByRole("tab", { name: "Create account" }).click();
   await fillAuthForm(page, email, "Supersecret123!", { confirm: true, mode: "register" });

@@ -140,20 +140,6 @@ export function DockButton({
   );
 }
 
-/**
- * Arbitrary self-contained control dropped into the dock (used for the
- * Provider dialog trigger on landing/library, which is blocked elsewhere).
- * The label span is suppressed so the trigger stays icon-only — the button
- * keeps its aria-label ("Provider setup" / "Provider ready").
- */
-export function DockSlot({ children }: { children: ReactNode }) {
-  return (
-    <div className="dock-providers flex items-center justify-center">
-      {children}
-    </div>
-  );
-}
-
 /** Classes for the horizontal header card's docked state (fade + rise out). */
 export const HORIZONTAL_HEADER_DOCKED =
   "pointer-events-none -translate-y-2 opacity-0";

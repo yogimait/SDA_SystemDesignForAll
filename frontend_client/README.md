@@ -32,11 +32,8 @@ idea → generate requirement proposals → confirm the specification → the
 architecture generates → open the collaborative workspace (LLD / HLD / DSA
 tabs, outline, details, guided learning steps).
 
-Using a real provider: enter an OpenRouter key in the landing "Provider
-setup" dialog (BYOK). It can stay in that browser tab for the session, or a
-signed-in user can opt in to save it encrypted to their account; a tab key
-travels only via the `x-provider-api-key` header, and the backend never returns
-a stored key.
+Generation is payment-only: users pick a plan and never enter a provider key.
+The backend uses its hosted `OPENROUTER_API_KEY` for every run.
 
 ## Checks
 
@@ -62,7 +59,7 @@ The Impeccable detector runs on `app` for design-quality checks
 | Path | Responsibility |
 | --- | --- |
 | `app/` | Routes: landing `/`, `projects/[id]/requirements`, `projects/[id]/workspace` (PPR, `cacheComponents` on). |
-| `components/` | Landing (idea form, provider dialog), requirements (spec editor, run progress), workspace (shell, sidebar, details, DSA view), diagram (LLD SVG renderer, HLD SVG renderer), `ui/` primitives. |
+| `components/` | Landing (idea form, how-it-works), requirements (spec editor, run progress), workspace (shell, sidebar, details, DSA view), diagram (LLD SVG renderer, HLD SVG renderer), `ui/` primitives. |
 | `lib/diagram/` | dagre layout + scene builders for the UML class diagram and HLD system diagram (custom SVG renderer, no React Flow). |
 | `lib/api/` | Envelope-aware fetch client (`lib/api/client.ts`) — error-code → user-message table, secret headers, Zod response validation. |
 | `hooks/` | `use-generation-run` polling, `use-media-query` breakpoints. |

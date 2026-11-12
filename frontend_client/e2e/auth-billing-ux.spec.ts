@@ -157,13 +157,6 @@ test.describe("billing pages", () => {
         }),
       }),
     );
-    await page.route("**/api/users/me/provider-keys**", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ status: true, statusCode: 200, data: { credentials: [] } }),
-      }),
-    );
     await page.addInitScript(`
       window.sessionStorage.setItem("sda:auth:user", JSON.stringify({
         user: { id: "usr_ux", email: "ux@example.com", planTier: "pro", emailVerifiedAt: "t", createdAt: "t", updatedAt: "t" },

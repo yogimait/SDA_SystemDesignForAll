@@ -59,22 +59,20 @@ describe("apiFetch — success path", () => {
     expect(stub.calls[0].url).toContain("/api/health");
   });
 
-  it("sends secret headers and content-type, never in the URL", async () => {
+  it("sends the project access header and content-type, never in the URL", async () => {
     const stub = stubFetch(jsonResponse(200, successEnvelope(200, {})));
 
     await apiFetch("/api/projects/p_1/architecture", {
       method: "POST",
       body: JSON.stringify({ scope: "lld" }),
-      providerKey: "sk-or-test",
       projectKey: "pk_test",
     });
 
     const init = stub.calls[0].init;
     const headers = init?.headers as Record<string, string>;
-    expect(headers["x-provider-api-key"]).toBe("sk-or-test");
+    expect(headers["x-provider-api-key"]).toBeUndefined();
     expect(headers["x-project-key"]).toBe("pk_test");
     expect(headers["content-type"]).toBe("application/json");
-    expect(stub.calls[0].url).not.toContain("sk-or-test");
     expect(stub.calls[0].url).not.toContain("pk_test");
   });
 });

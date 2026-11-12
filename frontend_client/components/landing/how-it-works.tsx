@@ -3,7 +3,7 @@
 /**
  * "How it works" (Stitch Coffee reference): four pipeline steps joined by a
  * dashed rail. The control/verification detail from the previous landing stays
- * as one collapsed disclosure so the honest BYOK/export facts are still one
+ * as one collapsed disclosure so the honest hosted-model/export facts are still one
  * click away without adding copy to the screen.
  */
 import { useState } from "react";
@@ -42,7 +42,7 @@ const STEPS = [
 const CONTROLS = [
   {
     title: "Your model, your key",
-    body: "Runs use your own provider key (OpenRouter or Groq). Keep it in this browser tab for the session, or opt in to save it encrypted to your account so it works across devices. Keys are never logged, and only travel to the provider call.",
+    body: "Generation is included with your plan. The server runs the hosted model, so you never paste or manage a provider API key. Plan limits are enforced automatically.",
   },
   {
     title: "One validated model",

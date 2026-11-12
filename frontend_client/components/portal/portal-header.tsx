@@ -4,7 +4,7 @@
  * Shared chrome for the signed-in portal pages (library / dashboard /
  * settings): brand link, primary nav, account identity + sign out. Desktop
  * scrolling cross-fades the card into the floating vertical dock; below lg a
- * hamburger sheet exposes nav + identity + provider setup (library only).
+ * hamburger sheet exposes nav + identity.
  */
 
 import Link from "next/link";
@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import {
   DockButton,
   DockLink,
-  DockSlot,
   HORIZONTAL_HEADER_DOCKED,
   ScrollDock,
   useDock,
@@ -32,7 +31,6 @@ import {
 } from "@/components/ui/floating-header";
 import { useSession } from "@/hooks/use-session";
 import { signOut } from "@/hooks/use-session";
-import { ProviderDialog } from "@/components/landing/provider-dialog";
 import { cn } from "cn";
 
 const NAV = [
@@ -95,7 +93,6 @@ export function PortalHeader({ current }: { current: "library" | "dashboard" | "
             <span className="lg:hidden">
               <MobileNavSheet
                 links={NAV}
-                providerSetup={current === "library"}
                 onSignOut={() => {
                   void signOut();
                   router.push("/login");
@@ -147,11 +144,6 @@ export function PortalHeader({ current }: { current: "library" | "dashboard" | "
             current={currentPath === item.href}
           />
         ))}
-        {current === "library" ? (
-          <DockSlot>
-            <ProviderDialog />
-          </DockSlot>
-        ) : null}
         {session !== null ? (
           <DockButton
             label="Sign out"

@@ -62,7 +62,7 @@ All three views must come from the same confirmed requirements and the same cano
 
 ## Non-goals (for now)
 
-- Full multi-user accounts and hosted key management (BYOK only for now).
+- Full multi-user accounts and hosted generation (users pay for a plan; the server owns the provider key).
 - Public hosting on Supabase (Postgres interface is kept swappable for later).
 - Docker/containers in local development.
 - Export to PDF/images, collaboration, code generation from diagrams, token streaming UI.

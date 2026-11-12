@@ -8,7 +8,6 @@ Theme: **"Coffee"** — slightly dark warm charcoal, minimalist, accessible. Def
 - Design system asset: `assets/16d57281596d40f4b8d031ea3afa8e15` (authored from an uploaded DESIGN.md = the token list below)
 - Screens (HTML downloadable via `download_file` by file name):
   - Landing: `projects/4701967166422589636/files/f43e32478d1a49079b2ab7ec5cda99ff`
-  - Provider setup dialog: `projects/4701967166422589636/files/1aa1eef543fa4c76b66bfee3e92c103e`
 - All future screens must pin `designSystem: assets/16d57281596d40f4b8d031ea3afa8e15`.
 
 ## Tokens (app/globals.css — single dark theme, deliberate)

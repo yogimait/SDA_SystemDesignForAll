@@ -29,7 +29,7 @@ export class ProviderRegistry {
     return this.config.DEFAULT_MODEL;
   }
 
-  /** Validates provider selection and binds the BYOK key for one run. */
+  /** Validates provider selection and binds the hosted key for one run. */
   resolve(providerId?: string, apiKey?: string): ModelProvider {
     if (this.config.MOCK_PROVIDER) {
       return this.mock;
@@ -49,13 +49,13 @@ export class ProviderRegistry {
         { provider: id, available: ["openrouter", "groq"] },
       );
     }
-    const key =
-      apiKey?.trim() ||
-      (this.config.NODE_ENV === "production" ? undefined : configuredKey);
+    // The hosted account key powers the product. A request header can still
+    // override it for internal tooling, but the client no longer sends one.
+    const key = apiKey?.trim() || configuredKey;
     if (!key) {
       throw new AppError(
         "PROVIDER_AUTH_FAILED",
-        "A provider API key is required in the x-provider-api-key header.",
+        "The hosted model provider key is not configured on this deployment.",
       );
     }
     return id === "groq"

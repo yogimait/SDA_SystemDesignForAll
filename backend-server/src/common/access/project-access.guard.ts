@@ -65,11 +65,6 @@ export class ProjectAccessGuard implements CanActivate {
     const isRunRoute = firstParam(request.params.runId) !== undefined;
     const user = await this.auth.resolveOptional(request);
     // Project-key access must not inherit the owner's vault: only a Bearer
-    // session identifies the account whose stored key may be used.
-    if (user) {
-      request.authenticatedUserId = user.id;
-    }
-
     if (!key && !hasBearer) {
       throw new AppError(
         "PROJECT_ACCESS_DENIED",

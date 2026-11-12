@@ -24,7 +24,6 @@ import {
   type ProjectRequest,
 } from "../common/access/project-access.guard.js";
 import { RequireVerifiedEmailGuard } from "../common/access/verified-email.guard.js";
-import { readProviderKey } from "../common/http/headers.js";
 import { ZodValidationPipe } from "../common/validation/zod-validation.pipe.js";
 import { RunService } from "../generation/run.service.js";
 import { ArchitectureService } from "./architecture.service.js";
@@ -48,9 +47,7 @@ export class ArchitectureController {
     return this.runs.startArchitecture(
       requireProject(request),
       options,
-      readProviderKey(request),
       request.user,
-      request.authenticatedUserId,
     );
   }
 
@@ -66,9 +63,7 @@ export class ArchitectureController {
       requireProject(request),
       body.scope,
       { provider: body.provider, model: body.model },
-      readProviderKey(request),
       request.user,
-      request.authenticatedUserId,
     );
   }
 

@@ -1,12 +1,11 @@
 /**
- * Navigation round e2e: desktop floating dock (appear/hide/provider rules)
+ * Navigation round e2e: desktop floating dock (appear/hide rules)
  * and the mobile menu sheet (identity, links, focus return, Escape). Also
  * asserts no horizontal page overflow at phone widths.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { fillAuthForm } from "./helpers";
 
-const DOCK = "Floating quick dock";
 const HAMBURGER = "Open navigation menu";
 
 /** True when keyboard focus sits inside the given labelled region. */
@@ -49,9 +48,7 @@ async function assertNoOverflow(page: Page, width: number): Promise<void> {
   expect(overflow, `page overflow at ${width}px`).toBeLessThanOrEqual(0);
 }
 
-test("desktop dock: appears on scroll, hides at top, provider allowed on landing", async ({
-  page,
-}) => {
+test("desktop dock: appears on scroll and hides at top", async ({ page }) => {
   const viewport = { width: 1440, height: 900 };
   await page.setViewportSize(viewport);
   await page.goto("/");
@@ -73,11 +70,6 @@ test("desktop dock: appears on scroll, hides at top, provider allowed on landing
   const home = dock.getByRole("link", { name: "Home" });
   await expect(home).toBeVisible();
 
-  // Provider setup lives in the dock on landing.
-  await dock.getByRole("button", { name: "Provider setup" }).click();
-  await expect(page.getByRole("dialog", { name: "Set up model access" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog", { name: "Set up model access" })).toBeHidden();
   // Scroll back to the top deterministically (wheel can be intercepted by
   // the closing dialog overlay).
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -90,28 +82,7 @@ test("desktop dock: appears on scroll, hides at top, provider allowed on landing
   await assertNoOverflow(page, viewport.width);
 });
 
-test("desktop dock: provider setup blocked off landing/library", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await registerViaUI(page);
-  await page.goto("/dashboard");
-  // Force a deep scroll regardless of how tall the (possibly empty) page is.
-  await page.evaluate(() => {
-    document.body.style.minHeight = "2400px";
-    window.scrollTo(0, 800);
-  });
-  await page.waitForTimeout(350);
-  const dock = page.getByRole("navigation", { name: DOCK });
-  await expect(
-    dock.getByRole("link", { name: "Dashboard" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("navigation", { name: DOCK }).getByRole("button", {
-      name: "Provider setup",
-    }),
-  ).toHaveCount(0);
-});
-
-test("mobile menu: identity, links, provider, focus return (portal)", async ({ page }) => {
+test("mobile menu: identity, links, focus return (portal)", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await registerViaUI(page);
 
@@ -133,15 +104,11 @@ test("mobile menu: identity, links, provider, focus return (portal)", async ({ p
     .click();
   await expect(page).toHaveURL(/\/library$/);
 
-  // Provider setup allowed on library; accessible inside the sheet.
-  await page.getByRole("button", { name: HAMBURGER }).click();
-  const sheet2 = page.getByRole("dialog", { name: "Navigation" });
-  await expect(sheet2).toBeVisible();
-  await sheet2.getByRole("button", { name: "Provider setup" }).click();
-  await expect(page.getByRole("dialog", { name: "Set up model access" })).toBeVisible();
+  // Escape closes the sheet and returns focus to the trigger that opened it.
+  await trigger.click();
+  await expect(page.getByRole("dialog", { name: "Navigation" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.keyboard.press("Escape");
-  await expect(sheet2).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Navigation" })).toBeHidden();
   await expect(trigger).toBeFocused();
 });
 
@@ -222,14 +189,6 @@ test("workspace Annotate is reachable below sm and toggles", async ({ page }) =>
   await page.getByLabel("Your system idea").fill("Design a URL shortener.");
   await page.getByRole("button", { name: "Start design session" }).click();
   await expect(page).toHaveURL(/\/requirements$/);
-  // The requirements gate now needs provider setup before generation.
-  await page.getByRole("button", { name: "Add provider & key" }).click();
-  const setupDialog = page.getByRole("dialog", { name: "Set up model access" });
-  await setupDialog.getByRole("combobox", { name: "Provider" }).click();
-  await page.getByRole("option", { name: "OpenRouter" }).click();
-  await setupDialog.getByLabel("API key").fill("sk-or-e2e-workspace-01");
-  await setupDialog.getByRole("button", { name: "Save provider setup" }).click();
-  await expect(page.getByRole("button", { name: "Add provider & key" })).toBeHidden();
   await page.getByRole("button", { name: "Generate requirements" }).click();
   const confirmButton = page.getByRole("button", { name: /Confirm & generate architecture/ });
   await confirmButton.waitFor({ timeout: 90_000 });

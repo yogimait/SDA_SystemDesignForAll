@@ -41,7 +41,7 @@ sequenceDiagram
   participant W as GenerationWorker
   participant P as ModelProvider
   participant G as Generators
-  API->>API: resolve provider, bind BYOK key in memory
+  API->>API: assert plan limits, bind hosted key in memory
   API->>Q: insert run + stages (queued)
   API->>W: wake()
   loop poll interval
@@ -58,7 +58,7 @@ Key properties:
 
 - Concurrency 1: one tick at a time, one run per tick.
 - The provider instance for a run is registered in an in-memory `Map<runId, ModelProvider>` before the run row is created. It is deleted in `finally`, whether the run succeeds or fails.
-- The BYOK key exists only inside the bound provider closure; it is never written to the database or logs.
+- The hosted provider key exists only inside the bound provider closure; it is never written to the database or logs. Clients do not send keys.
 - If the server restarts, the map is empty. Reconciliation marks the old run interrupted rather than trying to continue without credentials.
 - A claimed run missing its in-memory provider fails with `PROVIDER_AUTH_FAILED`.
 - Defensive tick failures are logged; the interval keeps polling.
@@ -163,7 +163,7 @@ DSA regeneration does not touch `hld` or `lld`; the e2e suite asserts the untouc
 
 | Condition | Run error |
 | --- | --- |
-| Missing or invalid provider key | `PROVIDER_AUTH_FAILED` |
+| Hosted provider key missing or rejected | `PROVIDER_AUTH_FAILED` |
 | Provider 429 | `PROVIDER_RATE_LIMITED` (with `retryAfterSeconds` when supplied) |
 | Provider timeout / 408 / 504 | `PROVIDER_TIMEOUT` |
 | Provider network / 5xx | `PROVIDER_UNAVAILABLE` |

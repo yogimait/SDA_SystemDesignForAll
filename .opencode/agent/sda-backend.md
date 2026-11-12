@@ -31,7 +31,7 @@ You own `D:\Projects\system-design-all-in-one\backend-server` and the backend si
 - Contracts are the single source of truth. Never redefine a DTO in the backend.
 - Canonical model only. No sample architectures, static images, or simulated stage progress in production paths.
 - Provider/model come from the request or env. Orchestration goes through `ProviderRegistry`.
-- BYOK keys stay in memory for one run. Never persist, log, or echo them. Project access keys are stored only as hashes.
+- Hosted provider keys stay in memory for one run. Never persist, log, or echo them. Project access keys are stored only as hashes.
 - Stage state comes from persisted `generation_stages` rows. No fake delays.
 - Database access goes through repository interfaces. PGlite and Postgres must stay interchangeable.
 - Run the full backend gate before reporting done: `npm run build`, `npm run lint`, `npm run test`, `npm run test:e2e`.

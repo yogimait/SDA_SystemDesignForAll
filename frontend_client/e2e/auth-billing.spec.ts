@@ -75,7 +75,6 @@ function mockPortal(page: Page, user: typeof USER = USER): void {
     mock: true,
   }));
   page.route("**/api/users/me/provider-config", oh({ config: { provider: "openrouter", model: "z-ai/glm-5.3-flash", updatedAt: "t" } }));
-  page.route("**/api/users/me/provider-keys**", oh({ credentials: [] }));
   page.route("**/api/projects?*", oh({ projects: [], nextCursor: null }));
   page.route("**/api/billing/plans", oh(PLANS));
   page.route("**/api/billing/subscription", oh({ subscription: null, planTier: "free" }));
@@ -230,8 +229,6 @@ test.describe("billing", () => {
   test("pricing → stub checkout → success refreshes the plan", async ({ page }) => {
     let meCalls = 0;
     await page.route("**/api/billing/plans", oh(PLANS));
-    // SiteHeader mounts the provider dialog for signed-in users.
-    await page.route("**/api/users/me/provider-keys**", oh({ credentials: [] }));
     await page.route("**/api/billing/checkout", (route) => {
       if (route.request().method() !== "POST") return route.fallback();
       return oh({
@@ -367,7 +364,6 @@ test.describe("access-token refresh", () => {
       document.cookie = "sda_csrf=new-tab-nonce; path=/";
     `);
     mockAuthRoutes(page, USER);
-    page.route("**/api/users/me/provider-keys**", oh({ credentials: [] }));
     page.route("**/api/projects?*", oh({
       projects: [
         {
@@ -401,7 +397,6 @@ test.describe("access-token refresh", () => {
       tokenType: "Bearer",
       expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
     }));
-    await page.route("**/api/users/me/provider-keys**", oh({ credentials: [] }));
     await page.route("**/api/projects?*", (route) => {
       const header = route.request().headers()["authorization"];
       if (header === "Bearer token_boot_refresh") authorized += 1;

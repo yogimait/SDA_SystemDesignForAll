@@ -1,6 +1,6 @@
 # Portal — user account surfaces
 
-Post-[[Workspace-LLD]] round: accounts, project library, provider preferences, and the analytics dashboard. All payloads render from `@sda/contracts`; see [[API-Client]] for the session/Bearer mechanics.
+Post-[[Workspace-LLD]] round: accounts, project library, billing, and the analytics dashboard. Generation uses the hosted server model, so there are no provider preferences or key controls. All payloads render from `@sda/contracts`; see [[API-Client]] for the session/Bearer mechanics.
 
 ## Sessions and route access
 
@@ -15,15 +15,17 @@ Post-[[Workspace-LLD]] round: accounts, project library, provider preferences, a
 
 | Route | Data | Notes |
 | --- | --- | --- |
-| `/library` | `GET /api/projects?status&limit&cursor` | Status filter (4 statuses + all, horizontal scroll row on phones with 44px hit targets), cursor pagination (Load more), workspace link per project, **provider setup trigger kept visibly labeled at every width** (`labeled-provider` rule in globals.css; BYOK lives on the landing + library pages only). |
+| `/library` | `GET /api/projects?status&limit&cursor` | Status filter (4 statuses + all, horizontal scroll row on phones with 44px hit targets), cursor pagination (Load more), workspace link per project. |
 | `/dashboard` | `GET /api/dashboard?range` | Range switch (7/30/90), usage totals, token buckets, top models, recent runs (`sortRunsNewestFirst`), empty state, plan-gate card for `PLAN_*` codes. Formatting: `lib/dashboard/format.ts`. Range switches keep the previous content with a subtle `aria-busy` + "Updating…" status — skeletons only on first load (QA D3). Chart ticks are edge-anchored and evenly spread (`bucketTickIndices`) so they never clip (QA D4). |
-| `/settings` | `GET/PUT /api/users/me/provider-config` + `GET/DELETE /api/users/me/provider-keys` + `GET /api/billing/subscription` + `DELETE /api/users/me` | Generation defaults (**provider + model, no API key**), Saved API keys (encrypted account vault status, updated/last-used, inline-confirmed removal, empty state), Billing (plan, renewal, cancel, provider portal), Account (verification status + resend, password-confirmed delete — the vault cascades with the account). One provider/model source shared with the dialog; see [[Billing]] and [[Auth-Flows]]. |
+| `/settings` | `GET /api/billing/subscription` + `DELETE /api/users/me` | Billing (plan, renewal, cancel, provider portal), Account (verification status + resend, password-confirmed delete), and a hosted-generation explainer. No provider/model/key controls. See [[Billing]] and [[Auth-Flows]]. |
 
-## Settings: one source of truth
+## Settings: account and billing only
 
-- `provider-config` (`GET/PUT /api/users/me/provider-config`) owns provider + model. The provider dialog (landing/library/requirements) pre-fills from it and `PUT`s it back on save, so there is no second copy. A run request carries provider + model and, when this tab holds one, `x-provider-api-key`; a signed-in user's opt-in encrypted account key (`GET/PUT/DELETE /api/users/me/provider-keys`) is the fallback the backend resolves, and the backend uses `DEFAULT_PROVIDER`/`DEFAULT_MODEL` only when the request omits them. The dialog and the Saved API keys card only ever see status (never the key).
-- The former **Preferences** card is gone. Its theme switch changed nothing (the app ships one branded dark palette) and its `defaultProvider`/`defaultModel` duplicated `provider-config` with no read path in run orchestration — removed rather than left to diverge. `data-theme` plumbing (`lib/theme/preferences.ts`, `components/theme/theme-applier.tsx`) stays for a future palette; there is no control to set it.
-- **Reasoning effort** is no longer editable: the stored `reasoningEffort` is not read by any generator (adapters take it from `OPENROUTER_REASONING_EFFORT`/`GROQ_REASONING_EFFORT`). Settings keeps the stored value intact on save but does not pretend to change it.
+Settings shows the current subscription, account verification, and account
+deletion. Generation is included with the plan; the server selects and runs the
+hosted model, so the page has no provider, model, or API-key controls. The old
+provider dialog, saved-keys card, and provider-preference plumbing were removed
+with the hosted-key switch.
 
 ## Theme preference plumbing (D7)
 
@@ -35,7 +37,7 @@ When the backend returns `AUTH_REQUIRED` for anonymous `POST /api/projects`, the
 
 ## Backend coupling (as of this round)
 
-The backend implements the user slice live (verified): `POST /api/auth/register`, project list with owner scoping, `GET/PUT /api/users/me/provider-config` (`PROVIDER_CONFIG_NOT_FOUND` when unset) and `/api/users/me/preferences`, and `GET /api/dashboard?range=…` — note the analytics route mounts at **`/api/dashboard`, not `/api/users/me/dashboard`**; the auth "me" route is `/api/auth/me` (unused frontend-side; session restores from sessionStorage). The deterministic journeys still intercept these endpoints with contract-shaped envelopes for CI independence; a one-off live (unintercepted) journey — register → library → real config/preferences save → real dashboard → sign out — was verified passing against `MOCK_PROVIDER=1` on :3001.
+The backend implements the user slice live (verified): `POST /api/auth/register`, project list with owner scoping, billing subscription/checkout/portal/cancel, account deletion, and `GET /api/dashboard?range=...`. The analytics route mounts at **`/api/dashboard`, not `/api/users/me/dashboard`**; the auth "me" route is `/api/auth/me` (used by the billing success page and boot refresh). The deterministic journeys intercept these endpoints with contract-shaped envelopes for CI independence.
 
 ## Base UI gotchas (learned here)
 

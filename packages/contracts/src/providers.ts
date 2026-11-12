@@ -26,10 +26,7 @@ export const ProvidersResponseSchema = z.object({
 });
 export type ProvidersResponse = z.infer<typeof ProvidersResponseSchema>;
 
-/**
- * A user-saved provider/model preference. API keys are never stored here:
- * BYOK remains request-scoped through `x-provider-api-key`.
- */
+/** A user-saved provider/model preference. API keys are never stored here. */
 export const ProviderSelectionSchema = z.object({
   provider: z.string().trim().min(1).max(50),
   model: z.string().trim().min(1).max(200),
@@ -42,8 +39,8 @@ export const SavedProviderConfigSchema = ProviderSelectionSchema.extend({
 });
 export type SavedProviderConfig = z.infer<typeof SavedProviderConfigSchema>;
 
-/** Strict: unknown body keys (an `apiKey`, say) are a VALIDATION_ERROR — BYOK
- * keys must never land in the saved-config endpoint. */
+/** Strict: unknown body keys (an `apiKey`, say) are a VALIDATION_ERROR so a
+ * provider secret can never land in the saved-config endpoint. */
 export const SaveProviderConfigRequestSchema = ProviderSelectionSchema.strict();
 export type SaveProviderConfigRequest = z.infer<
   typeof SaveProviderConfigRequestSchema
@@ -54,48 +51,4 @@ export const SavedProviderConfigResponseSchema = z.object({
 });
 export type SavedProviderConfigResponse = z.infer<
   typeof SavedProviderConfigResponseSchema
->;
-
-/**
- * Account-scoped BYOK vault. The key is sent only when saving; status
- * responses never contain it, only whether a credential exists.
- */
-export const SaveProviderCredentialRequestSchema = z
-  .object({
-    apiKey: z.string().trim().min(8).max(8192),
-  })
-  .strict();
-export type SaveProviderCredentialRequest = z.infer<
-  typeof SaveProviderCredentialRequestSchema
->;
-
-export const ProviderCredentialStatusSchema = z.object({
-  provider: z.string().min(1),
-  saved: z.boolean(),
-  updatedAt: z.string().min(1).optional(),
-  lastUsedAt: z.string().min(1).optional(),
-});
-export type ProviderCredentialStatus = z.infer<
-  typeof ProviderCredentialStatusSchema
->;
-
-export const ProviderCredentialStatusResponseSchema = z.object({
-  credential: ProviderCredentialStatusSchema,
-});
-export type ProviderCredentialStatusResponse = z.infer<
-  typeof ProviderCredentialStatusResponseSchema
->;
-
-export const ProviderCredentialsResponseSchema = z.object({
-  credentials: z.array(ProviderCredentialStatusSchema),
-});
-export type ProviderCredentialsResponse = z.infer<
-  typeof ProviderCredentialsResponseSchema
->;
-
-export const RemoveProviderCredentialResponseSchema = z.object({
-  removed: z.boolean(),
-});
-export type RemoveProviderCredentialResponse = z.infer<
-  typeof RemoveProviderCredentialResponseSchema
 >;

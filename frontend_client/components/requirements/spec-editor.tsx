@@ -5,13 +5,11 @@ import {
   type RequirementsSpec,
   type SaveRequirementsRequest,
   StartRunResponseSchema,
-  type GenerationOptions,
 } from "@sda/contracts";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
   CheckIcon,
-  CircleAlertIcon,
   PlusIcon,
   TrashIcon,
 } from "lucide-react";
@@ -49,7 +47,6 @@ import {
   type FunctionalRow,
   type NonFunctionalRow,
 } from "@/lib/requirements/editor";
-import type { ProviderSetup } from "@/lib/session/keys";
 import { loadSession } from "@/lib/session/auth";
 
 const MAX_ROWS = 30;
@@ -86,28 +83,6 @@ function blockNewline(event: KeyboardEvent<HTMLTextAreaElement>) {
   if (event.key === "Enter") event.preventDefault();
 }
 
-function ProviderNote({
-  setup,
-  accountKeySaved,
-}: {
-  setup: ProviderSetup | null;
-  accountKeySaved: boolean;
-}) {
-  if (setup === null && !accountKeySaved) {
-    return (
-      <span className="text-warning flex items-center gap-1.5 text-[11px]">
-        <CircleAlertIcon className="size-3" />
-        No provider key set. Add one above.
-      </span>
-    );
-  }
-  return (
-    <span className="text-muted-foreground text-[11px]">
-      {setup !== null && setup.model !== "" ? setup.model : "Default model"} ({accountKeySaved ? "saved to your account" : "key in this tab only"})
-    </span>
-  );
-}
-
 /**
  * The editable specification. Rows manipulate pure helper state from
  * lib/requirements/editor.ts; saving is server-authoritative (ids are
@@ -117,20 +92,12 @@ export function SpecEditor({
   projectId,
   projectKey,
   spec,
-  setup,
-  providerReady,
-  accountKeySaved,
   onArchitectureStarted,
   onSpecSynced,
 }: {
   projectId: string;
   projectKey: string | null;
   spec: RequirementsSpec;
-  setup: ProviderSetup | null;
-  /** Provider + model + a key (tab or account) present: confirmation can start a run. */
-  providerReady: boolean;
-  /** The selected provider has a key in the account vault. */
-  accountKeySaved: boolean;
   onArchitectureStarted: (runId: string) => void;
   /** Lets the flow refresh its cached spec after a server-authoritative save. */
   onSpecSynced: (spec: RequirementsSpec) => void;
@@ -205,17 +172,11 @@ export function SpecEditor({
         return;
       }
       setSavedNote("Specification confirmed. Starting architecture generation…");
-      const options: GenerationOptions = {
-        // Provider and key travel together; the saved model alone is not enough.
-        ...(setup === null || setup.provider === "" ? {} : { provider: setup.provider }),
-        ...(setup === null || setup.model.trim() === "" ? {} : { model: setup.model.trim() }),
-      };
       const started = await apiFetch(`/api/projects/${projectId}/architecture`, {
         method: "POST",
-        body: JSON.stringify(options),
+        body: JSON.stringify({}),
         projectKey,
         auth: loadSession() !== null,
-        ...(setup === null ? {} : setup.apiKey.trim() === "" ? {} : { providerKey: setup.apiKey.trim() }),
         dataSchema: StartRunResponseSchema,
       });
       onArchitectureStarted(started.runId);
@@ -266,7 +227,6 @@ export function SpecEditor({
         <h2 className="text-foreground text-base font-medium tracking-tight">
           Your specification
         </h2>
-        <ProviderNote setup={setup} accountKeySaved={accountKeySaved} />
       </div>
 
       <p className="text-muted-foreground mt-2 text-sm">
@@ -516,7 +476,7 @@ export function SpecEditor({
           </Button>
           <Button
             onClick={() => void save(true)}
-            disabled={!canSubmit || !providerReady}
+            disabled={!canSubmit}
             className="min-h-9 px-5"
           >
             <CheckIcon />
@@ -524,13 +484,6 @@ export function SpecEditor({
           </Button>
         </div>
       </div>
-
-      {!providerReady ? (
-        <p className="text-warning mt-3 text-xs">
-          Confirmation needs provider setup: add the missing provider, model, or
-          key in the card above, then confirm again.
-        </p>
-      ) : null}
 
       {banner !== null ? (
         <div

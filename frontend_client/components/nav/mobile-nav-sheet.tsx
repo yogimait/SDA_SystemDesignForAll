@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * Mobile navigation sheet (QA nav round): a hamburger opens a compact sheet
- * with the account identity, every portal link, provider setup where allowed
- * (landing + library only), and sign out — controls the narrow headers hide.
+ * Mobile navigation sheet: a hamburger opens a compact sheet with the account
+ * identity, every portal link, and sign out — controls the narrow headers hide.
  * Escape/overlay close and focus return come from the shared Sheet.
  */
 
@@ -12,7 +11,6 @@ import Link from "next/link";
 import { LogOutIcon, MenuIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { ProviderDialog } from "@/components/landing/provider-dialog";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useSession } from "@/hooks/use-session";
 
@@ -22,18 +20,15 @@ const ROW_CLASS =
   "text-secondary-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring flex min-h-11 w-full items-center rounded-lg px-3 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-1";
 
 /**
- * Hamburger + sheet. Links are routes or hash anchors; providerSetup renders
- * the shared BYOK dialog trigger inside the menu (only where permitted).
- * `onSignOut` differs per context: landing clears the session in place,
- * portal also routes back to /login.
+ * Hamburger + sheet. Links are routes or hash anchors. `onSignOut` differs per
+ * context: landing clears the session in place, portal also routes back to
+ * /login.
  */
 export function MobileNavSheet({
   links,
-  providerSetup = false,
   onSignOut,
 }: {
   links: SheetLink[];
-  providerSetup?: boolean;
   onSignOut: () => void;
 }) {
   const session = useSession();
@@ -78,13 +73,6 @@ export function MobileNavSheet({
             </Link>
           ))}
         </nav>
-
-        {providerSetup ? (
-          <div className="flex flex-col gap-1">
-            <p className="text-muted-foreground text-[11px]">Model access</p>
-            <ProviderDialog />
-          </div>
-        ) : null}
 
         <div className="border-border/60 mt-auto flex flex-col gap-1 border-t border-solid pt-2">
           {session !== null ? (

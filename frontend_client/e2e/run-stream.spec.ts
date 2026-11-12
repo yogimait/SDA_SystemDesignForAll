@@ -19,11 +19,6 @@ const USER = {
 };
 const AUTH_SEED = `
   window.sessionStorage.setItem("sda:auth:user", JSON.stringify({ user: ${JSON.stringify(USER)} }));
-  window.sessionStorage.setItem("sda:provider-setup", JSON.stringify({
-    provider: "openrouter",
-    model: "z-ai/glm-5.3-flash",
-    keys: { openrouter: "sk-or-e2e-key-0123456789" },
-  }));
 `;
 
 const PROJECT = {
@@ -132,13 +127,6 @@ async function interceptProject(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(envelope(PROJECT)),
-    }),
-  );
-  page.route("**/api/users/me/provider-keys**", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(envelope({ credentials: [] })),
     }),
   );
   // Reloads have no in-memory token: the app refreshes from the mocked cookie.
@@ -343,11 +331,6 @@ test("run-status 401 is treated as signed out: redirect to login, session cleare
     if (window.sessionStorage.getItem("sda:stream:seeded") === null) {
       window.sessionStorage.setItem("sda:stream:seeded", "1");
       window.sessionStorage.setItem("sda:auth:user", JSON.stringify({ user: ${JSON.stringify(USER)} }));
-      window.sessionStorage.setItem("sda:provider-setup", JSON.stringify({
-        provider: "openrouter",
-        model: "z-ai/glm-5.3-flash",
-        keys: { openrouter: "sk-or-e2e-key-0123456789" },
-      }));
     }
   `);
   await page.goto("/projects/proj_1/requirements");

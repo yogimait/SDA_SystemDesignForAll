@@ -3,12 +3,10 @@
 import Link from "next/link";
 import { LogOutIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { ProviderDialog } from "./provider-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DockButton,
   DockLink,
-  DockSlot,
   HORIZONTAL_HEADER_DOCKED,
   ScrollDock,
   useDock,
@@ -93,11 +91,9 @@ export function SiteHeader() {
                       ]
                     : []),
                 ]}
-                providerSetup
                 onSignOut={() => void signOut()}
               />
             </span>
-            <ProviderDialog marketing />
             {session !== null ? (
               <div className="flex items-center gap-2">
                 <Link
@@ -141,9 +137,6 @@ export function SiteHeader() {
             <DockLink href="/settings" label="Settings" icon={<SettingsIcon className="size-5" />} />
           </>
         ) : null}
-        <DockSlot>
-          <ProviderDialog marketing />
-        </DockSlot>
         {session !== null ? (
           <DockButton
             label="Sign out"

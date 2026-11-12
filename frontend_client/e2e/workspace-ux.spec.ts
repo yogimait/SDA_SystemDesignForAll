@@ -26,19 +26,6 @@ async function journeyToWorkspace(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Start design session" }).click();
   await expect(page).toHaveURL(/\/requirements$/);
 
-  // The requirements gate requires provider setup before generation runs.
-  await page.getByRole("button", { name: "Add provider & key" }).click();
-  const dialog = page.getByRole("dialog", { name: "Set up model access" });
-  await dialog.getByRole("combobox", { name: "Provider" }).click();
-  await page.getByRole("option", { name: "OpenRouter" }).click();
-  await dialog.getByLabel("API key").fill("sk-or-e2e-workspace-01");
-  // Session-only path: this suite clears storage to prove the gate returns.
-  await dialog
-    .getByRole("checkbox", { name: /Save this key to my account/ })
-    .uncheck();
-  await dialog.getByRole("button", { name: "Save provider setup" }).click();
-  await expect(page.getByRole("button", { name: "Add provider & key" })).toBeHidden();
-
   await page.getByRole("button", { name: "Generate requirements" }).click();
   const confirmButton = page.getByRole("button", { name: /Confirm & generate architecture/ });
   await confirmButton.waitFor({ timeout: 90_000 });
@@ -213,19 +200,12 @@ test("escape routes, mobile actions, regen run, validation details", async ({
   await page.screenshot({ path: "e2e/artifacts/workspace-ux-320.png" });
 });
 
-test("regeneration scopes: run with key, blocked + explained without", async ({
-  page,
-}) => {
-  const calls: Array<{ body: unknown; key: string | undefined }> = [];
+test("regeneration scopes start their own run", async ({ page }) => {
+  const calls: Array<{ body: unknown }> = [];
   await journeyToWorkspace(page);
 
-  // With the tab's provider key: choosing a scope starts its own run and the
-  // live progress panel appears.
   await page.route("**/api/projects/*/architecture/regenerate", async (route) => {
-    calls.push({
-      body: route.request().postDataJSON(),
-      key: route.request().headers()["x-provider-api-key"],
-    });
+    calls.push({ body: route.request().postDataJSON() });
     return route.fulfill({
       status: 202,
       contentType: "application/json",
@@ -236,36 +216,12 @@ test("regeneration scopes: run with key, blocked + explained without", async ({
   await page.getByRole("button", { name: "Regenerate" }).click();
   const menu = page.getByRole("menu", { name: "Regenerate" });
   await expect(menu.getByRole("menuitem", { name: /LLD only/ })).toBeEnabled();
-  await expect(menu.getByText(/paid provider pass/i)).toBeVisible();
+  await expect(menu.getByText(/every scope is its own paid run/i)).toBeVisible();
   await menu.getByRole("menuitem", { name: /LLD only/ }).click();
 
   await expect.poll(() => calls.length).toBe(1);
-  expect(calls[0]?.body).toMatchObject({ scope: "lld", provider: "openrouter" });
-  expect(calls[0]?.key).toBe("sk-or-e2e-workspace-01");
-  // The menu closes; the live regen progress panel mounts on the real run
-  // (fulfilled runs here finish before the scripted poll, so assert only on
-  // the captured scope call plus menu dismissal — the dock-nav suite covers
-  // the live phase against the streaming mock).
+  expect(calls[0]?.body).toEqual({ scope: "lld" });
   await expect(page.getByRole("menu", { name: "Regenerate" })).toBeHidden();
-  // HLD/DSA use the same dispatch and live-phase machinery (REGEN_INFO maps
-  // every scope to regenerate(scope)); LLD exercises the shared path.
-  // Without a key in the tab: scopes refuse with a reason and a fix path.
-  await page.waitForTimeout(1500);
-  await page.evaluate(() =>
-    window.sessionStorage.removeItem("sda:provider-setup"),
-  );
-  await page.reload();
-  await page.waitForTimeout(900);
-  await page.getByRole("button", { name: "Regenerate" }).click();
-  const menu2 = page.getByRole("menu", { name: "Regenerate" });
-  for (const scope of [/LLD only/, /HLD only/, /DSA only/]) {
-    await expect(menu2.getByRole("menuitem", { name: scope })).toBeDisabled();
-  }
-  await expect(menu2.getByText(/No provider key in this tab/)).toBeVisible();
-  await expect(
-    menu2.getByRole("menuitem", { name: /Provider & model key/ }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
   await noOverflow(page, 900);
 });
 

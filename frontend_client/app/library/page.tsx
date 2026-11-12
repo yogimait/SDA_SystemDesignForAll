@@ -15,7 +15,6 @@ import { ListProjectsResponseSchema } from "@sda/contracts";
 import { ArrowUpRightIcon, ChevronsDownIcon, CircleAlertIcon } from "lucide-react";
 import { PortalHeader } from "@/components/portal/portal-header";
 import { VerifyEmailBanner } from "@/components/portal/verify-email-banner";
-import { ProviderDialog } from "@/components/landing/provider-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch, ApiError } from "@/lib/api/client";
@@ -128,11 +127,6 @@ export function LibraryContent() {
             </p>
           </div>
           <div className="flex min-w-0 flex-col gap-2 md:flex-none md:items-end">
-            {/* Provider setup keeps its visible label on phones too — the BYOK
-                dialog is the primary library control (QA D5). */}
-            <div className="labeled-provider md:justify-self-end">
-              <ProviderDialog />
-            </div>
             {/* Phones: one horizontal scroll row; ≥md: wrapping row. */}
             <div
               role="group"

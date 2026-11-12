@@ -8,8 +8,8 @@ import { expect, type Page } from "@playwright/test";
  * its accessible name (`aria-labelledby` → tab label), which is unique even
  * while both panels are visible.
  *
- * `mode` picks the panel; the generation runs need it too, because a run
- * cannot start without provider + model + key in this tab.
+ * `mode` picks the panel; generation uses the hosted server model, so no
+ * provider setup is involved.
  */
 export async function fillAuthForm(
   page: Page,
@@ -58,16 +58,3 @@ export function mockAuthRoutes(
     }),
   );
 }
-
-/**
- * Tab-local BYOK setup required by the requirements gate: provider + model +
- * that provider's key. Anonymous runs use this the same way a signed-in user's
- * dialog save does. Add it with `page.addInitScript` before the first goto.
- */
-export const PROVIDER_SETUP_SEED = `
-  window.sessionStorage.setItem("sda:provider-setup", JSON.stringify({
-    provider: "openrouter",
-    model: "z-ai/glm-5.3-flash",
-    keys: { openrouter: "sk-or-e2e-key-0123456789" },
-  }));
-`;

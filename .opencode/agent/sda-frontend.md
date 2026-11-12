@@ -30,7 +30,7 @@ You own `D:\Projects\system-design-all-in-one\frontend_client`.
 - `turbopack.root` in `next.config.ts` must stay pointed at the workspace root.
 - Envelope unwrapping, error-code mapping, and secret headers go through `lib/api/client.ts`.
 - All response shapes come from `@sda/contracts`. Never redefine schemas inline.
-- BYOK keys travel only via `x-provider-api-key`; project access via `x-project-key`. Never put keys in URLs, logs, or diagram state.
+- Provider keys are server-side and never entered in the UI; project access travels only via `x-project-key`. Never put secrets in URLs, logs, or diagram state.
 - The workspace renders the canonical architecture model only. No hardcoded example architectures.
 - Custom SVG + dagre diagrams; no React Flow.
 - UI work is not done until the Impeccable detector passes on affected routes.

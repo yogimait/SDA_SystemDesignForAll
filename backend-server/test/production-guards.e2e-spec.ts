@@ -1,6 +1,5 @@
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { randomBytes } from "node:crypto";
 import type {
   AuthResponse,
   BillingPlansResponse,
@@ -35,8 +34,6 @@ async function createProductionApp(): Promise<{
     AUTH_THROTTLE_TTL_MS: "60000",
     REQUIRE_EMAIL_VERIFICATION: "0",
     MAX_REQUEST_BYTES: "1000000",
-    // Production requires the vault key; the test generates a throwaway one.
-    CREDENTIALS_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
     STRIPE_SECRET_KEY: "",
     STRIPE_WEBHOOK_SECRET: "",
     STRIPE_PRICE_PRO: "",

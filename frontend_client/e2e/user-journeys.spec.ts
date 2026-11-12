@@ -8,7 +8,7 @@
  */
 
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { fillAuthForm, mockAuthRoutes, PROVIDER_SETUP_SEED } from "./helpers";
+import { fillAuthForm, mockAuthRoutes } from "./helpers";
 
 const USER = {
   id: "usr_probe001",
@@ -101,25 +101,6 @@ const MODEL_FIXTURE = {
   },
 };
 
-/** Contract-shaped spec so the editor phase (and its gate) renders. */
-const REQUIREMENTS_SPEC = {
-  functional: [
-    { id: "fr_1", kind: "functional", text: "Clients submit a request", priority: "must" },
-  ],
-  nonFunctional: [
-    {
-      id: "nfr_1",
-      kind: "nonfunctional",
-      text: "Answer under 200ms",
-      priority: "should",
-      category: "performance",
-      target: "p95 < 200ms",
-    },
-  ],
-  assumptions: [{ id: "asm_1", text: "Single region" }],
-  clarifications: [{ id: "q_1", question: "Which cloud?", answer: "AWS" }],
-};
-
 type RouteLike = Route;
 const envelope = (data: unknown, code = 200) => ({ status: true, statusCode: code, data });
 const oh = (data: unknown, code = 200) =>
@@ -177,30 +158,6 @@ function interceptUserEndpoints(
   page.route("**/api/dashboard", overrides.dashboard ?? oh(DASHBOARD));
   page.route("**/api/projects?*", overrides.projects ?? oh(LIBRARY_PAGE));
   page.route("**/api/providers", oh(PROVIDERS));
-  page.route("**/api/users/me/provider-config", oh({ config: { provider: "openrouter", model: "z-ai/glm-5.3-flash", updatedAt: "t" } }));
-  // The BYOK vault status is fetched by the dialog/gate for signed-in users;
-  // keep the fake session away from the live vault and remember saves so the
-  // post-save status refresh sees them.
-  const savedCredentials = new Set<string>();
-  page.route("**/api/users/me/provider-keys**", (route) => {
-    const method = route.request().method();
-    const provider = route.request().url().split("/").pop() ?? "";
-    if (method === "PUT") {
-      savedCredentials.add(provider);
-      return oh({ credential: { provider, saved: true, updatedAt: "t" } })(route);
-    }
-    if (method === "DELETE") {
-      savedCredentials.delete(provider);
-      return oh({ removed: true })(route);
-    }
-    return oh({
-      credentials: [...savedCredentials].map((id) => ({
-        provider: id,
-        saved: true,
-        updatedAt: "t",
-      })),
-    })(route);
-  });
   page.route("**/api/users/me/preferences", oh({ preferences: { theme: "dark" } }));
   page.route("**/api/billing/plans", oh({ plans: [], provider: "stub", checkoutCompletable: true }));
   page.route("**/api/billing/subscription", oh({ subscription: null, planTier: "free" }));
@@ -325,8 +282,6 @@ test.describe("session restore + project library", () => {
     await page.goto("/library");
     await expect(page.getByText("Probe project one")).toBeVisible();
     await expect(page.getByText("Architecture ready").first()).toBeVisible();
-    // Provider setup lives on the landing + library pages only.
-    await expect(page.getByRole("button", { name: /Provider (setup|ready)/ })).toBeVisible();
   });
 
   test("status filter requests the filtered list", async ({ page }) => {
@@ -386,237 +341,6 @@ test.describe("session restore + project library", () => {
         page.evaluate(() => window.sessionStorage.getItem("sda:auth:user")),
       )
       .toBeNull();
-  });
-});
-
-test.describe("provider settings + preferences", () => {
-  test("saved configuration loads, updates, and validates", async ({ page }) => {
-    interceptUserEndpoints(page);
-    await page.addInitScript(AUTH_SAVE);
-    await page.goto("/settings");
-
-    // Base UI Select trigger is a combobox button, not an input; providers are
-    // shown by name, never by raw id.
-    await expect(page.getByRole("combobox", { name: "Provider" })).toHaveText(/OpenRouter/);
-    await expect(page.getByRole("combobox", { name: "Model" })).toHaveText(/z-ai\/glm-5.3-flash/);
-    // Dead controls are gone: no theme switch, no reasoning field, no second
-    // provider/model editor in a "Preferences" card.
-    await expect(page.getByLabel(/Reasoning effort/)).toHaveCount(0);
-    await expect(page.getByRole("region", { name: "User preferences" })).toHaveCount(0);
-    await expect(page.getByLabel("Theme")).toHaveCount(0);
-    await expect(page.getByLabel("Default provider")).toHaveCount(0);
-
-    // Model options come from the selected provider.
-    await page.getByRole("combobox", { name: "Model" }).click();
-    await page.getByRole("option", { name: "openai/gpt-5" }).click();
-    await page.getByRole("button", { name: "Save configuration" }).click();
-    await expect(page.getByRole("status").last()).toContainText("Saved");
-  });
-
-  test("model list follows the provider and locks without one", async ({ page }) => {
-    let saved: unknown = null;
-    interceptUserEndpoints(page);
-    page.route("**/api/users/me/provider-config", (route) => {
-      if (route.request().method() === "PUT") {
-        saved = route.request().postDataJSON();
-        return oh({ config: { provider: "groq", model: "openai/gpt-oss-120b", updatedAt: "t" } })(route);
-      }
-      return ofail("PROVIDER_CONFIG_NOT_FOUND", "not set", 404)(route);
-    });
-    await page.addInitScript(AUTH_SAVE);
-    await page.goto("/settings");
-
-    // No saved config: nothing to pick a model for yet.
-    await expect(page.getByRole("combobox", { name: "Model" })).toBeDisabled();
-
-    await page.getByRole("combobox", { name: "Provider" }).click();
-    await page.getByRole("option", { name: "Groq" }).click();
-    await expect(page.getByRole("combobox", { name: "Model" })).toBeEnabled();
-    await page.getByRole("combobox", { name: "Model" }).click();
-    await page.getByRole("option", { name: "openai/gpt-oss-120b" }).click();
-    await expect(page.getByRole("combobox", { name: "Model" })).toHaveText(/openai\/gpt-oss-120b/);
-
-    await page.getByRole("button", { name: "Save configuration" }).click();
-    await expect(page.getByRole("status").last()).toContainText("Saved");
-    // The saved payload carries provider/model only — never a key.
-    expect(saved).toEqual({ provider: "groq", model: "openai/gpt-oss-120b" });
-  });
-
-  test("provider dialog picks provider, key, and model per provider", async ({ page }) => {
-    const savedBodies: unknown[] = [];
-    interceptUserEndpoints(page);
-    page.route("**/api/users/me/provider-config", (route) => {
-      if (route.request().method() === "PUT") {
-        savedBodies.push(route.request().postDataJSON());
-        return oh({ config: { provider: "openrouter", model: "z-ai/glm-5.3-flash", updatedAt: "t" } })(route);
-      }
-      return oh({ config: { provider: "openrouter", model: "z-ai/glm-5.3-flash", updatedAt: "t" } })(route);
-    });
-    await page.addInitScript(AUTH_SAVE);
-    await page.goto("/library");
-
-    await page.getByRole("button", { name: /Provider (setup|ready)/ }).click();
-    const provider = page.getByRole("combobox", { name: "Provider" });
-    const model = page.getByRole("combobox", { name: "Model" });
-    const apiKey = page.getByLabel("API key");
-
-    await expect(provider).toHaveText(/OpenRouter/);
-    await expect(model).toBeDisabled();
-    await expect(apiKey).toBeEmpty();
-    // Settings saved provider/model pre-fills the dialog: one shared source.
-    await expect(model).toHaveText(/z-ai\/glm-5.3-flash/);
-
-    await apiKey.fill("sk-or-test-key-0123456789");
-    await expect(model).toBeEnabled();
-    await expect(model).toHaveText(/z-ai\/glm-5.3-flash/);
-
-    // The other provider has no key yet: its key slot is empty and the model
-    // dropdown locks again — the OpenRouter key is not overwritten.
-    await provider.click();
-    await page.getByRole("option", { name: "Groq" }).click();
-    await expect(apiKey).toBeEmpty();
-    await expect(model).toBeDisabled();
-
-    await provider.click();
-    await page.getByRole("option", { name: "OpenRouter" }).click();
-    await expect(apiKey).toHaveValue("sk-or-test-key-0123456789");
-
-    await page.getByRole("button", { name: "Save provider setup" }).click();
-    await expect(page.getByRole("dialog")).toBeHidden();
-    await expect(page.getByRole("button", { name: /Provider (setup|ready)/ })).toHaveText(/Provider ready/);
-    // Signed in: the choice lands server-side without the key.
-    expect(savedBodies).toEqual([
-      { provider: "openrouter", model: "z-ai/glm-5.3-flash" },
-    ]);
-  });
-
-  test("settings and dialog agree on a saved model missing from the catalog", async ({ page }) => {
-    interceptUserEndpoints(page);
-    // The account saved a model the provider catalog no longer lists.
-    page.route("**/api/users/me/provider-config", (route) =>
-      oh({ config: { provider: "openrouter", model: "z-ai/legacy-flash", updatedAt: "t" } })(route),
-    );
-    await page.addInitScript(AUTH_SAVE);
-    await page.goto("/settings");
-    await expect(page.getByRole("combobox", { name: "Model" })).toHaveText(/z-ai\/legacy-flash/);
-
-    // The dialog shows the same model and keeps it selectable, marked as saved.
-    await page.goto("/library");
-    await page.getByRole("button", { name: /Provider (setup|ready)/ }).click();
-    const model = page.getByRole("combobox", { name: "Model" });
-    await expect(model).toHaveText(/z-ai\/legacy-flash/);
-    await page.getByLabel("API key").fill("sk-or-test-key-0123456789");
-    await model.click();
-    await expect(page.getByRole("option", { name: /z-ai\/legacy-flash · saved/ })).toBeVisible();
-  });
-
-  test("saved config failure maps to the message table", async ({ page }) => {
-    interceptUserEndpoints(page);
-    // GET must succeed (populate the form); only the PUT save fails.
-    await page.route("**/api/users/me/provider-config", (route) => {
-      if (route.request().method() === "PUT") {
-        return ofail("VALIDATION_ERROR", "bad model", 400)(route);
-      }
-      return oh({ config: { provider: "openrouter", model: "z-ai/glm-5.3-flash", updatedAt: "t" } })(route);
-    });
-    await page.addInitScript(AUTH_SAVE);
-    await page.goto("/settings");
-    await expect(page.getByRole("combobox", { name: "Provider" })).toHaveText(/OpenRouter/);
-    await page.getByRole("button", { name: "Save configuration" }).click();
-    await expect(
-      page.getByRole("region", { name: "Saved provider configuration" }).getByRole("alert"),
-    ).toContainText("failed validation");
-  });
-
-  test("settings has one provider/model source (no duplicate preference fields)", async ({ page }) => {
-    interceptUserEndpoints(page);
-    await page.addInitScript(AUTH_SAVE);
-    await page.goto("/settings");
-    await expect(page.getByRole("heading", { name: "Generation defaults" })).toBeVisible();
-    // Exactly one provider/model editor on the page.
-    await expect(page.getByRole("combobox", { name: "Provider" })).toHaveCount(1);
-    await expect(page.getByRole("combobox", { name: "Model" })).toHaveCount(1);
-    // Preferences no longer duplicates provider/model or offers a dead theme.
-    await expect(page.getByLabel("Theme")).toHaveCount(0);
-    await expect(page.getByLabel("Default model")).toHaveCount(0);
-    // The precedence copy explains where a run gets its choice.
-    await expect(page.getByText(/fall back to its own environment defaults/)).toBeVisible();
-  });
-});
-
-test.describe("requirements provider gate", () => {
-  test("analysis start is blocked until provider setup exists", async ({ page }) => {
-    interceptUserEndpoints(page);
-    page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
-    page.route("**/api/projects/proj_1/requirements", oh({ spec: null, confirmedAt: null }));
-    await page.addInitScript(AUTH_SAVE);
-    await page.goto("/projects/proj_1/requirements");
-
-    const blocker = page.getByRole("region", { name: "Provider setup required" });
-    await expect(blocker).toBeVisible();
-    // The account's saved provider/model fill the first two gaps; only the key
-    // is left before the dialog saves one.
-    await expect(blocker).toContainText("API key missing");
-    await expect(blocker).not.toContainText("Provider missing");
-    const generate = page.getByRole("button", { name: "Generate requirements" });
-    await expect(generate).toBeDisabled();
-    await expect(page.getByText(/Add the missing provider setup above/)).toBeVisible();
-
-    // The CTA opens the shared dialog on this page; saving the key clears the gate.
-    await page.getByRole("button", { name: /Add provider & key/ }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await page.getByLabel("API key").fill("sk-or-e2e-key-0123456789");
-    await page.getByRole("button", { name: "Save provider setup" }).click();
-    await expect(page.getByRole("dialog")).toBeHidden();
-    await expect(blocker).toHaveCount(0);
-    await expect(generate).toBeEnabled();
-  });
-
-  test("confirm is disabled without provider setup and re-enabled after saving", async ({ page }) => {
-    interceptUserEndpoints(page);
-    page.route("**/api/projects/proj_1", oh(PROJECT));
-    page.route("**/api/projects/proj_1/requirements", oh({ spec: REQUIREMENTS_SPEC, confirmedAt: "t" }));
-    await page.addInitScript(AUTH_SAVE);
-    await page.goto("/projects/proj_1/requirements");
-
-    const confirm = page.getByRole("button", { name: /Confirm & generate architecture/ });
-    await expect(confirm).toBeDisabled();
-    await expect(
-      page.getByRole("region", { name: "Provider setup required" }),
-    ).toBeVisible();
-    await expect(
-      page.getByText(/Confirmation needs provider setup/),
-    ).toBeVisible();
-
-    await page.getByRole("button", { name: /Add provider & key/ }).click();
-    await page.getByLabel("API key").fill("sk-or-e2e-key-0123456789");
-    await page.getByRole("button", { name: "Save provider setup" }).click();
-    await expect(page.getByRole("dialog")).toBeHidden();
-    await expect(confirm).toBeEnabled();
-    await expect(page.getByText(/Confirmation needs provider setup/)).toHaveCount(0);
-  });
-
-  test("back link points signed-in users at the library", async ({ page }) => {
-    interceptUserEndpoints(page);
-    page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
-    page.route("**/api/projects/proj_1/requirements", oh({ spec: null, confirmedAt: null }));
-    await page.addInitScript(AUTH_SAVE);
-    await page.goto("/projects/proj_1/requirements");
-    await expect(page.getByRole("link", { name: /Back to library/ })).toHaveAttribute(
-      "href",
-      "/library",
-    );
-  });
-
-  test("back link points anonymous visitors home", async ({ page }) => {
-    interceptUserEndpoints(page);
-    page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
-    page.route("**/api/projects/proj_1/requirements", oh({ spec: null, confirmedAt: null }));
-    await page.addInitScript(`
-      window.sessionStorage.setItem("sda:project:proj_1:access-key", "projkey_probe");
-    `);
-    await page.goto("/projects/proj_1/requirements");
-    await expect(page.getByRole("link", { name: /Back to home/ })).toHaveAttribute("href", "/");
   });
 });
 
@@ -692,7 +416,7 @@ test.describe("dashboard", () => {
 
   test("401 from settings clears the session and redirects", async ({ page }) => {
     interceptUserEndpoints(page);
-    page.route("**/api/users/me/provider-config", ofail("AUTH_REQUIRED", "gone", 401));
+    page.route("**/api/billing/subscription", ofail("AUTH_REQUIRED", "gone", 401));
     await page.addInitScript(AUTH_SAVE_ONCE);
     await page.goto("/settings");
 
@@ -730,7 +454,9 @@ test.describe("unblocked path journeys", () => {
     await expect(loadMore).toBeHidden();
   });
 
-  test("regenerate sends the saved provider and model (key stays a header)", async ({ page }) => {
+  test("regenerate sends only the scope; the hosted model is server-side", async ({
+    page,
+  }) => {
     const calls: Array<{ body: unknown; key: string | undefined }> = [];
     interceptUserEndpoints(page);
     page.route("**/api/projects/proj_1", oh(PROJECT));
@@ -741,30 +467,15 @@ test.describe("unblocked path journeys", () => {
       });
       return oh({ runId: "run_regen" }, 202)(route);
     });
-    await page.addInitScript(`
-      window.sessionStorage.setItem("sda:auth:user", JSON.stringify({
-        user: ${JSON.stringify(USER)},
-        accessToken: "token_probe_001",
-        expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
-      }));
-      window.sessionStorage.setItem("sda:provider-setup", JSON.stringify({
-        provider: "groq",
-        model: "openai/gpt-oss-120b",
-        keys: { groq: "gsk_probe_key_0123456789" },
-      }));
-    `);
+    await page.addInitScript(AUTH_SAVE);
     await page.goto("/projects/proj_1/workspace");
 
     await page.getByRole("button", { name: "Regenerate" }).click();
     await page.getByRole("menuitem", { name: /LLD only/ }).click();
 
     await expect.poll(() => calls.length).toBe(1);
-    expect(calls[0]?.body).toEqual({
-      scope: "lld",
-      provider: "groq",
-      model: "openai/gpt-oss-120b",
-    });
-    expect(calls[0]?.key).toBe("gsk_probe_key_0123456789");
+    expect(calls[0]?.body).toEqual({ scope: "lld" });
+    expect(calls[0]?.key).toBeUndefined();
   });
 
   test("RUN_CONFLICT on run start maps to the wait message", async ({ page }) => {
@@ -777,7 +488,6 @@ test.describe("unblocked path journeys", () => {
     });
     page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
     await page.addInitScript(AUTH_SAVE);
-    await page.addInitScript(PROVIDER_SETUP_SEED);
     await page.goto("/projects/proj_1/requirements");
 
     await page.getByRole("button", { name: "Generate requirements" }).click();
@@ -794,7 +504,6 @@ test.describe("unblocked path journeys", () => {
     });
     page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
     await page.addInitScript(AUTH_SAVE);
-    await page.addInitScript(PROVIDER_SETUP_SEED);
     await page.goto("/projects/proj_1/requirements");
 
     await page.getByRole("button", { name: "Generate requirements" }).click();
@@ -839,7 +548,6 @@ test.describe("unblocked path journeys", () => {
     page.route("**/api/runs/run_1", oh(FAILED_RUN));
     page.route("**/api/projects/proj_1", oh({ ...PROJECT, status: "requirements_pending" }));
     await page.addInitScript(AUTH_SAVE);
-    await page.addInitScript(PROVIDER_SETUP_SEED);
     await page.goto("/projects/proj_1/requirements");
 
     await page.getByRole("button", { name: "Generate requirements" }).click();

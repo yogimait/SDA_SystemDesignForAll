@@ -119,32 +119,6 @@ describe("loadConfig", () => {
     ).toThrow(/DATABASE_URL/);
   });
 
-  it("validates the credentials encryption key and version", () => {
-    const key = Buffer.alloc(32, 7).toString("base64");
-    const config = loadConfig({
-      CREDENTIALS_ENCRYPTION_KEY: key,
-    } as NodeJS.ProcessEnv);
-    expect(config.CREDENTIALS_ENCRYPTION_KEY).toBe(key);
-    expect(config.CREDENTIALS_ENCRYPTION_KEY_VERSION).toBe("1");
-    expect(
-      loadConfig({
-        CREDENTIALS_ENCRYPTION_KEY: key,
-        CREDENTIALS_ENCRYPTION_KEY_VERSION: "2",
-      } as NodeJS.ProcessEnv).CREDENTIALS_ENCRYPTION_KEY_VERSION,
-    ).toBe("2");
-
-    expect(() =>
-      loadConfig({
-        CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(16, 7).toString("base64"),
-      } as NodeJS.ProcessEnv),
-    ).toThrow(/CREDENTIALS_ENCRYPTION_KEY/);
-    expect(() =>
-      loadConfig({
-        CREDENTIALS_ENCRYPTION_KEY: "not base64!",
-      } as NodeJS.ProcessEnv),
-    ).toThrow(/CREDENTIALS_ENCRYPTION_KEY/);
-  });
-
   it("requires Resend credentials when the Resend provider is selected", () => {
     expect(() =>
       loadConfig({ EMAIL_PROVIDER: "resend" } as NodeJS.ProcessEnv),
@@ -167,15 +141,5 @@ describe("loadConfig", () => {
     });
   });
 
-  it("requires the credentials encryption key in production", () => {
-    expect(() =>
-      loadConfig({ NODE_ENV: "production" } as NodeJS.ProcessEnv),
-    ).toThrow(/CREDENTIALS_ENCRYPTION_KEY/);
-    expect(
-      loadConfig({
-        NODE_ENV: "production",
-        CREDENTIALS_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
-      } as NodeJS.ProcessEnv).NODE_ENV,
-    ).toBe("production");
-  });
+
 });

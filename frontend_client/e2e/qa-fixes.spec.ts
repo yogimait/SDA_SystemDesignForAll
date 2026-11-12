@@ -5,7 +5,7 @@
  * data from one requirements generation run.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { fillAuthForm, PROVIDER_SETUP_SEED } from "./helpers";
+import { fillAuthForm } from "./helpers";
 
 const IDEA_TEXT =
   "Design a distributed rate limiter for a public API with sliding windows.";
@@ -13,7 +13,6 @@ const IDEA_TEXT =
 async function registerViaUI(page: Page): Promise<void> {
   const email = `qa_${Date.now().toString(36)}@example.com`;
   // The requirements gate needs provider + model + key in this tab.
-  await page.addInitScript(PROVIDER_SETUP_SEED);
   await page.goto("/login");
   await page.getByRole("tab", { name: "Create account" }).click();
   await fillAuthForm(page, email, "Supersecret123!", { confirm: true, mode: "register" });

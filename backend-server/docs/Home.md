@@ -10,14 +10,14 @@ Living documentation for `backend-server/` and the backend side of `packages/con
 | [[API]] | Endpoints, headers, status codes, error codes, examples. |
 | [[Data-Model]] | Tables, relationships, JSONB payloads, migrations, Drizzle usage. |
 | [[Generation]] | Run queue, stages, repair loops, two-phase generation, scoped regeneration. |
-| [[Providers]] | BYOK, OpenRouter adapter, structured-output fallback, mock provider. |
+| [[Providers]] | Hosted key, OpenRouter adapter, structured-output fallback, mock provider. |
 | [[Auth]] | Sessions, refresh rotation, CSRF, email tokens, verification gate, account deletion. |
 | [[Billing]] | Plan catalogue, stub and Stripe providers, webhook ledger, plan changes. |
 | [[Testing]] | Unit, integration, e2e tests and local verification commands. |
 
 ## Current state
 
-- Phases B0-B5 of the [backend roadmap](../../initial-docs/Roadmap-Planner-Backend.md) are implemented for the MVP, plus user accounts/Bearer auth, project ownership, saved provider config/preferences, an opt-in encrypted account BYOK vault, plans, and dashboard analytics.
+- Phases B0-B5 of the [backend roadmap](../../initial-docs/Roadmap-Planner-Backend.md) are implemented for the MVP, plus user accounts/Bearer auth, project ownership, preferences, plans, and dashboard analytics. Generation is paid and uses the hosted provider key.
 - Auth hardening is in place: short-lived access tokens, rotating refresh cookies with reuse detection, CSRF/Origin checks, email verification and reset tokens with a development outbox, stricter auth throttles, and password-confirmed account deletion.
 - Billing ships a plan catalogue, a local stub provider for development, a Stripe-ready REST adapter, and an idempotent webhook ledger. No real payment is processed in development.
 - Build, lint, unit tests, and e2e tests pass locally.
@@ -40,7 +40,7 @@ $env:MOCK_PROVIDER = "1"
 npm run dev:backend
 ```
 
-For real generation, send the OpenRouter key on each run-start request as `x-provider-api-key`. See [[Providers]].
+For real generation, set `OPENROUTER_API_KEY` in the process environment. Clients never send a provider key. See [[Providers]].
 
 ## Commands
 

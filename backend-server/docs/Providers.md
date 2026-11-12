@@ -19,13 +19,13 @@ interface ModelProvider {
 }
 ```
 
-`src/providers/model-provider.ts` is the only contract generators use. The registry resolves a provider for one run and binds the BYOK key in memory.
+`src/providers/model-provider.ts` is the only contract generators use. The registry resolves a provider for one run and binds the hosted server key in memory.
 
 ## Registry rules
 
 - `MOCK_PROVIDER=1` takes precedence and always returns the deterministic mock, regardless of the requested provider.
 - Otherwise, `provider` from the request (or `DEFAULT_PROVIDER`, default `openrouter`) must be `openrouter` or `groq`; anything else is `VALIDATION_ERROR` with the available provider list.
-- A real run resolves its key in this order: `x-provider-api-key` header, the signed-in owner's stored vault credential for that provider, then the matching local `.env` key (development only). With none of them the run fails immediately with `PROVIDER_AUTH_FAILED`.
+- A real run uses the hosted key from `OPENROUTER_API_KEY` or `GROQ_API_KEY` in the deployment environment. If the selected provider's key is missing, the run fails immediately with `PROVIDER_AUTH_FAILED`; clients never supply a key.
 - `GET /api/providers` returns the registered provider metadata, the env defaults, and the mock flag. It never returns a key.
 - `DEFAULT_MODEL` is the active default model when a request omits one. Each provider exposes a model catalog from configuration only — no provider API is called to discover models:
   - `OPENROUTER_MODELS` (comma-separated) defaults to `z-ai/glm-5.3-flash` plus a small curated fallback list.
@@ -35,24 +35,22 @@ interface ModelProvider {
 - Migration: `OPENROUTER_MODEL` / `GROQ_MODEL` are renamed to `OPENROUTER_MODELS` / `GROQ_MODELS` (comma-separated). The singular names are ignored, so move an existing value into the plural variable.
 - Keep `DEFAULT_MODEL` inside the selected provider's catalog so the client dropdown shows the active default. This is a configuration convention, not a validated constraint: a model outside the catalog still runs when the key allows it.
 
-## BYOK flow
+## Hosted key flow
+
+The product is payment-only: users choose a plan, and generation runs on the
+deployment's hosted provider key. The frontend never asks for a provider key.
 
 ```mermaid
 sequenceDiagram
   participant C as Client
   participant API as RunService
-  participant V as CredentialsService
   participant REG as ProviderRegistry
   participant OR as OpenRouter adapter
   participant W as Worker
-  C->>API: POST run (+ x-provider-api-key?)
-  alt no header key and owner has a vault row
-    API->>V: resolveForRun(userId, provider)
-    V->>V: decrypt with AAD userId:provider
-    V-->>API: plaintext key (memory only)
-  end
-  API->>REG: resolve(provider?, key?)
-  REG->>OR: bind(key)
+  C->>API: POST run (no provider key)
+  API->>API: assertCanStartRun(plan limits)
+  API->>REG: resolve(provider?, hosted env key)
+  REG->>OR: bind(hosted key)
   OR-->>REG: closure with key
   REG-->>API: ModelProvider
   API->>W: registerProvider(runId, provider)
@@ -62,34 +60,26 @@ sequenceDiagram
   W->>API: unregister in finally
 ```
 
-- Precedence: request header > stored account credential > development env fallback. The header is read per request and never stored; the env fallback is ignored in production.
-- The stored credential is read only for an authenticated account: `ProjectAccessGuard` records `authenticatedUserId` from a valid Bearer session, never from `x-project-key`. A project key alone therefore falls through to the env fallback (disabled in production) instead of decrypting the owner's vault.
-- Mock mode (`MOCK_PROVIDER=1` or a mocked registry) skips the vault entirely, including `lastUsedAt`; no decryption is attempted.
-- Stored credentials are decrypted only in memory for one run, and `last_used_at` is updated. The run row records provider and model, never a key.
-- Request-supplied and decrypted keys are never written to the database, stage results, error details, or metrics.
-- Providers can echo a key back in an error message; the adapter scrubs the exact bound key and every `sk-` / `sk-or-v1-` / `gsk_` token before the message reaches `AppError.details`. `GenerationWorker` and `AllExceptionsFilter` deep-redact details once more, so persisted runs, SSE frames, and HTTP error bodies stay clean.
-- The provider map entry exists only while the run is in flight; a restart loses it and reconciliation marks the run `interrupted`.
-- Redacting logger and `redactSecrets` are the last line of defence for accidental messages.
+- `OPENROUTER_API_KEY` is required for the default provider; `GROQ_API_KEY` is
+  required only when the deployment selects Groq.
+- The hosted key stays in the provider closure for one run and is never written
+  to the database, stage results, error details, logs, or SSE frames.
+- No request header can override the hosted key. There is no BYOK UI and no
+  account key vault in the product path.
+- Mock mode (`MOCK_PROVIDER=1`) bypasses key resolution entirely.
+- Providers can echo a key back in an error message; the adapter scrubs the
+  exact bound key and every `sk-` / `sk-or-v1-` / `gsk_` token before the
+  message reaches `AppError.details`. `GenerationWorker` and
+  `AllExceptionsFilter` deep-redact details once more.
+- The provider map entry exists only while the run is in flight; a restart loses
+  it and reconciliation marks the run `interrupted`.
+- Redacting logger and `redactSecrets` are the last line of defence.
 
-### Account-scoped encrypted vault
+### Local development
 
-`PUT /api/users/me/provider-keys/:provider` stores one key per provider for a signed-in account. This is opt-in and the deliberate exception to header-only BYOK:
-
-- AES-256-GCM (`node:crypto`) with a random 12-byte IV, AAD `<userId>:<provider>`, and base64 `ciphertext`/`iv`/`authTag` plus `keyVersion`.
-- `CREDENTIALS_ENCRYPTION_KEY` is a base64 32-byte key; `CREDENTIALS_ENCRYPTION_KEY_VERSION` defaults to `1`. Boot rejects a malformed key, and production refuses to start without one.
-- The key is never returned by `GET`, never logged, and never placed in `AppError` details. `GET` selects only status columns. Missing key, unknown version, or a failed auth tag all surface as `503 PROVIDER_CREDENTIALS_UNAVAILABLE`.
-- Missing key with a stored row is an error, not a silent fallback: the run start fails with `503 PROVIDER_CREDENTIALS_UNAVAILABLE`. With no row, resolution returns `undefined` and the registry env fallback still applies.
-- Removing the key (`DELETE`) or deleting the account (FK cascade) deletes the row. `last_used_at` shows recent use without exposing anything.
-- Rotation plan: publish the new key under a new `CREDENTIALS_ENCRYPTION_KEY_VERSION`, keep the old key briefly to decrypt, and have users re-save. Today the service encrypts with the configured version and rejects any other version; there is no multi-key ring yet.
-
-### Local development fallback
-
-`backend-server/.env` may set `OPENROUTER_API_KEY` and/or `GROQ_API_KEY` so manual testing does not require the provider dialog on every run. `main.ts` loads `.env` when present; shell and process-manager variables win. `ProviderRegistry` uses the matching fallback only when:
-
-- `x-provider-api-key` is absent or blank,
-- `NODE_ENV` is not `production`.
-
-The request header always wins. `/api/providers` never returns either key. Production remains BYOK; do not set this variable in a deployed environment.
+`backend-server/.env` may set `OPENROUTER_API_KEY` and/or `GROQ_API_KEY` for
+manual runs. Shell and process-manager variables win over `.env`.
+`/api/providers` never returns either key.
 
 ## OpenRouter adapter
 

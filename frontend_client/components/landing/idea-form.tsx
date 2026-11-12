@@ -6,7 +6,6 @@ import {
 } from "@sda/contracts";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
-import { KeyRoundIcon } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import {
   consumePendingIdea,
@@ -158,9 +157,8 @@ export function IdeaForm() {
       </div>
 
       <div className="border-border/60 flex flex-col justify-between gap-3 border-t border-solid pt-3 sm:flex-row sm:items-center">
-        <div className="text-muted-foreground font-landing flex items-center gap-1.5 text-xs">
-          <KeyRoundIcon className="text-primary size-3.5 flex-none" aria-hidden="true" />
-          <span>Use your own API key (OpenRouter, Groq)</span>
+        <div className="text-muted-foreground font-landing text-xs">
+          AI generation is included. No API key needed.
         </div>
         <button
           type="submit"

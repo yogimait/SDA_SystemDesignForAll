@@ -37,6 +37,13 @@ STRIPE_PRICE_PRO=price_...
 2. Add the webhook endpoint `POST https://api.<domain>/api/billing/webhook` with `checkout.session.completed`, `customer.subscription.updated`, and `customer.subscription.deleted`.
 3. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
 4. Set `APP_BASE_URL` to the public frontend origin.
+5. Use the **full** price id (`price_...`, not a prefix). The price mode must
+   match the secret key mode: a test `sk_test_...` key cannot charge a live
+   price, and a live key cannot use a test price.
+
+A rejected price returns `502 PROVIDER_UNAVAILABLE` with a message naming
+`STRIPE_PRICE_PRO`; a rejected secret key names `STRIPE_SECRET_KEY`. The old
+generic message hid this configuration mistake.
 
 Checkout returns to `/billing/success`; cancellation returns to `/billing/cancel`; the billing portal returns to `/settings`. These routes exist in the frontend.
 

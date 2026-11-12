@@ -11,8 +11,8 @@
  *   clears the session and redirects to `/login?next=…`.
  * - state-changing requests carry `x-csrf-token` from the readable `sda_csrf`
  *   cookie (double-submit; same-site origin).
- * Secrets travel by header only (`x-provider-api-key`, `x-project-key`) —
- * never in URLs or storage.
+ * Project access travels by header only (`x-project-key`), never in URLs or
+ * storage. Provider keys are server-side and never sent by the client.
  */
 import {
   ApiEnvelopeSchema,
@@ -83,16 +83,14 @@ export const USER_MESSAGES: Record<ApiErrorCode, string> = {
   PLAN_UPGRADE_REQUIRED:
     "This feature requires a higher plan. Upgrade your plan to continue.",
   PROVIDER_AUTH_FAILED:
-    "The provider rejected your API key. Open provider settings and update the key.",
+    "Generation is temporarily unavailable. Retry in a moment.",
   PROVIDER_RATE_LIMITED:
     "The model provider is rate-limiting requests. Wait a bit and retry.",
   PROVIDER_TIMEOUT: "The model provider timed out. Retry the generation.",
   PROVIDER_UNAVAILABLE:
     "The model provider is temporarily unavailable. Wait a moment and retry.",
   PROVIDER_CONFIG_NOT_FOUND:
-    "No saved provider setup was found. Save provider settings before retrying.",
-  PROVIDER_CREDENTIALS_UNAVAILABLE:
-    "Saved provider credentials are unavailable right now. Re-enter the key for this session or retry later.",
+    "Provider settings are not available. Generation still uses the hosted model.",
   PROVIDER_UNSUPPORTED_CAPABILITY:
     "The selected model cannot provide a required capability. Pick a different model in provider settings.",
   INVALID_MODEL_OUTPUT:
@@ -145,8 +143,6 @@ export function requiresEmailVerification(error: unknown): boolean {
 
 export type ApiFetchOptions<T> = Omit<RequestInit, "headers"> & {  /** Zod schema validating the `data` payload at runtime (trust boundary). */
   dataSchema?: ZodType<T>;
-  /** BYOK model-provider key, sent as `x-provider-api-key`. Never part of the URL. */
-  providerKey?: string;
   /** Per-project access key, sent as `x-project-key`. Never part of the URL.
    *  `null` is allowed for owner-Bearer-only flows and skips the header. */
   projectKey?: string | null;
@@ -250,7 +246,6 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const {
     dataSchema,
-    providerKey,
     projectKey,
     auth,
     headers,
@@ -262,7 +257,6 @@ export async function apiFetch<T = unknown>(
   const requestHeaders: Record<string, string> = {
     ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
   };
-  if (providerKey !== undefined) requestHeaders["x-provider-api-key"] = providerKey;
   // Truthy guard: a null-cast key must never travel as a literal "null".
   if (projectKey) requestHeaders["x-project-key"] = projectKey;
   // Cookie-authenticated mutations need the double-submit nonce.

@@ -251,21 +251,18 @@ flowchart LR
 
 The raw key is returned only by project creation. `AccessKeyService` hashes it with SHA-256 and the guard compares hashes with `timingSafeEqual`. A database leak therefore does not expose usable keys, and the 256-bit random space makes brute force infeasible.
 
-## Provider credential vault
+## Provider credentials
 
-Account-scoped BYOK keys are the one place a provider secret is persisted, and only as ciphertext:
+Provider keys are deployment secrets, not user data. Generation reads
+`OPENROUTER_API_KEY` / `GROQ_API_KEY` from the server environment; no application
+path writes provider keys to the database.
 
-- AES-256-GCM with `CREDENTIALS_ENCRYPTION_KEY` (base64 32 bytes). A random 12-byte IV per save; `ciphertext`, `iv`, and `auth_tag` are stored base64-encoded with `key_version`.
-- Additional authenticated data is exactly `<user_id>:<provider>`. Moving a row to another account or provider fails authentication instead of decrypting.
-- The plaintext exists only in memory for a save request or one generation run. It is never in the row, a log line, an error message, or an API response.
-- Status listings select only `id`, `provider`, `updated_at`, and `last_used_at`; the full row (with ciphertext) is loaded only for decryption. Run-time resolution uses only a Bearer-authenticated account id, never a project key.
-- Rotation: bump `CREDENTIALS_ENCRYPTION_KEY_VERSION` with a new key and re-save. Rows with an unknown version fail with `PROVIDER_CREDENTIALS_UNAVAILABLE` rather than decrypting with the wrong key; there is no automatic re-encryption job yet.
-- Retention: a row lives until the user removes it (`DELETE /api/users/me/provider-keys/:provider`) or the account is deleted (FK cascade). `last_used_at` records the last run that decrypted the key.
-
-This is a deliberate trade-off against the original header-only BYOK rule: the encrypted vault removes the per-run key prompt, at the cost of the server holding ciphertext whose confidentiality depends on the encryption key staying out of the database and logs.
+`user_provider_credentials` remains in the schema as a legacy BYOK table. It is
+no longer read or written by the application and is kept only to avoid a
+destructive migration. New deployments never populate it.
 
 ## Deletion and cascade behavior
 
-Deleting a user row cascades sessions, email/reset/refresh tokens, provider config, stored provider credentials, preferences, subscriptions, and billing events. `projects.owner_id` is `ON DELETE SET NULL`, so an owned project survives its owner and stays reachable through its `x-project-key`; `ownerId` is then `null` in API responses.
+Deleting a user row cascades sessions, email/reset/refresh tokens, provider config, legacy provider-credential rows, preferences, subscriptions, and billing events. `projects.owner_id` is `ON DELETE SET NULL`, so an owned project survives its owner and stays reachable through its `x-project-key`; `ownerId` is then `null` in API responses.
 
 Related: [[Home]] · [[Architecture]] · [[Generation]] · [[API]] · [[Providers]] · [[Auth]] · [[Billing]] · [[Testing]]

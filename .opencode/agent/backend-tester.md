@@ -100,7 +100,7 @@ For each: anonymous vs bearer vs project key, malformed body, missing fields, ov
 - envelope on every response (success and error)
 - `statusCode` equals HTTP status
 - error details do not leak secrets or internals
-- redaction of `x-provider-api-key` in logs
+- redaction of provider keys in logs
 - CORS allowlist behavior
 - throttle headers/limits
 - payload size limit

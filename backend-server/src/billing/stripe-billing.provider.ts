@@ -165,10 +165,24 @@ export class StripeBillingProvider implements BillingProvider {
       body,
     });
     if (!response.ok) {
-      throw new AppError(
-        "PROVIDER_UNAVAILABLE",
-        "The billing provider rejected the request.",
-      );
+      const payload = (await response.json().catch(() => null)) as {
+        error?: { code?: unknown; param?: unknown };
+      } | null;
+      const stripeCode =
+        typeof payload?.error?.code === "string" ? payload.error.code : undefined;
+      const stripeParam =
+        typeof payload?.error?.param === "string" ? payload.error.param : undefined;
+      const message =
+        stripeCode === "resource_missing" && stripeParam === "line_items[0][price]"
+          ? "Stripe could not find STRIPE_PRICE_PRO. Use the full recurring price id from the same test/live mode."
+          : response.status === 401
+            ? "Stripe rejected the secret key. Check STRIPE_SECRET_KEY and its mode."
+            : "The billing provider rejected the request.";
+      throw new AppError("PROVIDER_UNAVAILABLE", message, {
+        providerStatus: response.status,
+        ...(stripeCode ? { stripeCode } : {}),
+        ...(stripeParam ? { stripeParam } : {}),
+      });
     }
     return (await response.json()) as Record<string, unknown>;
   }

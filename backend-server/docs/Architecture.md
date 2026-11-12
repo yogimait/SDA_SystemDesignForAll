@@ -10,7 +10,6 @@ flowchart TB
     HC[Health]
     AC[Auth]
     ACC[Account]
-    CRED[Provider credentials]
     DASH[Dashboard]
     PC[Projects]
     RC[Requirements]
@@ -67,8 +66,7 @@ flowchart TB
 | `src/projects/`, `src/requirements/`, `src/architecture/` | HTTP controllers and domain services. |
 | `src/auth/` | Register/login/refresh/logout, scrypt password hashing, opaque access sessions, rotating refresh cookies, CSRF/Origin checks, email verification and reset tokens, dev outbox, account deletion. |
 | `src/billing/` | Plan catalogue endpoint, subscription state, stub and Stripe providers, idempotent webhook handling. |
-| `src/account/` | Saved provider config and user preferences. |
-| `src/credentials/` | Account-scoped BYOK vault: AES-256-GCM crypto service, save/rotate/list/remove, run-time key resolution. |
+| `src/account/` | Saved provider config and user preferences (legacy compatibility; the UI no longer exposes provider selection). |
 | `src/analytics/` | Dashboard range aggregation. |
 | `src/plans/` | Free/Pro limits (from `PLAN_CATALOG`) and scoped-regeneration gate. |
 | `src/common/access/auth-context.service.ts` + `auth.guard.ts` | Bearer resolution, required/optional auth guards, request user context. |
@@ -139,8 +137,8 @@ Run SSE uses the same guard. The controller writes raw `text/event-stream` frame
 | `REQUIRE_EMAIL_VERIFICATION` | `0` | Gate project creation and generation on a verified email. |
 | `APP_BASE_URL` | `http://localhost:3000` | Email links and stub billing URLs. |
 | `CSRF_SECRET` | — | Optional HMAC key for the CSRF cookie. |
-| `CREDENTIALS_ENCRYPTION_KEY` | — | Base64 32-byte AES-256-GCM key for the provider-key vault; required in production. |
-| `CREDENTIALS_ENCRYPTION_KEY_VERSION` | `1` | Version stamped on new ciphertext; other versions are rejected. |
+| `OPENROUTER_API_KEY` | - | Hosted OpenRouter key for generation. |
+| `GROQ_API_KEY` | - | Hosted Groq key when Groq is selected. |
 | `AUTH_THROTTLE_LIMIT` | `5` | Auth endpoint budget per window. |
 | `AUTH_THROTTLE_TTL_MS` | `60000` | Auth throttle window. |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_PRO` | — | Enable the Stripe billing provider; empty means the local stub. |
@@ -153,7 +151,7 @@ No `.env` loader is installed: set environment variables in the shell or the pro
 - No Redis, BullMQ, or multi-instance worker in the MVP. The database queue is claimed by one in-process worker.
 - Repository interfaces keep PGlite and Postgres interchangeable. No SQL leaks into controllers or generators.
 - Provider adapters are created only through `ProviderRegistry`; orchestration never imports OpenRouter directly.
-- Provider keys are either request-scoped or encrypted at rest in the account vault. No plaintext key reaches the database, logs, or a response.
+- Provider keys are deployment secrets used server-side. No user key is stored, and no plaintext key reaches the database, logs, or a response.
 - The Express adapter is constructed explicitly in `main.ts` so production boot does not depend on Nest's optional platform discovery under npm workspace hoisting.
 - The mock provider is active only when `MOCK_PROVIDER=1` is explicitly set.
 

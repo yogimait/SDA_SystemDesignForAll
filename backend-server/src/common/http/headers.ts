@@ -7,7 +7,3 @@ export function readHeader(
   const raw = request.headers[name];
   return Array.isArray(raw) ? raw[0] : raw;
 }
-
-export function readProviderKey(request: Request): string | undefined {
-  return readHeader(request, "x-provider-api-key");
-}

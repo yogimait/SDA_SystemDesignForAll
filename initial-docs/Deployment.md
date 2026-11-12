@@ -52,7 +52,6 @@ DEFAULT_PROVIDER=openrouter
 DEFAULT_MODEL=z-ai/glm-5.3-flash
 TRUST_PROXY=1
 REQUIRE_EMAIL_VERIFICATION=0
-CREDENTIALS_ENCRYPTION_KEY_VERSION=1
 GENERATION_CONCURRENCY=1
 ```
 
@@ -63,7 +62,7 @@ DATABASE_URL=postgresql://...pooler.supabase.com:5432/postgres?sslmode=require
 CORS_ORIGIN=https://app.example.com
 APP_BASE_URL=https://app.example.com
 COOKIE_DOMAIN=.example.com
-CREDENTIALS_ENCRYPTION_KEY=<32-byte base64>
+OPENROUTER_API_KEY=sk-or-v1-...
 CSRF_SECRET=<random secret>
 EMAIL_PROVIDER=resend
 RESEND_API_KEY=re_...
@@ -94,9 +93,9 @@ Then:
   process-local.
 - `plan: free` is demo-only: Render sleeps idle free services and can interrupt
   a generation run. Change to `starter` before inviting real users.
-- `OPENROUTER_API_KEY` / `GROQ_API_KEY` are not needed in production. Users
-  either save an encrypted account key or send `x-provider-api-key`. The env
-  fallback is disabled when `NODE_ENV=production`.
+- `OPENROUTER_API_KEY` is required in production; it powers every hosted
+  generation run. Clients never send provider keys. Set `GROQ_API_KEY` only if
+  you switch `DEFAULT_PROVIDER=groq`.
 - Set `EMAIL_PROVIDER=resend` and verify `EMAIL_FROM` on the Resend domain.
   Once delivery works, set `REQUIRE_EMAIL_VERIFICATION=1`.
 - For Stripe, create the recurring Pro price and a webhook endpoint at
@@ -104,6 +103,10 @@ Then:
   `checkout.session.completed`, `customer.subscription.updated`, and
   `customer.subscription.deleted`. Put the signing secret in
   `STRIPE_WEBHOOK_SECRET`.
+- Set `STRIPE_PRICE_PRO` to the **full** recurring price id (`price_...`), not
+  a prefix. The price and `STRIPE_SECRET_KEY` must be from the same mode (test
+  with test, live with live). A mismatch surfaces as a 502 naming
+  `STRIPE_PRICE_PRO`.
 
 ## 3. Vercel frontend
 
@@ -144,7 +147,8 @@ Wait for TLS certificates to become active before testing auth.
 1. `GET https://api.example.com/api/health` returns the envelope and `database: "postgres"`.
 2. Register → login → refresh the page (refresh cookie works).
 3. Create project → generate requirements → confirm → generate architecture.
-4. Save a provider key to the account, reload, generate without re-entering it.
+4. Generate requirements and architecture without entering a provider key; the
+   hosted key is server-side.
 5. Watch the SSE stage stream through Render (no proxy buffering).
 6. Delete the account and confirm the vault rows disappear.
 7. Restart the Render service and confirm data persists.
@@ -152,16 +156,14 @@ Wait for TLS certificates to become active before testing auth.
 
 ## 6. Beta limitations to keep visible
 
-- Email delivery and Stripe are implemented; live-mode smoke is still required.
-  Until Resend is verified, keep `REQUIRE_EMAIL_VERIFICATION=0` and do not promise
-  password reset. Until Stripe checkout + webhook are verified, do not advertise
-  paid plans.
+- Resend verification and password reset are verified for `nerddog.me`. Keep
+  `REQUIRE_EMAIL_VERIFICATION=1` once the production sender is confirmed.
+- Stripe checkout + webhook still need a test-mode smoke before live keys. Do not
+  advertise paid plans until that passes.
 - Stripe tests cover signing, checkout URLs, portal return, webhook ledger, and
   plan transitions; they do not create a live charge.
 - Supabase Free can pause; Render Free can sleep.
 - Groq free-tier keys cannot fit the full combined LLD/DSA generation.
-- Losing `CREDENTIALS_ENCRYPTION_KEY` makes every stored provider credential
-  unreadable. Back it up in a secret manager.
 
 ## 7. What not to do
 

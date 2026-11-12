@@ -144,13 +144,6 @@ function intercept(page: Page, projectStatus: string, requirements: unknown): vo
       body: JSON.stringify(envelope({ ...PROJECT, status: projectStatus })),
     }),
   );
-  page.route("**/api/users/me/provider-keys**", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(envelope({ credentials: [] })),
-    }),
-  );
   page.route("**/api/users/me/provider-config", (route) =>
     route.fulfill({
       status: 200,
@@ -172,17 +165,11 @@ async function expectOverflowFree(page: Page, label: string): Promise<void> {
   expect(overflow, `${label} overflows horizontally by ${overflow}px at 390px`).toBeLessThanOrEqual(0);
 }
 
-/** Role-based so the hidden/inert dock copy of the trigger never matches. */
-const providerTrigger = (page: Page) =>
-  page.getByRole("button", { name: /Provider (setup|ready)/ });
-
 test("workspace header fits 1440/1280/834/390 (D2)", async ({ page }) => {
   intercept(page, "architecture_ready", { spec: SPEC, confirmedAt: "2026-01-05T00:00:00.000Z" });
   await page.addInitScript(AUTH_SEED);
   await page.goto("/projects/proj_1/workspace");
   await expect(page.getByRole("tab", { name: "LLD" })).toBeVisible({ timeout: 20_000 });
-  // Provider setup is a landing/library affordance only.
-  await expect(providerTrigger(page)).toHaveCount(0);
   for (const width of [1440, 1280, 834, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await expectOverflowFree(page, `workspace ${width}`);
@@ -196,7 +183,9 @@ test("requirements page has no provider setup button", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Confirm & generate architecture" })).toBeVisible({
     timeout: 20_000,
   });
-  await expect(providerTrigger(page)).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /Add provider/i }),
+  ).toHaveCount(0);
 });
 
 test("requirements editor footer fits 390px (D3)", async ({ page }) => {
@@ -209,19 +198,12 @@ test("requirements editor footer fits 390px (D3)", async ({ page }) => {
   await expectOverflowFree(page, "requirements");
 });
 
-test("library header fits 390px and provider setup lives in the menu", async ({ page }) => {
+test("library header and menu fit 390px", async ({ page }) => {
   await page.route(/\/api\/projects\?/, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(envelope({ projects: [], nextCursor: null })),
-    }),
-  );
-  page.route("**/api/users/me/provider-keys**", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(envelope({ credentials: [] })),
     }),
   );
   mockAuthRoutes(page, USER);
@@ -230,18 +212,15 @@ test("library header fits 390px and provider setup lives in the menu", async ({ 
   await expect(page.getByRole("heading", { name: "Project library" })).toBeVisible();
   await expectOverflowFree(page, "library");
 
-  // Below lg the header collapses into a hamburger sheet: that is where the
-  // library exposes provider setup on a phone.
+  // Below lg the header collapses into a hamburger sheet.
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   const sheet = page.getByRole("dialog", { name: "Navigation" });
   await expect(sheet).toBeVisible();
-  await expect(sheet.getByRole("button", { name: /Provider (setup|ready)/ })).toBeVisible();
   await expectOverflowFree(page, "library (menu open)");
 });
 
-test("landing header fits 390px with the compact provider trigger", async ({ page }) => {
+test("landing header fits 390px", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(providerTrigger(page)).toBeVisible();
   await expectOverflowFree(page, "landing");
 });

@@ -14,8 +14,6 @@ import { hashAccessToken, readBearerToken } from "./token.js";
 
 export interface AuthRequest extends Request {
   user?: UserRow;
-  /** Set only from a valid Bearer session, never from `x-project-key`. */
-  authenticatedUserId?: string;
 }
 
 export function requireUser(request: AuthRequest): UserRow {

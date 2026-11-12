@@ -10,7 +10,6 @@ import { DrizzleAnalyticsRepository } from "./repositories/drizzle-analytics.rep
 import { DrizzleTokenRepository } from "./repositories/drizzle-token.repository.js";
 import { DrizzleOutboxRepository } from "./repositories/drizzle-outbox.repository.js";
 import { DrizzleBillingRepository } from "./repositories/drizzle-billing.repository.js";
-import { DrizzleProviderCredentialRepository } from "./repositories/drizzle-provider-credential.repository.js";
 import {
   PROJECT_REPOSITORY,
   REQUIREMENTS_REPOSITORY,
@@ -26,7 +25,6 @@ import {
   OUTBOX_REPOSITORY,
 } from "./repositories/outbox.repository.js";
 import { BILLING_REPOSITORY } from "./repositories/billing.repository.js";
-import { PROVIDER_CREDENTIAL_REPOSITORY } from "./repositories/provider-credential.repository.js";
 
 /** One global module so domain modules depend on interfaces, not on driver details. */
 @Global()
@@ -44,7 +42,6 @@ import { PROVIDER_CREDENTIAL_REPOSITORY } from "./repositories/provider-credenti
     DrizzleTokenRepository,
     DrizzleOutboxRepository,
     DrizzleBillingRepository,
-    DrizzleProviderCredentialRepository,
     { provide: PROJECT_REPOSITORY, useExisting: DrizzleProjectRepository },
     {
       provide: REQUIREMENTS_REPOSITORY,
@@ -59,10 +56,6 @@ import { PROVIDER_CREDENTIAL_REPOSITORY } from "./repositories/provider-credenti
     { provide: TOKEN_REPOSITORY, useExisting: DrizzleTokenRepository },
     { provide: OUTBOX_REPOSITORY, useExisting: DrizzleOutboxRepository },
     { provide: BILLING_REPOSITORY, useExisting: DrizzleBillingRepository },
-    {
-      provide: PROVIDER_CREDENTIAL_REPOSITORY,
-      useExisting: DrizzleProviderCredentialRepository,
-    },
   ],
   exports: [
     DatabaseService,
@@ -77,7 +70,6 @@ import { PROVIDER_CREDENTIAL_REPOSITORY } from "./repositories/provider-credenti
     TOKEN_REPOSITORY,
     OUTBOX_REPOSITORY,
     BILLING_REPOSITORY,
-    PROVIDER_CREDENTIAL_REPOSITORY,
   ],
 })
 export class DatabaseModule {}

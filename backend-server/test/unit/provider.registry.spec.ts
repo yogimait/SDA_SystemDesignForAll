@@ -72,15 +72,17 @@ describe("ProviderRegistry key resolution", () => {
     expect(groqKeys).toEqual(["gsk-local-env"]);
   });
 
-  it("ignores local env keys when NODE_ENV=production", () => {
-    const { registry } = makeRegistry({
+  it("uses the hosted env key in production", () => {
+    const { registry, openrouterKeys, groqKeys } = makeRegistry({
       NODE_ENV: "production",
-      OPENROUTER_API_KEY: "sk-local-env",
-      GROQ_API_KEY: "gsk-local-env",
+      OPENROUTER_API_KEY: "sk-hosted",
+      GROQ_API_KEY: "gsk-hosted",
     });
 
-    expect(() => registry.resolve("openrouter")).toThrow(/API key/);
-    expect(() => registry.resolve("groq")).toThrow(/API key/);
+    registry.resolve("openrouter");
+    registry.resolve("groq");
+    expect(openrouterKeys).toEqual(["sk-hosted"]);
+    expect(groqKeys).toEqual(["gsk-hosted"]);
   });
 });
 

@@ -13,7 +13,7 @@ Focused stack for the MVP. Two rules govern every choice below: **SOLID with pra
 | Validation / contracts | Zod 4 in a shared `packages/contracts` package (root npm workspaces) | One source of truth for DTOs, the canonical architecture model, and the API envelope, consumed by both apps. |
 | Database | Drizzle ORM + drizzle-kit; **PGlite** locally, `pg` driver for production Postgres | PGlite is real Postgres (WASM) with zero infrastructure — meets the "Postgres now, no Docker" constraint. Drizzle supports both PGlite and `pg` on the same schema, keeping the Supabase/managed-Postgres path open behind repository interfaces. |
 | Diagrams | Custom SVG renderer + `@dagrejs/dagre` layout | Precise UML notation (hollow triangles, diamonds, dashed dependencies, multiplicities), full styling control, progressive reveal, replaceable later without touching the canonical model. No React Flow. |
-| Model provider | **OpenRouter** + **Groq** (GPT-OSS 120B), BYOK | OpenRouter/GLM is the full-architecture default. Groq is implemented behind the same `ModelProvider` interface; its free GPT-OSS 120B plan is 8k TPM, so the 64k LLD/DSA stage needs an upgraded plan or a split. |
+| Model provider | **OpenRouter** + **Groq** (GPT-OSS 120B), hosted key | OpenRouter/GLM is the full-architecture default. Users pay for a plan; the server key powers generation. Groq is implemented behind the same `ModelProvider` interface; its free GPT-OSS 120B plan is 8k TPM, so the 64k LLD/DSA stage needs an upgraded plan or a split. |
 | Async generation | Postgres-backed run/stage rows + in-process worker (concurrency 1), client polling | Survives refreshes, reports real stage state, no Redis for an MVP with one backend instance. |
 
 ## Frontend
@@ -22,7 +22,7 @@ Focused stack for the MVP. Two rules govern every choice below: **SOLID with pra
 - **Routes**: `/` landing → `/projects/[id]/requirements` → `/projects/[id]/workspace`.
 - **shadcn/ui** with Tailwind v4 tokens in `globals.css` — set up on the current **base-nova** style, so components are built on **Base UI** (`@base-ui/react`) primitives rather than the older Radix-based style (decided 2026-10-23 during Phase F0; visually equivalent, owned-source components, restylable the same way). Technical, restrained aesthetic: neutral base palette, one accent color, mono font for identifiers and complexity chips. Important for any local dev setup: `turbopack.root` in `next.config.ts` must point at the repo root so hoisted workspace deps resolve.
 - **API client** (`lib/api`): unwraps the API envelope (`{ status, statusCode, data }` / `{ status, statusCode, message, error }`), maps registered error codes to actionable messages.
-- **BYOK handling**: keys live in `sessionStorage`, entered in a dialog, never stored in app state passed to diagram components, URLs, or persisted anywhere.
+- **Hosted model access**: users never enter a provider key; the backend uses the deployment key. Project access keys stay in `sessionStorage` and never reach diagram components or URLs.
 - Frontend runs on port **3000**.
 
 ## Backend
@@ -71,19 +71,19 @@ interface ModelProvider {
 ```
 
 - **OpenRouter adapter** (default full-architecture path): base URL `https://openrouter.ai/api/v1/chat/completions`, key forwarded from the client header as `Authorization: Bearer …`.
-- **Groq adapter**: base URL `https://api.groq.com/openai/v1/chat/completions`, same BYOK header, `max_completion_tokens`, `reasoning_effort`, strict `json_schema` for GPT-OSS 120B. Free plan is 30 RPM / 1K RPD / 8K TPM / 200K TPD.
+- **Groq adapter**: base URL `https://api.groq.com/openai/v1/chat/completions`, hosted key header, `max_completion_tokens`, `reasoning_effort`, strict `json_schema` for GPT-OSS 120B. Free plan is 30 RPM / 1K RPD / 8K TPM / 200K TPD.
 - **Model**: GLM-5.3 Flash, verified against OpenRouter's model list: slug `z-ai/glm-5.3-flash`, context length 1,048,576, supports `response_format` and `structured_outputs`. The slug is a config value (`DEFAULT_MODEL`), never hardcoded in orchestration logic.
 - **Structured output strategy**, tried in order per model capability: (1) `response_format: { type: "json_schema", …, strict: true }` with provider `require_parameters` routing; (2) `json_object` mode with the JSON Schema inlined in the system prompt; (3) prompt-only JSON with tolerant extraction. Zod → JSON Schema conversion (with sanitization for provider quirks) lives in the adapters layer, not in orchestration.
 - **Generation config**: low temperature (≈0.2), per-stage `maxOutputTokens` budgets (LLD/DSA 64k), per-request timeout via `AbortController`, usage (prompt/completion tokens) captured per run for duration/cost tracking. `OPENROUTER_REASONING_EFFORT` defaults to `low` because reasoning tokens share `max_tokens`, but even low effort consumes a large share on GLM-5.3 Flash.
 - **Error normalization**: provider failures map to typed errors (`auth`, `rate_limit`, `timeout`, `invalid_output`, `context_length`, `unsupported`), then to registered envelope error codes. Bounded retry (max 2 repair attempts) applies to invalid structured output only; truncated output fails fast with its provider reason.
 - **Later adapters** (same interface, no orchestration changes): Gemini.
 
-**BYOK flow**
+**Hosted-key flow**
 
-1. Production: user pastes an OpenRouter key in the provider dialog, stored in `sessionStorage` (per tab, cleared on close).
-2. Each generation request carries `x-provider-api-key`.
-3. Backend uses the key for the run, redacts it from all logs, and persists nothing.
-4. Local development only: `backend-server/.env` may set `OPENROUTER_API_KEY` as a fallback. The request header wins; `NODE_ENV=production` ignores the fallback; `.env` is gitignored.
+1. The user pays for a plan; no provider key UI exists.
+2. `OPENROUTER_API_KEY` (or `GROQ_API_KEY`) lives in the backend environment.
+3. The backend binds the key for one run, redacts it from all logs, and persists nothing.
+4. `backend-server/.env` supplies the key locally; Render supplies it in production. `.env` is gitignored.
 
 ## Diagram rendering
 

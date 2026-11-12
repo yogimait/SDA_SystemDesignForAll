@@ -12,7 +12,7 @@ export const OPENROUTER_FETCH = Symbol("OPENROUTER_FETCH");
 export { extractJsonText, type FetchLike };
 
 /**
- * OpenRouter adapter. BYOK: the key is bound per request by the registry and is
+ * OpenRouter adapter. The hosted key is bound per run by the registry and is
  * never stored or logged. Falls back down the structured-output ladder when a
  * model does not support the stricter mode, remembering the result per model.
  */

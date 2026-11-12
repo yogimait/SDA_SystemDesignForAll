@@ -37,10 +37,8 @@ services:
         value: low
       - key: GENERATION_CONCURRENCY
         value: "1"
-      - key: CREDENTIALS_ENCRYPTION_KEY
+      - key: OPENROUTER_API_KEY
         sync: false
-      - key: CREDENTIALS_ENCRYPTION_KEY_VERSION
-        value: "1"
       - key: CSRF_SECRET
         sync: false
       - key: CORS_ORIGIN

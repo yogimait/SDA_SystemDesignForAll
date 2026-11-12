@@ -24,7 +24,6 @@ import {
   type StageRow,
 } from "../database/repositories/run.repository.js";
 import { ProviderRegistry } from "../providers/provider.registry.js";
-import { CredentialsService } from "../credentials/credentials.service.js";
 import { GenerationWorker } from "./generation.worker.js";
 import {
   RunEventsService,
@@ -46,7 +45,6 @@ export class RunService {
     @Inject(ARCHITECTURE_REPOSITORY)
     private readonly architectures: ArchitectureRepository,
     private readonly registry: ProviderRegistry,
-    private readonly credentials: CredentialsService,
     private readonly worker: GenerationWorker,
     private readonly plans: PlanService,
     private readonly events: RunEventsService,
@@ -55,9 +53,7 @@ export class RunService {
   async startRequirements(
     project: ProjectRow,
     options: GenerationOptions,
-    apiKey?: string,
     actor?: UserRow,
-    authenticatedUserId?: string,
   ): Promise<StartRunResponse> {
     await this.plans.assertCanStartRun(actor, project);
     return this.startRun(
@@ -65,19 +61,14 @@ export class RunService {
       "requirements",
       null,
       options,
-      apiKey,
       [...REQUIREMENTS_STAGES],
-      actor,
-      authenticatedUserId,
     );
   }
 
   async startArchitecture(
     project: ProjectRow,
     options: GenerationOptions,
-    apiKey?: string,
     actor?: UserRow,
-    authenticatedUserId?: string,
   ): Promise<StartRunResponse> {
     if (!project.requirementsSnapshot) {
       throw new AppError(
@@ -92,10 +83,7 @@ export class RunService {
       "architecture",
       null,
       options,
-      apiKey,
       [...ARCHITECTURE_STAGES],
-      actor,
-      authenticatedUserId,
     );
   }
 
@@ -103,9 +91,7 @@ export class RunService {
     project: ProjectRow,
     scope: RegenerateScope,
     options: GenerationOptions,
-    apiKey?: string,
     actor?: UserRow,
-    authenticatedUserId?: string,
   ): Promise<StartRunResponse> {
     if (!project.requirementsSnapshot) {
       throw new AppError(
@@ -139,10 +125,7 @@ export class RunService {
       "architecture",
       scope,
       options,
-      apiKey,
       [`${scope}_model`, "validate", "persist"],
-      actor,
-      authenticatedUserId,
     );
   }
 
@@ -160,10 +143,7 @@ export class RunService {
     type: RunType,
     scope: RegenerateScope | null,
     options: GenerationOptions,
-    headerKey: string | undefined,
     stageNames: string[],
-    actor?: UserRow,
-    authenticatedUserId?: string,
   ): Promise<StartRunResponse> {
     if (await this.runs.hasActiveRun(project.id)) {
       throw new AppError("RUN_CONFLICT");
@@ -171,22 +151,16 @@ export class RunService {
 
     const providerId = options.provider ?? this.registry.defaultProvider;
     const model = options.model ?? this.registry.defaultModel;
-    // Header wins. Otherwise the vault is read only for the account that sent
-    // a valid Bearer session; a project key alone never unlocks it. Mock mode
-    // skips the vault entirely so a stale row cannot block a mock run.
-    const vaultKey =
-      !headerKey?.trim() && !this.registry.mockEnabled
-        ? await this.credentials.resolveForRun(authenticatedUserId, providerId)
-        : undefined;
-    const provider = this.registry.resolve(providerId, headerKey?.trim() || vaultKey);
+    // The hosted server key powers every run. No user-supplied key is needed.
+    const provider = this.registry.resolve(providerId);
 
     const runId = randomUUID();
     const inputHash = project.requirementsSnapshot
       ? hash(JSON.stringify(project.requirementsSnapshot.spec))
       : "";
 
-    // Bind the BYOK provider before the worker can claim the run. The key lives
-    // only inside this closure for the lifetime of the run.
+    // Bind the hosted provider before the worker can claim the run. The key
+    // lives only inside this closure for the lifetime of the run.
     this.worker.registerProvider(runId, provider);
     let created: RunRow;
     try {

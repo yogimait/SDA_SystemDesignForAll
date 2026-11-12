@@ -32,7 +32,7 @@ Status: Done (2026-10-23)
 
 ## Phase F1 — Landing page and provider setup
 
-**Goal**: user can describe an idea and start a design session with OpenRouter BYOK in one obvious flow.
+**Goal**: user can describe an idea and start a design session with the hosted model in one obvious flow.
 
 Theme decision (user, 2026-10-23): slightly dark grey/coffee, minimalist, always clear what is happening, accessible. Designed via Stitch (project `4701967166422589636`, design system `assets/16d57281596d40f4b8d031ea3afa8e15`), implemented as a single dark token set in `frontend_client/docs/Design-System.md`.
 
@@ -244,7 +244,7 @@ Contracts landed in `packages/contracts` (users, analytics, projects list, provi
 - [x] **Session store** (`lib/session/auth.ts` + tests): access token in sessionStorage only (`sda:auth:session`), module snapshot kept referentially stable for `useSyncExternalStore`, expired sessions dropped on read, `sda:auth-changed` + `storage` events keep tabs coherent; Bearer header attaches through `apiFetch({ auth: true })`. No refresh/me endpoint exists in the contracts — expiry is sign-out.
 - [x] **React binding** (`hooks/use-session.ts`): `useSession` + `useHydrated` (uSES false→true). The hydration commit reports the server snapshot (null session); a naive `useEffect` guard fired on that first commit and signed every authenticated user out on first paint — deterministic repro in the network-intercepted e2e, fixed by holding redirects until hydrated.
 - [x] **Portal chrome** (`components/portal/portal-header.tsx`, `components/landing/site-header.tsx`): identity chip + plan tier badge, nav across Library/Dashboard/Settings, sign-out → `/login`.
-- [x] **Pages**: `/login` (sign-in + register tabs, contract-mapped error copy), `/library` (status filter, cursor pagination, workspace links), `/dashboard` (7/30/90 ranges, usage totals, token buckets, top models, recent runs, empty + plan-gate cards), `/settings` (saved provider defaults + theme/default provider/model preferences; BYOK stays request-scoped in the landing provider dialog — saved config stores no API key).
+- [x] **Pages**: `/login` (sign-in + register tabs, contract-mapped error copy), `/library` (status filter, cursor pagination, workspace links), `/dashboard` (7/30/90 ranges, usage totals, token buckets, top models, recent runs, empty + plan-gate cards), `/settings` (billing, verification, account deletion, hosted-generation explainer — no provider/key controls).
 - [x] **Verified: lint clean · 98/98 unit tests · production build (new routes prerender OK) · Playwright 16/16 · Impeccable detector exit 0** on all six touched files.
 - Backend coupling (live-verified): the backend serves the user slice on :3001 — register/login, owned project list, `/api/users/me/provider-config` + `/preferences`, and analytics at **`/api/dashboard`** (this page originally pointed at `/api/users/me/dashboard` and 404'd against the real server; fixed to the backend mount). Journeys intercept endpoints with contract-shaped envelopes for determinism; a one-off unintercepted live journey (register → library → save config/preferences → dashboard → sign out) passed against `MOCK_PROVIDER=1`.
 - Decisions kept: token lives in sessionStorage per contract shape "Bearer token, no refresh"; `AUTH_REQUIRED` surfaces mapped copy + a "Sign in again" link instead of silently clearing the store; the timeout-deferred load effects satisfy the `react-hooks/set-state-in-effect` ban.
@@ -262,7 +262,7 @@ The joint triage list (user + backend agent) split this way — backend ownershi
 - [x] **D5 (backend)**: malformed project/run ids bound into PGlite produced 500s. `ProjectAccessGuard` now validates id shape before any DB call (400 → 404 envelope `PROJECT_NOT_FOUND`/`RUN_NOT_FOUND`); new e2e asserts both codes. Live server needs a restart (coordinated separately) to pick it up.
 - [x] **D10 (contracts)**: `SaveProviderConfigRequestSchema` is now strict — an `apiKey` in the body fails `VALIDATION_ERROR` naming the key; backend e2e updated for both mounts.
 - [x] **D4**: settings surfaces `AUTH_REQUIRED` with a sign-in prompt on both cards instead of the misleading "not set".
-- [x] **D6**: the BYOK provider dialog closes on save (trigger flips to "Provider ready" = the confirmation).
+- [x] **D6**: the legacy BYOK provider dialog was removed when generation moved to the hosted server key.
 - [x] **D7**: theme plumbing mounted (`ThemeApplier` + `lib/theme/preferences.ts` + `html[data-theme]`); the palette stays the single dark brand by recorded decision — a light palette swap lands with light tokens, the plumbing is ready.
 - [x] **D8/D12**: dashboard totals card copy rewritten (projects-with-activity); "Saved Saved" → "Saved at …"; Base UI Select controlled-value warning removed (value `null` instead of undefined-flapping).
 - [x] **D9 (investigated, no code change)**: "stale route DOM" is React's Offscreen retention during app-router transitions — outgoing pages stay in the DOM but `display:none` (inert, a11y-safe); Playwright resolves them as "hidden", users never interact with them. The user-facing redirects that made this visible were fixed earlier (hydration guard). No framework-level fix exists or is needed.

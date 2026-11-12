@@ -15,6 +15,6 @@ Scope: `frontend_client/` only. Planning: `../initial-docs/Roadmap-Planner-Front
 - Workspaces: packages install from the repo root (`npm install` there). Never recreate a local lockfile; `turbopack.root` in `next.config.ts` MUST stay pointed at the workspace root.
 - Checks before done: `npm run lint` + `npm run test` + `npm run build` in this directory, and the Impeccable detector on affected routes.
 - Envelope/api rules: `docs/API-Client.md`. Token rules: `docs/Design-System.md`. All response shapes come from `@sda/contracts` (repo-root `packages/contracts`) — never re-define a payload schema inline.
-- secrets: keys travel only via `x-provider-api-key` / `x-project-key` headers through `lib/api/client.ts`; never in URLs, state passed to diagrams, or logs.
+- secrets: project access travels only via `x-project-key` through `lib/api/client.ts`; provider keys are server-side and never entered in the UI. Never put secrets in URLs, state passed to diagrams, or logs.
 - Next 16 changes vs. older training data: type helpers `PageProps`/`LayoutProps` are global; `cacheComponents: true` is on; config is compiled to CJS (`__dirname` works, `import.meta.url` does not).
 

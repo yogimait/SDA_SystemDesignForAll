@@ -56,7 +56,7 @@ Status: Done — 2026-10-23.
 
 ## Phase B2 — Provider layer: OpenRouter + GLM-5.3 Flash
 
-**Goal**: reliable, normalized structured generation through BYOK, isolated behind one interface.
+**Goal**: reliable, normalized structured generation through a hosted key, isolated behind one interface.
 
 - [x] `ModelProvider` interface + `ProviderRegistry` (OpenRouter and Groq registered; Gemini remains a later adapter by construction).
 - [x] OpenRouter adapter: `chat/completions`, `Authorization: Bearer <key>` from the request header, optional OpenRouter attribution headers, model string from request (default `DEFAULT_MODEL`, e.g. `z-ai/glm-5.3-flash` — **verify exact slug and capabilities via `GET https://openrouter.ai/api/v1/models` during this phase and record it**).
@@ -193,7 +193,7 @@ Status: Backend complete — full frontend README remains with the frontend trac
 | `POST /api/projects/:id/architecture/regenerate` | Scoped LLD/HLD/DSA regeneration. |
 | `GET /api/runs/:runId` | Run status, real stages, usage, errors. |
 
-All responses enveloped; provider key via `x-provider-api-key`; project access via `x-project-key` or owner Bearer session; account routes via Bearer.
+All responses enveloped; hosted provider key stays server-side; project access via `x-project-key` or owner Bearer session; account routes via Bearer.
 
 ## Deliberately out of backend scope (MVP)
 

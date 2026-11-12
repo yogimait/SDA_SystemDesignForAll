@@ -55,7 +55,7 @@ Produce an evidence-backed audit of:
 # Required test matrix
 
 ## Pages
-- `/` landing: idea form, examples, provider dialog, header/nav, start flow.
+- `/` landing: idea form, examples, header/nav, start flow.
 - `/login`: sign in, create account, validation, error copy, redirect after auth, back link.
 - `/library`: list, pagination, status filter, open project, empty state, auth gate.
 - `/dashboard`: range selector, usage cards, buckets, top models, recent runs, empty state.
@@ -77,7 +77,7 @@ Produce an evidence-backed audit of:
 - anonymous legacy project behavior
 
 ## API calls
-Enumerate every `apiFetch` call. For each: endpoint, method, headers (`Authorization`, `x-project-key`, `x-provider-api-key`), request schema, response schema, status codes, error codes, retry behavior, loading state.
+Enumerate every `apiFetch` call. For each: endpoint, method, headers (`Authorization`, `x-project-key`), request schema, response schema, status codes, error codes, retry behavior, loading state.
 
 # Output format
 

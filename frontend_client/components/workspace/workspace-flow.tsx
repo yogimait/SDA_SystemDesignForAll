@@ -2,7 +2,7 @@
 
 /**
  * Workspace shell (F3/F4): access gate → project + architecture queries →
- * header (validation badge, regenerate menu, provider dialog) → view tabs
+ * header (validation badge, regenerate menu) → view tabs
  * (LLD diagram / HLD system view / DSA cards) over a resizable layout.
  * Selection state is kept per tab; guided mode lands in F5.
  */
@@ -11,7 +11,6 @@ import {
   ProjectSchema,
   StartRunResponseSchema,
   type ArchitectureModel,
-  type GenerationOptions,
   type RegenerateScope,
   type ValidationReport,
 } from "@sda/contracts";
@@ -61,10 +60,7 @@ import {
   useRunTerminalEffect,
 } from "@/hooks/use-generation-run";
 import { useRunLive, type RunLiveState } from "@/hooks/use-run-stream";
-import { useSavedProviderKeys } from "@/hooks/use-saved-provider-keys";
 import { apiFetch, ApiError } from "@/lib/api/client";
-import { providerSetupState } from "@/lib/providers/setup";
-import { resolveProviderSetup } from "@/lib/providers/account-setup";
 import {
   dsaGuidedSteps,
   guidedStepsInScope,
@@ -86,11 +82,7 @@ import {
   type HldScene,
 } from "@/lib/diagram/hld-scene";
 import { queryKeys } from "@/lib/query-keys";
-import {
-  loadProjectAccessKey,
-  loadProviderSetup,
-  type ProviderSetup,
-} from "@/lib/session/keys";
+import { loadProjectAccessKey } from "@/lib/session/keys";
 import { loadSession } from "@/lib/session/auth";
 import { requirementRefLabels } from "@/lib/format";
 import { cn } from "cn";
@@ -105,7 +97,7 @@ const KIND_CHIP: Record<string, string> = {
 
 /**
  * Regeneration scopes and what a new run actually touches: each scope is its
- * own paid provider pass; the success result replaces that view only.
+ * own paid run; the success result replaces that view only.
  */
 const REGEN_INFO: Array<{
   scope: RegenerateScope;
@@ -116,19 +108,19 @@ const REGEN_INFO: Array<{
     scope: "lld",
     label: "LLD only",
     detail:
-      "New provider run for the class diagram: classes, relationships and design patterns. Replaces the LLD view when the run succeeds.",
+      "New model run for the class diagram: classes, relationships and design patterns. Replaces the LLD view when the run succeeds.",
   },
   {
     scope: "hld",
     label: "HLD only",
     detail:
-      "New provider run for the system view: components, request/event flows, scaling notes and failure scenarios.",
+      "New model run for the system view: components, request/event flows, scaling notes and failure scenarios.",
   },
   {
     scope: "dsa",
     label: "DSA only",
     detail:
-      "New provider run for the operation analysis: data-structure choices, complexity claims and trade-offs.",
+      "New model run for the operation analysis: data-structure choices, complexity claims and trade-offs.",
   },
 ];
 
@@ -169,13 +161,6 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
   // <768 stacks — diagram first, outline/details as sheets.
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const isPhone = useMediaQuery("(max-width: 767px)");
-  const savedKeys = useSavedProviderKeys();
-  const [providerSetup, setProviderSetup] = useState<ProviderSetup | null>(null);
-  // Regeneration is live with either a tab key or the account's saved key.
-  const providerReady = providerSetupState(
-    providerSetup,
-    providerSetup !== null && savedKeys.savedProviders.has(providerSetup.provider),
-  ).ready;
   const [regenRunId, setRegenRunId] = useState<string | null>(null);
   const [regenOverlayOpen, setRegenOverlayOpen] = useState(false);
   const [regenScope, setRegenScope] = useState<RegenerateScope>("lld");
@@ -282,16 +267,6 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
       }
       setProjectKey(key);
       setAuthed(loadSession() !== null);
-      // Readiness (tab key or saved account key) decides whether scope items
-      // are live; without a key every scope is a guaranteed auth failure.
-      setProviderSetup(loadProviderSetup());
-      if (loadSession() !== null) {
-        // New tab / cleared storage: use the account's saved provider+model so
-        // an account key alone keeps the scoped runs live.
-        void resolveProviderSetup().then((resolved) => {
-          if (resolved !== null) setProviderSetup(resolved);
-        });
-      }
       // Guided-mode resume (per view): mid-session refresh restarts at each
       // saved cursor and reopens the last view that had one. Only a stored
       // cursor enables resume — a plain workspace load never auto-starts.
@@ -745,20 +720,11 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
     setRegenError(null);
     setRegenScope(scope);
     try {
-      const setup = loadProviderSetup();
-      const options: GenerationOptions = {
-        // Provider and key must match: a Groq key on the default provider fails.
-        ...(setup === null || setup.provider === "" ? {} : { provider: setup.provider }),
-        ...(setup === null || setup.model.trim() === "" ? {} : { model: setup.model.trim() }),
-      };
       const started = await apiFetch(`/api/projects/${projectId}/architecture/regenerate`, {
         method: "POST",
-        body: JSON.stringify({ scope, ...options }),
+        body: JSON.stringify({ scope }),
         projectKey: projectKey ?? undefined,
         auth: loadSession() !== null,
-        ...(setup === null || setup.apiKey.trim() === ""
-          ? {}
-          : { providerKey: setup.apiKey.trim() }),
         dataSchema: StartRunResponseSchema,
       });
       setRegenRunId(started.runId);
@@ -991,11 +957,10 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
   ) : null;
 
   // Regeneration menu content (desktop dropdown + mobile submenu share it):
-  // one paid provider pass per scope, success replaces that view only.
+  // one paid run per scope, success replaces that view only.
   const regenMenuItems = REGEN_INFO.map((entry) => (
     <DropdownMenuItem
       key={entry.scope}
-      disabled={!providerReady}
       className="flex-col items-start gap-0.5"
       onClick={() => void regenerate(entry.scope)}
     >
@@ -1008,26 +973,9 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
 
   const regenMenuNote = (
     <p className="text-muted-foreground px-2 pb-1 text-[11px] leading-relaxed">
-      {providerReady
-        ? "Every scope is its own paid provider pass — success replaces that view only; the other views stay as they are."
-        : "No provider key in this tab or saved to your account, so every scope is disabled for now. Add one in provider setup, then come back and pick a scope."}
+      Every scope is its own paid run. Success replaces that view only; the
+      other views stay as they are.
     </p>
-  );
-
-  const regenProviderItem = providerReady ? null : (
-    <DropdownMenuItem
-      className="flex-col items-start gap-0.5"
-      onClick={() => router.push("/")}
-    >
-      <span className="text-foreground text-sm">
-        Provider &amp; model key — open the Home page setup
-      </span>
-      <span className="text-muted-foreground block text-xs leading-snug">
-        Pick OpenRouter or Groq, add the key and model — or save the key
-        encrypted to your account so it works across devices. Then come straight
-        back through Library.
-      </span>
-    </DropdownMenuItem>
   );
 
   /** Shared "edit the spec" entry for both regen menus and the More menu. */
@@ -1169,7 +1117,6 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
                     <DropdownMenuLabel>Regeneration scope</DropdownMenuLabel>
                     {regenMenuNote}
                     {regenMenuItems}
-                    {regenProviderItem}
                     <DropdownMenuSeparator />
                     {EditRequirementsItem}
                   </DropdownMenuContent>
@@ -1234,8 +1181,7 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
                       <DropdownMenuLabel>Regeneration scope</DropdownMenuLabel>
                       {regenMenuNote}
                       {regenMenuItems}
-                      {regenProviderItem}
-                    </DropdownMenuSubContent>
+                      </DropdownMenuSubContent>
                   </DropdownMenuSub>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem

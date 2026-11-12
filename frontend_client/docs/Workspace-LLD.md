@@ -7,10 +7,10 @@ built on the canonical `ArchitectureModel` from `@sda/contracts` only.
 - `components/workspace/workspace-flow.tsx` — access gate, project +
   architecture queries, header (back-to-Library/Home escape link, validation
   badge, desktop guided/annotate/focus + regenerate menu with per-scope
-  descriptions and provider gating, export; below 1024 a labeled More menu
+  descriptions, export; below 1024 a labeled More menu
   carries the same actions and the tab row hosts Outline/Details), view tabs,
   layout, regeneration overlay, expandable non-blocking warning banner.
-  Provider setup lives on the landing and library pages only.
+  Regeneration uses the hosted server model; no key gate exists.
 - `components/workspace/workspace-sidebar.tsx` — shared outline sidebar\n  (search + named groups, used by the LLD and HLD views).
 - `components/workspace/workspace-details.tsx` — per-element reference panels:
   `WorkspaceDetails` (LLD class/relationship/pattern) and `HldDetails`
@@ -328,11 +328,9 @@ layout that shares these fragments.
 ## Regeneration
 
 Header Regenerate menu → `POST /api/projects/:id/architecture/regenerate`
-with `{ scope: "lld" | "hld" | "dsa" }` (+ saved provider + model; `x-provider-api-key`
-only when this tab holds one, otherwise the backend resolves the signed-in account's
-encrypted vault key — provider and model travel together so a non-default provider key
-is not sent to the default provider). The menu items are live when either key source
-covers the selected provider. The same menu holds
+with `{ scope: "lld" | "hld" | "dsa" }`. The server uses the hosted provider
+and model; no key is sent by the client. The menu items are live while the
+project is accessible and no other run is active. The same menu holds
 **Edit requirements…**. The run streams through the shared
 `useRunLive` hook in an overlay (live SSE stream with polling fallback, see [[Requirements-Flow]]); success invalidates architecture/
 project queries and closes (fresh scene); failure keeps the run card open
