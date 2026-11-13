@@ -121,8 +121,8 @@ export function AccountCard() {
       <div className="border-border mt-4 border-t border-solid pt-4">
         <p className="text-foreground text-sm font-medium">Delete account</p>
         <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-          Removes the account, its projects access, saved defaults, encrypted
-          provider keys, and billing record. This cannot be undone.
+          Removes the account, its projects access, saved defaults, and billing
+          record. This cannot be undone.
         </p>
         <Button
           variant="destructive"
@@ -151,8 +151,8 @@ export function AccountCard() {
             <DialogTitle>Delete this account?</DialogTitle>
             <DialogDescription>
               Enter your password to confirm. Your projects stay readable through
-              their access keys, but the account, sessions, encrypted provider
-              keys, and billing record are gone permanently.
+              their access keys, but the account, sessions, and billing record
+              are gone permanently.
             </DialogDescription>
           </DialogHeader>
 
