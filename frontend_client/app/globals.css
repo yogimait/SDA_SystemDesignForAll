@@ -272,6 +272,44 @@
   page-break-inside: avoid;
 }
 
+/* Sequence figures flow with the portrait text pages: never a named page of
+   their own. The section may paginate BETWEEN figures (break-inside: auto
+   here; the generic .export-section avoid rule would pin the whole block to
+   one page), while each figure stays unbreakable. On screen the SVG scales
+   up to the 640px text column; print (below) scales DOWN from the native
+   size instead, so tall flows can never overflow the page. */
+.export-sequence-section {
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.export-sequence {
+  margin: 1.25rem 0 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.export-sequence svg {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  margin-top: 0.5rem;
+}
+
+.export-sequence-caption {
+  margin-top: 0.35rem;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
 .export-list {
   margin-top: 0.5rem;
   display: grid;
@@ -407,7 +445,7 @@
     display: none !important;
   }
 
-  /* "Diagrams only": hide every text page so the two landscape diagram pages
+  /* "HLD + LLD only": hide every text page so the two landscape diagram pages
      are the whole document (no blank cover page, no trailing blank page). */
   .export-doc[data-print-scope="diagrams"] .export-text-section {
     display: none !important;
@@ -426,6 +464,25 @@
   .export-defs > div {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  /* Sequence blocks paginate between figures (a 20-step flow is a full page
+     on its own), while each figure stays whole. The SVG prints at its NATIVE
+     size (width/height attributes) capped by the page: max-width fills the
+     text column, max-height 170mm leaves room for heading + step list +
+     caption inside the 273mm A4 portrait printable height — a tall scene
+     scales down instead of overflowing (the old width:100% upscaler made a
+     2-participant × 20-step scene 381mm tall). */
+  .export-sequence-section {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .export-sequence svg {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 170mm;
   }
 
   h1,

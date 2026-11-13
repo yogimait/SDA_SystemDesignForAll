@@ -6,7 +6,7 @@
  * sweep width.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { fillAuthForm } from "./helpers";
+import { fillAuthForm, mockAuthRoutes } from "./helpers";
 
 const IDEA_TEXT =
   "Design a distributed rate limiter for a public API with sliding windows and a Redis backing store.";
@@ -198,6 +198,238 @@ test("escape routes, mobile actions, regen run, validation details", async ({
     await noOverflow(page, width);
   }
   await page.screenshot({ path: "e2e/artifacts/workspace-ux-320.png" });
+});
+
+test("HLD component details jump to related LLD classes and back", async ({
+  page,
+}) => {
+  // Contract-shaped fixture: cmp_1 and cls_1 share fr_1 (the only honest
+  // component↔class link the schema carries); cls_2 shares nothing and a
+  // component with no refs must show the empty state, not invented links.
+  const USER = {
+    id: "usr_rel01",
+    email: "rel@example.com",
+    planTier: "free",
+    emailVerifiedAt: "2026-01-01T00:00:00.000Z",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+  const SPEC = {
+    functional: [
+      { id: "fr_1", kind: "functional", text: "Clients can submit ideas", priority: "must" },
+      { id: "fr_2", kind: "functional", text: "Audit every mutation", priority: "should" },
+    ],
+    nonFunctional: [],
+    assumptions: [],
+    clarifications: [],
+  };
+  const MODEL = {
+    meta: { title: "Cross view", summary: "Fixture." },
+    requirements: { confirmedAt: "2026-01-05T00:00:00.000Z", spec: SPEC },
+    hld: {
+      components: [
+        { id: "cmp_1", name: "Gateway", type: "gateway", responsibility: "Accepts and checks calls", technology: "nginx", requirementRefs: ["fr_1"], scalingNotes: "" },
+        { id: "cmp_2", name: "Worker", type: "worker", responsibility: "Processes jobs", technology: "", requirementRefs: [], scalingNotes: "" },
+      ],
+      connections: [
+        { id: "conn_1", fromComponentId: "cmp_1", toComponentId: "cmp_2", kind: "async", label: "enqueue", protocol: "amqp", rationale: "Decouples bursts." },
+      ],
+      flows: [
+        { id: "flow_1", name: "Check limit", description: "Client hits the gateway.", steps: [{ order: 1, description: "gateway checks", elementRefs: ["cmp_1"] }], requirementRefs: [] },
+      ],
+      technologyDecisions: [],
+      scalabilityNotes: [],
+      failureScenarios: [],
+    },
+    lld: {
+      classes: [
+        {
+          id: "cls_1",
+          name: "RateLimiter",
+          kind: "class",
+          responsibility: "Tracks sliding windows per key.",
+          requirementRefs: ["fr_1"],
+          rationale: "Window math in one place.",
+          alternatives: [],
+          invariants: [],
+          attributes: [],
+          methods: [],
+        },
+        {
+          id: "cls_2",
+          name: "AuditLog",
+          kind: "interface",
+          responsibility: "Records every mutation.",
+          requirementRefs: ["fr_2"],
+          rationale: "Traceability.",
+          alternatives: [],
+          invariants: [],
+          attributes: [],
+          methods: [],
+        },
+        {
+          // Overflow probe: unbroken name + responsibility must wrap inside
+          // the 380px popover and the 390px details sheet (no h-scroll).
+          id: "cls_3",
+          name: "UltraLongUnbrokenClassNameForOverflowProbingWithoutAnySpaces",
+          kind: "class",
+          responsibility:
+            "UltraLongUnbrokenResponsibilityLineForOverflowProbingWithoutAnySpacesEither",
+          requirementRefs: ["fr_1"],
+          rationale: "Probe.",
+          alternatives: [],
+          invariants: [],
+          attributes: [],
+          methods: [],
+        },
+      ],
+      relationships: [
+        { id: "rel_1", kind: "association", sourceId: "cls_1", targetId: "cls_2", sourceMultiplicity: "1", targetMultiplicity: "0..*", label: "", rationale: "Limit checks are logged." },
+      ],
+      patterns: [],
+    },
+    dsa: {
+      recommendations: [
+        {
+          id: "dsa_1",
+          operation: "check rate limit",
+          layer: "lld",
+          dataStructure: "ring buffer",
+          algorithm: "sliding window counter",
+          complexity: { average: "O(1)", worst: "O(1)", notes: "" },
+          rationale: "Constant memory.",
+          requirementRefs: [],
+          assumptions: [],
+          alternatives: [],
+          limitations: [],
+        },
+      ],
+      algorithmicPatterns: [],
+    },
+    learningSteps: [{ id: "step_1", title: "t", explanation: "e", elementRefs: ["cmp_1"] }],
+  };
+  const ARCH = {
+    version: {
+      id: "ver_rel",
+      projectId: "proj_1",
+      version: 1,
+      createdAt: "2026-02-01T10:00:00.000Z",
+      model: MODEL,
+      validation: { valid: true, errors: [], warnings: [], validatedAt: "t" },
+    },
+  };
+  const PROJECT = {
+    id: "proj_1",
+    idea: "Cross-view fixture",
+    ownerId: USER.id,
+    status: "architecture_ready",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-02-01T00:00:00.000Z",
+    confirmedAt: "2026-01-05T00:00:00.000Z",
+    currentArchitectureVersion: 1,
+  };
+  const envelope = (data: unknown) =>
+    JSON.stringify({ status: true, statusCode: 200, data });
+  // Register the catch-all first: Playwright matches handlers in reverse
+  // registration order, so the specific routes below must come last.
+  await page.route("**/api/projects/proj_1", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: envelope(PROJECT) }),
+  );
+  await page.route("**/api/projects/proj_1/architecture", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: envelope(ARCH) }),
+  );
+  await page.route("**/api/users/me/provider-config", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: envelope({ config: { provider: "openrouter", model: "m", updatedAt: "t" } }),
+    }),
+  );
+  mockAuthRoutes(page, USER);
+  await page.addInitScript(`
+    window.sessionStorage.setItem("sda:auth:user", JSON.stringify({ user: ${JSON.stringify(USER)} }));
+    window.sessionStorage.setItem("sda:project:proj_1:access-key", "projkey_rel");
+  `);
+
+  await page.goto("/projects/proj_1/workspace");
+  await expect(page.getByRole("tab", { name: "LLD" })).toBeVisible({ timeout: 20_000 });
+
+  const details = page.locator('[aria-label="Element details"]');
+  const gatewayOutline = () =>
+    page
+      .getByRole("navigation", { name: "HLD outline" })
+      .getByRole("button", { name: /Gateway/ });
+
+  // HLD view → select the gateway component from the outline.
+  await page.getByRole("tab", { name: "HLD" }).click();
+  await gatewayOutline().click();
+  await expect(details.locator('[aria-label="Details for Gateway"]')).toBeVisible();
+
+  // Related classes: only the fr_1 twin — never the fr_2 class by name.
+  await expect(
+    details.getByRole("button", { name: /RateLimiter/ }),
+  ).toBeVisible();
+  await expect(details.getByRole("button", { name: /AuditLog/ })).toHaveCount(0);
+
+  // A component with no requirement refs shows the honest empty state.
+  await page
+    .getByRole("navigation", { name: "HLD outline" })
+    .getByRole("button", { name: /Worker/ })
+    .click();
+  await expect(details.getByText("No requirement-linked classes.")).toBeVisible();
+
+  // The jump: click the related class → LLD view, class selected.
+  await gatewayOutline().click();
+  await details.getByRole("button", { name: /RateLimiter/ }).click();
+  await expect(page.getByRole("tab", { name: "LLD" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(details.locator('[aria-label="Details for RateLimiter"]')).toBeVisible();
+  await expect(
+    page
+      .getByRole("navigation", { name: "LLD outline" })
+      .getByRole("button", { name: /RateLimiter/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  // Focus lands on the named inner container, not the generic region.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.activeElement?.getAttribute("aria-label") ??
+          document.activeElement?.getAttribute("aria-labelledby") ??
+          "",
+      ),
+    )
+    .toBe("Details for RateLimiter");
+
+  // Symmetric jump back: class details offer the linked component.
+  const backToGateway = details.getByRole("button", { name: /Gateway/ });
+  await expect(backToGateway).toBeVisible();
+  await backToGateway.click();
+  await expect(page.getByRole("tab", { name: "HLD" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(details.locator('[aria-label="Details for Gateway"]')).toBeVisible();
+
+  // Phone details sheet: related chips wrap, no horizontal overflow at 390.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("main").getByRole("button", { name: "Details" }).click();
+  const sheet = page.getByRole("dialog", { name: "Details" });
+  await expect(sheet.getByRole("button", { name: /RateLimiter/ })).toBeVisible();
+  // Long unbroken name must stay inside the sheet scroller.
+  const probe = sheet.getByRole("button", {
+    name: /UltraLongUnbrokenClassNameForOverflowProbingWithoutAnySpaces/,
+  });
+  await expect(probe).toBeVisible();
+  const sheetOverflow = await sheet.evaluate((root) => {
+    // overflow-y: auto forces overflow-x to auto too, so overflow shows here.
+    const scroller = root.querySelector<HTMLElement>(".overflow-y-auto") ?? root;
+    return scroller.scrollWidth - scroller.clientWidth;
+  });
+  expect(sheetOverflow).toBeLessThanOrEqual(0);
+  await noOverflow(page, 390);
 });
 
 test("regeneration scopes start their own run", async ({ page }) => {

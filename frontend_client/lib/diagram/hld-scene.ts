@@ -189,10 +189,20 @@ export function hldFocusBoundingBox(
   };
 }
 
-export function buildHldScene(hld: HldModel): HldScene {
+/** Rank directions the callers actually use: workspace `LR`, export `TB`. */
+export type HldRankdir = "LR" | "TB";
+
+/**
+ * `rankdir` defaults to the workspace orientation (`LR`); the export passes
+ * `TB` as the alternative candidate when it fits the printable box better.
+ */
+export function buildHldScene(
+  hld: HldModel,
+  options?: { rankdir?: HldRankdir },
+): HldScene {
   const graph = new dagre.graphlib.Graph({ multigraph: true });
   graph.setGraph({
-    rankdir: "LR",
+    rankdir: options?.rankdir ?? "LR",
     nodesep: 60,
     ranksep: 140,
     marginx: 40,

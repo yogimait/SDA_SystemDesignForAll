@@ -156,17 +156,30 @@ export function nodeMemberFields(cls: LldClass): {
   };
 }
 
+/** Rank directions the callers actually use: workspace `BT`, export `LR`. */
+export type LldRankdir = "BT" | "LR";
+
 /**
- * Build the laid-out scene. `rankdir: BT` keeps parents above children so the
- * inheritance triangle points up, per convention. Edges keep dagre's
- * border-to-border polylines.
+ * Build the laid-out scene. `rankdir: BT` (default) keeps parents above
+ * children so the inheritance triangle points up, per convention. Edges keep
+ * dagre's border-to-border polylines. The export passes `rankdir` to pick the
+ * orientation that fits the printable box; the workspace never does.
  */
 export function buildLldScene(
   model: LldModel,
-  options?: { patternNamesByClassId?: Map<string, string[]> },
+  options?: {
+    patternNamesByClassId?: Map<string, string[]>;
+    rankdir?: LldRankdir;
+  },
 ): LldScene {
   const graph = new dagre.graphlib.Graph({ multigraph: true, compound: false })
-    .setGraph({ rankdir: "BT", nodesep: 64, ranksep: 110, marginx: 40, marginy: 40 })
+    .setGraph({
+      rankdir: options?.rankdir ?? "BT",
+      nodesep: 64,
+      ranksep: 110,
+      marginx: 40,
+      marginy: 40,
+    })
     .setDefaultEdgeLabel(() => ({}));
 
   const classes = [...model.classes].sort((a, b) => (a.id < b.id ? -1 : 1));

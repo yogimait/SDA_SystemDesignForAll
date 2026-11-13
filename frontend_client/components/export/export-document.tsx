@@ -16,10 +16,9 @@ import type {
 import { CircleAlertIcon, DownloadIcon, PrinterIcon } from "lucide-react";
 import { DiagramCanvas } from "@/components/diagram/diagram-canvas";
 import { HldCanvas } from "@/components/diagram/hld-canvas";
+import { SequenceCanvas } from "@/components/diagram/sequence-canvas";
 import { WorkspaceDsa } from "@/components/workspace/workspace-dsa";
 import { Button } from "@/components/ui/button";
-import { buildLldScene } from "@/lib/diagram/lld-scene";
-import { buildHldScene } from "@/lib/diagram/hld-scene";
 import {
   buildCover,
   clarificationRows,
@@ -27,9 +26,15 @@ import {
   functionalRows,
   learningStepRows,
   nonFunctionalRows,
+  relationshipRows,
   warningRows,
 } from "@/lib/export/document";
+import {
+  buildExportHldScene,
+  buildExportLldScene,
+} from "@/lib/export/orientation";
 import { downloadSvg, svgFilename } from "@/lib/export/svg";
+import { buildSequenceScene } from "@/lib/diagram/sequence-scene";
 
 export function ExportDocument({
   project,
@@ -63,15 +68,27 @@ export function ExportDocument({
     return map;
   }, [version.model.lld.patterns]);
 
-  const lldScene = useMemo(
+  const lld = useMemo(
     () =>
-      buildLldScene(version.model.lld, {
+      buildExportLldScene(version.model.lld, {
         patternNamesByClassId,
       }),
     [version.model.lld, patternNamesByClassId],
   );
-  const hldScene = useMemo(
-    () => buildHldScene(version.model.hld),
+  const hld = useMemo(
+    () => buildExportHldScene(version.model.hld),
+    [version.model.hld],
+  );
+  const lldScene = lld.scene;
+  const hldScene = hld.scene;
+  const relationships = relationshipRows(version.model.lld);
+
+  /** One compact sequence diagram per flow that resolves to ≥1 message. */
+  const sequenceDiagrams = useMemo(
+    () =>
+      version.model.hld.flows
+        .map((flow) => ({ flow, scene: buildSequenceScene(version.model.hld, flow) }))
+        .filter((entry) => entry.scene.messages.length > 0),
     [version.model.hld],
   );
 
@@ -99,17 +116,17 @@ export function ExportDocument({
               aria-pressed={diagramsOnly}
               onClick={() => setDiagramsOnly((value) => !value)}
             >
-              {diagramsOnly ? "Diagrams only — on" : "Diagrams only"}
+              {diagramsOnly ? "HLD + LLD only — on" : "HLD + LLD only"}
             </Button>
             <Button onClick={() => window.print()}>
               <PrinterIcon />
               Print / Save as PDF
             </Button>
           </div>
-          <p className="text-muted-foreground mt-1 max-w-[48ch] text-right text-[11px] leading-relaxed">
+          <p className="text-muted-foreground mt-1 max-w-[52ch] text-right text-[11px] leading-relaxed">
             {diagramsOnly
-              ? "Prints just the two landscape diagram pages (HLD + LLD). Toggle off for the full report."
-              : "Text pages print portrait; HLD/LLD print landscape, fit to the printable area. Download an SVG in each design section for full resolution."}
+              ? "Prints just the two diagram pages (HLD + LLD). In the print dialog enable background graphics; if a page comes out portrait, set Orientation to Landscape. Toggle off for the full report."
+              : "Text pages print portrait; diagram pages are tagged A4 landscape. In the print dialog enable background graphics and set Orientation to Landscape if the diagram pages come out portrait. Download an SVG in each design section for full resolution."}
           </p>
         </div>
       </div>
@@ -200,7 +217,13 @@ export function ExportDocument({
             SVG
           </Button>
         </div>
-        <div ref={hldWrap} className="export-diagram" aria-label="HLD diagram for print">
+        <div
+          ref={hldWrap}
+          className="export-diagram"
+          aria-label="HLD diagram for print"
+          data-rankdir={hld.rankdir}
+          data-scene={`${hldScene.width}x${hldScene.height}`}
+        >
           <HldCanvas scene={hldScene} selection={null} onSelect={() => undefined} />
         </div>
       </section>
@@ -238,6 +261,65 @@ export function ExportDocument({
         ) : null}
       </section>
 
+      {/* Sequence diagrams: one compact SVG per resolvable flow, flowing with
+          the portrait text pages (never a named page of its own). The section
+          disappears entirely when no flow step resolves to a component. */}
+      {sequenceDiagrams.length > 0 ? (
+        <section
+          className="export-section export-sequence-section export-text-section"
+          aria-label="Sequence diagrams"
+        >
+          <h2>Sequence diagrams</h2>
+          <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+            Arrows derive from each step&apos;s element references (solid sync · dashed async ·
+            dotted data when a connection resolves); steps that name no known component are
+            skipped. When a step names only components, the first listed ref is the sender.
+          </p>
+          {sequenceDiagrams.map(({ flow, scene }) => {
+            const nameById = new Map(scene.participants.map((p) => [p.id, p.name]));
+            // Participants always cover the messages (scene invariant); the
+            // fallback never prints a raw contract id.
+            const nameOf = (id: string) => nameById.get(id) ?? "unknown";
+            return (
+              <div key={flow.id}>
+                {/* The figure holds only the drawing + caption so it always
+                    fits one portrait page unbroken (≤ ~190mm: native svg
+                    capped at 170mm + heading); the full step list below it
+                    stays breakable text that can paginate. */}
+                <figure className="export-sequence">
+                  <h3>{flow.name}</h3>
+                  <p className="text-muted-foreground text-xs">{flow.description}</p>
+                  <SequenceCanvas scene={scene} flowName={flow.name} />
+                  <figcaption className="export-sequence-caption">
+                    {scene.messages.length} of {flow.steps.length} step
+                    {flow.steps.length === 1 ? "" : "s"} shown · derived from step references
+                    {scene.messages.length < flow.steps.length
+                      ? "; unresolved steps skipped"
+                      : ""}
+                    .
+                  </figcaption>
+                </figure>
+                {/* Full, untruncated steps as text: the SVG labels are
+                    clamped to their arrow span, and role="img" children are
+                    presentational for screen readers and print. */}
+                <ol
+                  className="export-list"
+                  aria-label={`Steps of ${flow.name}`}
+                >
+                  {scene.messages.map((message) => (
+                    <li key={`${message.stepOrder}-${message.from}-${message.to}`}>
+                      {`${message.stepOrder}. ${nameOf(message.from)} -> ${nameOf(
+                        message.to,
+                      )}: ${message.label}`}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
+
       {/* LLD diagram: its own landscape page, same as HLD. */}
       <section className="export-section export-diagram-page export-print-end" aria-label="Low-level design">
         <div className="flex items-center justify-between gap-3">
@@ -257,7 +339,13 @@ export function ExportDocument({
             SVG
           </Button>
         </div>
-        <div ref={lldWrap} className="export-diagram" aria-label="LLD diagram for print">
+        <div
+          ref={lldWrap}
+          className="export-diagram"
+          aria-label="LLD diagram for print"
+          data-rankdir={lld.rankdir}
+          data-scene={`${lldScene.width}x${lldScene.height}`}
+        >
           <DiagramCanvas
             scene={lldScene}
             selection={null}
@@ -280,16 +368,19 @@ export function ExportDocument({
             </div>
           ))}
         </dl>
-        {version.model.lld.relationships.length > 0 ? (
+        {relationships.length > 0 ? (
           <>
             <h3>Relationships</h3>
             <ul className="export-list">
-              {version.model.lld.relationships.map((rel) => (
-                <li key={rel.id}>
+              {relationships.map((row) => (
+                <li key={row.id}>
                   <span className="font-mono text-xs">
-                    {rel.sourceMultiplicity}: {rel.kind} → {rel.targetMultiplicity}
+                    {row.sourceName} → {row.targetName}
                   </span>{" "}
-                  {rel.rationale}
+                  <span className="text-muted-foreground font-mono text-xs">
+                    {row.kind} · {row.sourceMultiplicity} → {row.targetMultiplicity}
+                  </span>{" "}
+                  {row.rationale}
                 </li>
               ))}
             </ul>

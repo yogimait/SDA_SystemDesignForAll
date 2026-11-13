@@ -17,6 +17,13 @@ built on the canonical `ArchitectureModel` from `@sda/contracts` only.
   (component/connection/flow/scalability/failure/technology). Requirement
   references render as numbered labels (`FR 2`, `NFR 1`) via
   `lib/format.ts#requirementRefLabels`; contract ids stay keys only.
+  Cross-view learning links: a component's details list the **Related LLD
+  classes** and a class's details list the **Related HLD components** —
+  matched only by intersecting `requirementRefs`
+  (`lib/workspace/related.ts#relatedLldClasses`/`relatedHldComponents`,
+  unit-tested; no name-based inference). Each entry is a button that switches
+  the view tab and selects the target element; components/classes with no
+  shared refs show "No requirement-linked classes./components."
 - `components/workspace/workspace-dsa.tsx` — DSA recommendation cards,\n  algorithmic patterns, comparison table.
 - `components/diagram/diagram-canvas.tsx` — LLD SVG canvas: pan/zoom,\n  selection, highlights, marker defs, shape legend.
 - `components/diagram/hld-canvas.tsx` — HLD SVG canvas (F4): component\n  boxes with type glyphs, sync/async/data line styles, flow step-order\n  badges, legend.
@@ -161,6 +168,30 @@ toggle), pattern entries. `Escape` clears; clicking empty canvas clears.
 - Edge selected → details show endpoints with multiplicities (ids + names),
   label, rationale.
 
+### Cross-view learning (HLD ⇄ LLD)
+
+Selecting an HLD component shows a **Related LLD classes** section in its
+details: every LLD class whose `requirementRefs` intersect the component's
+(`lib/workspace/related.ts`, pure + unit-tested). The contract has no direct
+component↔class reference, so shared requirement refs are the only link the
+UI draws — components with no refs (or no shared refs) show the honest empty
+state "No requirement-linked classes." rather than a name-guessed match. The
+mirror section **Related HLD components** appears in LLD class details with
+the same rule.
+
+Each entry renders as a compact button (class/component name + kind/type +
+one clamped responsibility line, wrapping list — no horizontal overflow at
+390px). Activating it: (1) switches `activeView` to the target tab, (2)
+sets that tab's selection (`{ type: "class" | "component", id }`), (3) keeps
+the per-tab selection/search state intact — switching back restores the
+previous details — and moves focus to the details panel (popover or sheet),
+since the clicked button unmounts with the other view's details. Keyboard
+focus rings and accessible names follow the existing panel button patterns.
+
+Pan/zoom, guided mode, and annotation state are untouched by a jump; the
+details popover stays open (its content swaps to the target element), so the
+layout never reflows.
+
 Pan/zoom: wheel anchored at cursor (0.15×–3×), drag on the background,
 `+`/`-`/`0` keys, floating −/fit/+/zoom% control, auto-fit on mount, scene
 change and container resize until the user adjusts manually. The SVG is
@@ -235,10 +266,10 @@ stays unambiguous. Geometry is scene-space, so zoom/fit and mobile widths only
 scale the whole SVG — chip relationships never change.
 
 Panel contents per selection: component (responsibility, technology,
-in/out connections with kind + label, scaling notes, refs), connection
-(endpoints, protocol, rationale), flow (description + clickable ordered
-steps), scalability note (aspect/approach/limits), failure scenario
-(condition → impact → mitigation → trade-off), technology decision
+in/out connections with kind + label, scaling notes, refs, related LLD
+classes), connection (endpoints, protocol, rationale), flow (description +
+clickable ordered steps), scalability note (aspect/approach/limits), failure
+scenario (condition → impact → mitigation → trade-off), technology decision
 (choice/why/limits/alternatives).
 
 Sidebar groups: components, flows, scalability notes, failure scenarios,

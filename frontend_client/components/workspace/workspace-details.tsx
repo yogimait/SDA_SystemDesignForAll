@@ -30,6 +30,10 @@ import {
   methodText,
 } from "@/lib/diagram/lld-scene";
 import { cn } from "cn";
+import {
+  relatedHldComponents,
+  relatedLldClasses,
+} from "@/lib/workspace/related";
 
 export type WorkspaceSelection =
   | { type: "class" | "relationship" | "pattern"; id: string }
@@ -139,12 +143,18 @@ export function WorkspaceDetails({
   model,
   selection,
   requirementLabels,
+  hldComponents,
+  onSelectComponent,
   className,
 }: {
   model: LldModel;
   selection: WorkspaceSelection;
   /** requirement id → numbered label ("FR 2"); ids never render. */
   requirementLabels: Map<string, string>;
+  /** HLD components for the cross-view "Related HLD components" jump. */
+  hldComponents: HldComponent[];
+  /** Jump to an HLD component: switches the workspace to the HLD view + selects it. */
+  onSelectComponent: (componentId: string) => void;
   className?: string;
 }) {
   const names = useMemo(
@@ -168,7 +178,11 @@ export function WorkspaceDetails({
     const cls = model.classes.find((c) => c.id === selection.id);
     if (cls === undefined) return <Missing />;
     return (
-      <div aria-label={`Details for ${cls.name}`} className={cn("text-sm", className)}>
+      <div
+        aria-label={`Details for ${cls.name}`}
+        tabIndex={-1}
+        className={cn("text-sm outline-none", className)}
+      >
         <PanelHeading
           title={cls.name}
           tag={<Badge className="bg-primary/10 text-primary font-mono">{KIND_LABEL[cls.kind]}</Badge>}
@@ -246,6 +260,12 @@ export function WorkspaceDetails({
           </Section>
         ) : null}
         <RequirementRefs refs={cls.requirementRefs} labels={requirementLabels} title="Requirement references" />
+        <Section title="Related HLD components">
+          <RelatedComponentList
+            components={relatedHldComponents(cls, hldComponents)}
+            onSelectComponent={onSelectComponent}
+          />
+        </Section>
       </div>
     );
   }
@@ -388,6 +408,8 @@ export function HldDetails({
   onFlowStepFocus,
   onReplay,
   requirementLabels,
+  lldClasses,
+  onSelectClass,
   className,
 }: {
   model: HldModel;
@@ -399,6 +421,10 @@ export function HldDetails({
   onReplay?: (flowId: string) => void;
   /** requirement id → numbered label ("FR 2"); ids never render. */
   requirementLabels: Map<string, string>;
+  /** LLD classes for the cross-view "Related LLD classes" jump. */
+  lldClasses: LldClass[];
+  /** Jump to an LLD class: switches the workspace to the LLD view + selects it. */
+  onSelectClass: (classId: string) => void;
   className?: string;
 }) {
   const names = useMemo(
@@ -422,7 +448,11 @@ export function HldDetails({
     const component = model.components.find((c) => c.id === selection.id);
     if (component === undefined) return <Missing />;
     return (
-      <div aria-label={`Details for ${component.name}`} className={cn("text-sm", className)}>
+      <div
+        aria-label={`Details for ${component.name}`}
+        tabIndex={-1}
+        className={cn("text-sm outline-none", className)}
+      >
         <ComponentHeading component={component} />
         <Section title="Responsibility">
           <p className="text-foreground/90">{component.responsibility}</p>
@@ -452,6 +482,12 @@ export function HldDetails({
                 .filter((label): label is string => label !== undefined)}
             />
           )}
+        </Section>
+        <Section title="Related LLD classes">
+          <RelatedClassList
+            classes={relatedLldClasses(component, lldClasses)}
+            onSelectClass={onSelectClass}
+          />
         </Section>
       </div>
     );
@@ -629,6 +665,80 @@ export function HldDetails({
         )}
       </Section>
     </div>
+  );
+}
+
+/** Cross-view jump: requirement-linked LLD classes as compact buttons. */
+function RelatedClassList({
+  classes,
+  onSelectClass,
+}: {
+  classes: LldClass[];
+  onSelectClass: (classId: string) => void;
+}) {
+  if (classes.length === 0) {
+    return <Empty text="No requirement-linked classes." />;
+  }
+  return (
+    <ul className="space-y-1">
+      {classes.map((cls) => (
+        <li key={cls.id}>
+          <button
+            type="button"
+            onClick={() => onSelectClass(cls.id)}
+            className="text-foreground/85 hover:bg-muted focus-visible:ring-ring flex w-full flex-col gap-0.5 rounded-md p-1.5 text-left text-xs transition-colors focus-visible:ring-2 focus-visible:outline-1"
+          >
+            <span className="flex flex-wrap items-baseline gap-1.5">
+              <span className="min-w-0 wrap-anywhere font-medium">{cls.name}</span>
+              <span className="text-muted-foreground font-mono text-[10px]">
+                {KIND_LABEL[cls.kind]}
+              </span>
+            </span>
+            <span className="text-muted-foreground line-clamp-2 wrap-anywhere leading-snug">
+              {cls.responsibility}
+            </span>
+            <span className="sr-only">Open in the LLD view</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Symmetric cross-view jump: requirement-linked HLD components. */
+function RelatedComponentList({
+  components,
+  onSelectComponent,
+}: {
+  components: HldComponent[];
+  onSelectComponent: (componentId: string) => void;
+}) {
+  if (components.length === 0) {
+    return <Empty text="No requirement-linked components." />;
+  }
+  return (
+    <ul className="space-y-1">
+      {components.map((component) => (
+        <li key={component.id}>
+          <button
+            type="button"
+            onClick={() => onSelectComponent(component.id)}
+            className="text-foreground/85 hover:bg-muted focus-visible:ring-ring flex w-full flex-col gap-0.5 rounded-md p-1.5 text-left text-xs transition-colors focus-visible:ring-2 focus-visible:outline-1"
+          >
+            <span className="flex flex-wrap items-baseline gap-1.5">
+              <span className="min-w-0 wrap-anywhere font-medium">{component.name}</span>
+              <span className="text-muted-foreground font-mono text-[10px]">
+                {component.type}
+              </span>
+            </span>
+            <span className="text-muted-foreground line-clamp-2 wrap-anywhere leading-snug">
+              {component.responsibility}
+            </span>
+            <span className="sr-only">Open in the HLD view</span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 

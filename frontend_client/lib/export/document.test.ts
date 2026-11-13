@@ -12,6 +12,7 @@ import {
   functionalRows,
   learningStepRows,
   nonFunctionalRows,
+  relationshipRows,
   warningRows,
 } from "./document";
 
@@ -58,8 +59,31 @@ const model: ArchitectureModel = {
         attributes: [],
         methods: [],
       },
+      {
+        id: "cls_2",
+        name: "WindowStore",
+        kind: "class",
+        responsibility: "Stores counters",
+        rationale: "Keeps state out of the limiter",
+        requirementRefs: [],
+        alternatives: [],
+        invariants: [],
+        attributes: [],
+        methods: [],
+      },
     ],
-    relationships: [],
+    relationships: [
+      {
+        id: "rel_1",
+        kind: "association",
+        sourceId: "cls_1",
+        targetId: "cls_2",
+        sourceMultiplicity: "1",
+        targetMultiplicity: "0..*",
+        label: "",
+        rationale: "Limiter delegates to the store.",
+      },
+    ],
     patterns: [],
   },
   hld: {
@@ -197,6 +221,42 @@ describe("export document composition", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ severity: "error", path: "" });
     expect(rows[1]?.path).toBe("fr_9");
+  });
+
+  it("resolves relationship endpoints to class names, never raw ids", () => {
+    const rows = relationshipRows(model.lld);
+    expect(rows).toEqual([
+      {
+        id: "rel_1",
+        sourceName: "Limiter",
+        targetName: "WindowStore",
+        kind: "association",
+        sourceMultiplicity: "1",
+        targetMultiplicity: "0..*",
+        rationale: "Limiter delegates to the store.",
+      },
+    ]);
+    expect(JSON.stringify(rows)).not.toContain("cls_");
+
+    // An endpoint that fails to resolve (impossible on a validated model)
+    // degrades to a placeholder — still never the raw contract id.
+    const dangling = relationshipRows({
+      ...model.lld,
+      relationships: [
+        {
+          id: "rel_2",
+          kind: "dependency",
+          sourceId: "cls_missing",
+          targetId: "cls_1",
+          sourceMultiplicity: "0..*",
+          targetMultiplicity: "1",
+          label: "",
+          rationale: "Uses the limiter.",
+        },
+      ],
+    });
+    expect(dangling[0]?.sourceName).toBe("unknown class");
+    expect(JSON.stringify(dangling)).not.toContain("cls_missing");
   });
 
   it("formats the cover date and survives malformed input", () => {

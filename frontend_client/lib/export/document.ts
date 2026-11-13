@@ -1,6 +1,7 @@
 import type {
   ArchitectureModel,
   ArchitectureVersion,
+  LldModel,
   Project,
   RequirementsSpec,
 } from "@sda/contracts";
@@ -107,6 +108,35 @@ export function warningRows(version: ArchitectureVersion): Array<{
       path: issue.path ?? "",
     }),
   );
+}
+
+export interface RelationshipRow {
+  id: string;
+  sourceName: string;
+  targetName: string;
+  kind: string;
+  sourceMultiplicity: string;
+  targetMultiplicity: string;
+  rationale: string;
+}
+
+/**
+ * Relationship rows resolve each endpoint through the model's classes, so the
+ * printed line reads `Source → Target` instead of a bare multiplicity pair.
+ * Raw contract ids (`cls_…`) never print: an endpoint that fails to resolve
+ * (impossible on a validated model) falls back to a placeholder, not the id.
+ */
+export function relationshipRows(model: LldModel): RelationshipRow[] {
+  const names = new Map(model.classes.map((cls) => [cls.id, cls.name]));
+  return model.relationships.map((rel) => ({
+    id: rel.id,
+    sourceName: names.get(rel.sourceId) ?? "unknown class",
+    targetName: names.get(rel.targetId) ?? "unknown class",
+    kind: rel.kind,
+    sourceMultiplicity: rel.sourceMultiplicity,
+    targetMultiplicity: rel.targetMultiplicity,
+    rationale: rel.rationale,
+  }));
 }
 
 /** Date stamp for the cover: locale-resolved, stable for tests with a fixed input. */

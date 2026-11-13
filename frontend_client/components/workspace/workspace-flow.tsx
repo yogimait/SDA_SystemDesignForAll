@@ -246,6 +246,41 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
     else if (id.startsWith("rel_")) setLldSelection({ type: "relationship", id });
   }, []);
 
+  // Cross-view learning jumps: switch tab + select the element in one step.
+  // Both selections survive on their own tab, so switching back restores the
+  // previous details. Focus would otherwise drop to <body> when the clicked
+  // button unmounts — land it on the details container that announces the
+  // selected element ("Details for …"), never on a hidden stale page root.
+  const focusDetailsPanel = useCallback(() => {
+    requestAnimationFrame(() => {
+      const visible = (el: HTMLElement) => el.offsetParent !== null;
+      const target =
+        Array.from(
+          document.querySelectorAll<HTMLElement>('[aria-label^="Details for"]'),
+        ).find(visible) ??
+        Array.from(
+          document.querySelectorAll<HTMLElement>('[data-slot="sheet-content"]'),
+        ).find(visible);
+      target?.focus();
+    });
+  }, []);
+  const selectLldClass = useCallback(
+    (classId: string) => {
+      setLldSelection({ type: "class", id: classId });
+      setActiveView("lld");
+      focusDetailsPanel();
+    },
+    [focusDetailsPanel],
+  );
+  const selectHldComponent = useCallback(
+    (componentId: string) => {
+      setHldSelection({ type: "component", id: componentId });
+      setActiveView("hld");
+      focusDetailsPanel();
+    },
+    [focusDetailsPanel],
+  );
+
   // Desktop details pane: floats over the canvas while an element is
   // selected (LLD/HLD only); closing it clears the selection — one source
   // of truth, no effect juggling.
@@ -930,6 +965,8 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
         model={model.lld}
         selection={lldSelection}
         requirementLabels={requirementLabels}
+        hldComponents={model.hld.components}
+        onSelectComponent={selectHldComponent}
         className="px-3 pb-4"
       />
     ) : (
@@ -942,6 +979,8 @@ export function WorkspaceFlow({ projectId }: { projectId: string }) {
         }
         onReplay={guided ? undefined : startReplay}
         requirementLabels={requirementLabels}
+        lldClasses={model.lld.classes}
+        onSelectClass={selectLldClass}
         className="px-3 pb-4"
       />
     );
@@ -1695,8 +1734,9 @@ function DetailsPopover({
   return (
     <section
       ref={panelRef}
+      tabIndex={-1}
       style={pos === null ? { right: 16, top: 16 } : { left: pos.x, top: pos.y }}
-      className="absolute z-20 flex max-h-[calc(100%-32px)] w-[380px] max-w-[calc(100%-32px)] flex-col"
+      className="absolute z-20 flex max-h-[calc(100%-32px)] w-[380px] max-w-[calc(100%-32px)] flex-col outline-none"
       aria-label="Element details"
     >
       <div
