@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   dsaSystemPrompt,
+  hldSystemPrompt,
   learningSystemPrompt,
   lldSystemPrompt,
+  requirementsSystemPrompt,
 } from "../../src/providers/prompts/index.js";
 
 describe("split architecture prompts", () => {
@@ -32,5 +34,14 @@ describe("split architecture prompts", () => {
     expect(dsaSystemPrompt()).toContain("Do not output classes");
     expect(learningSystemPrompt()).toContain("produce only the learning walkthrough");
     expect(learningSystemPrompt()).toContain("Never use requirement ids");
+  });
+
+  it("asks for contradiction checks and execution trust boundaries", () => {
+    expect(requirementsSystemPrompt()).toContain("contradictions");
+    expect(requirementsSystemPrompt()).toContain("clarification question");
+    expect(hldSystemPrompt()).toContain("trust boundary");
+    expect(hldSystemPrompt()).toContain("security non-functional requirement");
+    expect(lldSystemPrompt()).toContain("runtime adapter boundary");
+    expect(lldSystemPrompt()).toContain("bounded concurrency");
   });
 });

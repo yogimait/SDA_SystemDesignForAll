@@ -136,6 +136,16 @@ System prompts and repair prompts live in `src/providers/prompts/index.ts`. Temp
 
 GLM-5.3 Flash mandates reasoning. OpenRouter maps `effort: "low"` to roughly 20% of `max_tokens`, so the 64k budgets leave roughly 51k visible. The HLD budget was raised from 32k to 64k after a live run ended with `finish_reason: length`; the HLD phase now also retries a truncated response once with a compact-output instruction before failing. Truncation errors record completion and reasoning token counts, and their usage is counted against the run/plan even when the stage fails.
 
+## Prompt rules
+
+`src/providers/prompts/index.ts` carries the design rules that keep generated models coherent; validation and repair only catch what a rule miss leaves behind.
+
+- **Requirements**: check the idea and stated constraints for contradictions between non-functional requirements and assumptions, and prefer a clarification question over silently resolving one. No clarification answers exist at this stage.
+- **HLD**: map every security NFR to the component or flow that enforces it. Make the trust boundary explicit as applicable: external model calls need an egress boundary, secret handling, and an audit trail; tool or code execution needs sandbox/isolation, tool permission checks, and approval for destructive actions; untrusted input needs a stated containment rule. A local-only requirement forbids cloud or external model components.
+- **LLD**: when the system has agents that execute tools or code, or run long-lived tasks, model a runtime adapter boundary, cancellation or timeout, task lease or heartbeat, bounded concurrency, and secret or tool-permission handling as classes or focused responsibilities. These are not forced on systems that do not execute code or tools.
+
+See [[Generation]] for the deterministic consistency warnings that back these rules.
+
 ## Groq adapter
 
 Request: `POST https://api.groq.com/openai/v1/chat/completions` with `Authorization: Bearer <key>`, `max_completion_tokens` from the stage budget, and `reasoning_effort` from `GROQ_REASONING_EFFORT` (default `low`). No OpenRouter `provider` routing or `X-Title` header is sent. GPT-OSS 120B supports strict `json_schema`; the shared ladder falls back to `json_object` then prompt-only if needed.

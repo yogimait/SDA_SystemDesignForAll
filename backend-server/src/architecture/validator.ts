@@ -10,6 +10,7 @@ import type {
   ValidationIssue,
   ValidationReport,
 } from "@sda/contracts";
+import { consistencyWarnings } from "./consistency-warnings.js";
 
 type Severity = ValidationIssue["severity"];
 
@@ -36,6 +37,10 @@ class Collector {
 
   warn(rule: string, message: string, path?: string): void {
     this.add("warning", rule, message, path);
+  }
+
+  addAll(issues: ValidationIssue[]): void {
+    this.issues.push(...issues);
   }
 
   result(): ValidationResult {
@@ -544,6 +549,15 @@ function semanticChecks(
   if (model.hld.connections.length < 1) {
     collector.warn("minimal_model", "The architecture has no connections.");
   }
+
+  collector.addAll(
+    consistencyWarnings({
+      spec,
+      hld: model.hld,
+      lld: model.lld,
+      dsa: model.dsa,
+    }),
+  );
 }
 
 export function validateArchitectureModel(
@@ -564,6 +578,9 @@ export function validateHldSection(
 ): ValidationResult {
   const collector = new Collector();
   validateHld(hld, requirements.spec, collector);
+  collector.addAll(
+    consistencyWarnings({ spec: requirements.spec, hld }),
+  );
   return collector.result();
 }
 
@@ -573,6 +590,9 @@ export function validateLldSection(
 ): ValidationResult {
   const collector = new Collector();
   validateLld(lld, requirements.spec, collector);
+  collector.addAll(
+    consistencyWarnings({ spec: requirements.spec, lld }),
+  );
   return collector.result();
 }
 

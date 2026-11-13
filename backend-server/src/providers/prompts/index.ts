@@ -29,6 +29,12 @@ Rules:
 - Produce non-functional requirements. When the idea mentions workload, latency,
   availability, or security, each such NFR must include a measurable target.
 - State assumptions explicitly; do not present guesses as facts.
+- Before returning, check the idea and stated constraints for contradictions
+  between non-functional requirements and assumptions. Examples: "runs fully
+  locally" versus a stated cloud API constraint; "no code execution in scope"
+  versus a requirement that agents execute tasks. When two statements conflict,
+  add a clarification question that resolves it instead of silently picking one
+  side.
 - Ask clarification questions only for ambiguities that materially change the design.
 - Use precise software engineering terminology; keep every item short.
 - Do not design the system yet.`;
@@ -64,7 +70,17 @@ Rules:
   no requirement applies. Every must-have functional requirement (priority
   "must") must appear in the requirementRefs of at least one component or flow
   that genuinely implements it. Never invent ids or attach a requirement to
-  unrelated elements.`;
+  unrelated elements.
+- Map every security non-functional requirement to the component or flow that
+  enforces it in requirementRefs. Never leave a security NFR unmapped.
+- Make the trust boundary explicit in the design, as applicable: external model
+  calls need an egress boundary, secret handling, and an audit trail; tool or
+  code execution needs a sandbox or isolation boundary, tool permission checks,
+  and approval for destructive actions; untrusted input needs a stated
+  containment rule.
+- A local-only requirement forbids cloud or external model components; if that
+  conflicts with another requirement, do not silently add the external
+  component.`;
 }
 
 export function hldUserPrompt(
@@ -108,6 +124,12 @@ Rules:
   an HLD component or flow must be referenced by at least one class or pattern
   that genuinely implements it. Never invent ids or attach a requirement to
   unrelated elements.
+- When the system has agents that execute tools or code, or run long-lived
+  tasks, model the runtime explicitly as classes or focused responsibilities:
+  a runtime adapter boundary, cancellation or timeout, task lease or heartbeat,
+  bounded concurrency, and secret or tool-permission handling. Fold these into
+  existing classes when the class budget is tight; skip them for systems that
+  do not execute code or tools.
 - Do not output DSA recommendations or learning steps.`;
 }
 

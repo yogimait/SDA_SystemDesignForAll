@@ -34,6 +34,31 @@ deleted; this file records the open evaluation debts.
 
 These are product prompt/validation issues, not proof that every score is valid.
 
+## Requirements consistency and agent-system coverage (2026-11-13)
+
+Recorded from the Local AI Workforce export review
+(`eval/reviews/2026-11-13-local-ai-workforce.md`). The external score is not a
+gate.
+
+- Requirements consistency is not a gate. A local-only NFR alongside a
+  confirmed cloud LLM clarification, or an "execution out of scope" assumption
+  alongside a test agent that runs code, must be surfaced as an explicit
+  finding. Blocking rules cover structure and NFR measurability, not
+  cross-requirement contradictions.
+- Security and runtime coverage is thin for agent/tool systems: sandbox, tool
+  permissions, secret brokering, prompt-injection boundary, and destructive-op
+  approval are not required by the rubric. The LLD contract also has no agent
+  runtime adapter, tool-call contract, timeout, or cancellation path.
+- Export diagram readability is a separate defect class from design quality.
+  Wide HLD/LLD diagrams print as thin bands on portrait Letter pages, LLD
+  relationship rows omit endpoint class names, and the source URL truncates.
+  Fix print layout and endpoint rendering; do not score them as design errors.
+- Sequence diagrams and interactive learning are product follow-ups, not eval
+  gates. The export has two diagrams and static learning steps only.
+- Draft case `TC-WORKFORCE-013` is proposed but not added. Adding it requires a
+  new dataset version and manifest hash; the frozen `sda-v1` file stays at 12
+  dev cases.
+
 ## Automation
 
 - Regression gate exists (`npm run eval:regression`) but is not wired into CI.

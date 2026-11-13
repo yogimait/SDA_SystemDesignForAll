@@ -120,6 +120,19 @@ Prompts state the rule and forbid invented refs. A successful generation therefo
 - **Design-pattern catalog:** the LLD prompt carries a candidate catalog (creational, structural, behavioral, plus the Null Object special idiom). It is not a checklist: 2-5 justified patterns are preferred, and pattern participants must be connected by relationships that express the pattern. Method signatures must start with `(` and must not repeat the method name.
 - `persist` allocates `max(version)+1`, writes `architecture_versions`, points the project at it, and sets `architecture_ready`.
 
+### Consistency warnings
+
+Deterministic cross-checks in `src/architecture/consistency-warnings.ts` run during full validation, and the HLD/LLD section validators run the subset each can judge. They are warnings only: they never make `valid` false and never trigger a repair.
+
+| Rule | Fires when |
+| --- | --- |
+| `security_nfr_uncovered` | A `must` NFR with category `security` is referenced by no HLD component/flow, LLD class/pattern, or DSA recommendation. Security vocabulary in free text does not count as coverage; only a `requirementRefs` entry does. |
+| `local_only_conflict` | An NFR states fully local, local-only, air-gapped, no data leaves the device/machine/laptop, no external calls/requests/services, or no data is sent, while the HLD has an `external` component, a component whose name/technology/responsibility names a provider (cloud, AWS, Azure, GCP, Bedrock, Vertex, OpenAI, OpenRouter, Groq, Stripe, third-party, vendor), or a connection whose label, protocol, or rationale does. The message names the conflicting dependencies. Bare "offline" and regional data rules do not trigger it. |
+| `execution_boundary_missing` | Requirements or clarification answers put execution in scope (an execution verb with a code/tool/command/script/test/task object, `code execution`, `tool execution`, `agent runtime`, `executes tools`, `runs commands`, or `sandbox`), and no HLD/LLD element names a strong boundary: sandbox/isolation, tool permissions, secret or credential broker, runtime adapter, audit trail/log, or approval for destructive actions. Generic access control, generic permissions, generic audit, `tool config`, and bare `runtime` do not count. This targets the missing runtime-adapter/tool-permission class of gap. |
+| `execution_scope_conflict` | An assumption puts execution out of scope (`out of scope`, `will not execute`, `does not run`, and similar) while requirements or clarification answers describe executing, running, or testing code or tasks. A clarification question alone never counts, and an answer that itself puts execution out of scope does not count. |
+
+Security mapping is an HLD concern, so HLD section validation runs all four rules. LLD section validation runs `execution_boundary_missing` plus the requirements-only checks. Prompts ask for the same boundaries up front; see [[Providers]].
+
 ### Provider calls per run
 
 Only requirements, HLD, LLD, DSA, and learning call the model. Validation and persistence are local.
