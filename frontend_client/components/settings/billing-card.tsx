@@ -141,7 +141,9 @@ export function BillingCard() {
   const subscription = billing?.subscription ?? null;
   const planTier = billing?.planTier ?? "free";
   const provider = plans?.provider ?? subscription?.provider ?? null;
-  const canManage = provider === "stripe";
+  // The Stripe portal needs a stored customer, which exists only after the
+  // checkout webhook has been processed.
+  const canManage = provider === "stripe" && subscription !== null;
 
   return (
     <section aria-label="Billing" className="bg-card border-border rounded-xl border border-solid p-4">
@@ -229,7 +231,9 @@ export function BillingCard() {
           <p className="text-muted-foreground text-[11px] leading-relaxed">
             {canManage
               ? "Payments and invoices live in the provider portal; cancellation keeps Pro until the paid period ends."
-              : "This deployment has no hosted billing portal. Cancel here; the stub downgrades immediately."}
+              : provider === "stripe"
+                ? "Manage billing appears after your first successful Pro checkout."
+                : "This deployment has no hosted billing portal. Cancel here; the stub downgrades immediately."}
           </p>
         </div>
       ) : null}

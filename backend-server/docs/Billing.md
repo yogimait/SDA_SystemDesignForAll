@@ -34,7 +34,7 @@ STRIPE_PRICE_PRO=price_...
 ```
 
 1. Create the recurring Pro price in Stripe.
-2. Add the webhook endpoint `POST https://api.<domain>/api/billing/webhook` with `checkout.session.completed`, `customer.subscription.updated`, and `customer.subscription.deleted`.
+2. Add the webhook endpoint `POST https://<api-host>/api/billing/webhook` with `checkout.session.completed`, `customer.subscription.updated`, and `customer.subscription.deleted`. Use the deployed API hostname (for example `https://sda-api.nerddog.me/api/billing/webhook`), not the frontend host.
 3. Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
 4. Set `APP_BASE_URL` to the public frontend origin.
 5. Use the **full** price id (`price_...`, not a prefix). The price mode must
@@ -44,6 +44,13 @@ STRIPE_PRICE_PRO=price_...
 A rejected price returns `502 PROVIDER_UNAVAILABLE` with a message naming
 `STRIPE_PRICE_PRO`; a rejected secret key names `STRIPE_SECRET_KEY`. The old
 generic message hid this configuration mistake.
+
+The webhook signing secret must come from the same Stripe account/sandbox as
+the API key and price. If a checkout succeeds but the plan stays Free, check
+Stripe Dashboard → Developers → Webhooks → the endpoint's recent deliveries.
+A `400 webhook_invalid` means the signing secret does not match; replay the
+`checkout.session.completed` event after fixing it. The portal button is hidden
+until a subscription row exists, because Stripe needs a stored customer id.
 
 Checkout returns to `/billing/success`; cancellation returns to `/billing/cancel`; the billing portal returns to `/settings`. These routes exist in the frontend.
 
