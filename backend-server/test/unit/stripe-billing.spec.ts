@@ -7,7 +7,7 @@ function config(): AppConfig {
   return {
     NODE_ENV: "test",
     APP_BASE_URL: "https://sda.example",
-    STRIPE_SECRET_KEY: "sk_test",
+    STRIPE_SECRET_KEY: "sk_test_placeholder",
     STRIPE_WEBHOOK_SECRET: "whsec_test",
     STRIPE_PRICE_PRO: "price_pro",
   } as AppConfig;
@@ -92,6 +92,29 @@ describe("StripeBillingProvider", () => {
     expect(body.get("return_url")).toBe("https://sda.example/settings");
   });
 
+  it("rejects a product id in the price slot without calling Stripe", async () => {
+    let called = false;
+    const provider = new StripeBillingProvider(
+      { ...config(), STRIPE_PRICE_PRO: "prod_123" } as AppConfig,
+      async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    );
+
+    await expect(
+      provider.createCheckout({
+        user: { id: "usr_1", email: "one@example.com" } as never,
+        plan: "pro",
+      }),
+    ).rejects.toMatchObject({
+      code: "PROVIDER_UNAVAILABLE",
+      message: expect.stringContaining("Price ID"),
+      details: { priceId: "prod_123" },
+    });
+    expect(called).toBe(false);
+  });
+
   it("explains an unknown price instead of a generic 502", async () => {
     const provider = new StripeBillingProvider(config(), async () =>
       jsonResponse(
@@ -117,6 +140,8 @@ describe("StripeBillingProvider", () => {
         providerStatus: 404,
         stripeCode: "resource_missing",
         stripeParam: "line_items[0][price]",
+        priceId: "price_pro",
+        secretMode: "test",
       },
     });
   });

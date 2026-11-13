@@ -38,6 +38,13 @@ export class StripeBillingProvider implements BillingProvider {
         "Stripe is configured without STRIPE_PRICE_PRO, so checkout is unavailable.",
       );
     }
+    if (!price.startsWith("price_")) {
+      throw new AppError(
+        "PROVIDER_UNAVAILABLE",
+        "STRIPE_PRICE_PRO must be a Price ID (price_...), not a Product ID (prod_...).",
+        { priceId: price },
+      );
+    }
     const base = this.config.APP_BASE_URL.replace(/\/$/, "");
     const body = new URLSearchParams({
       mode: "subscription",
@@ -174,14 +181,17 @@ export class StripeBillingProvider implements BillingProvider {
         typeof payload?.error?.param === "string" ? payload.error.param : undefined;
       const message =
         stripeCode === "resource_missing" && stripeParam === "line_items[0][price]"
-          ? "Stripe could not find STRIPE_PRICE_PRO. Use the full recurring price id from the same test/live mode."
+          ? "Stripe could not find STRIPE_PRICE_PRO in this account. Use the full recurring price id from the same test/live mode."
           : response.status === 401
             ? "Stripe rejected the secret key. Check STRIPE_SECRET_KEY and its mode."
             : "The billing provider rejected the request.";
+      const priceId = body.get("line_items[0][price]");
       throw new AppError("PROVIDER_UNAVAILABLE", message, {
         providerStatus: response.status,
         ...(stripeCode ? { stripeCode } : {}),
         ...(stripeParam ? { stripeParam } : {}),
+        ...(priceId ? { priceId } : {}),
+        secretMode: key.startsWith("sk_live_") ? "live" : key.startsWith("sk_test_") ? "test" : "unknown",
       });
     }
     return (await response.json()) as Record<string, unknown>;
