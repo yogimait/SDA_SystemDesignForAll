@@ -12,6 +12,7 @@ export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   AUTH_REQUIRED: 401,
   AUTH_INVALID_CREDENTIALS: 401,
   AUTH_EMAIL_TAKEN: 409,
+  ADMIN_ACCESS_DENIED: 403,
   USER_NOT_FOUND: 404,
   RUN_NOT_FOUND: 404,
   RUN_CONFLICT: 409,
@@ -42,6 +43,7 @@ export const ERROR_DEFAULT_MESSAGES: Record<ErrorCode, string> = {
   AUTH_INVALID_CREDENTIALS:
     "The email or password is incorrect.",
   AUTH_EMAIL_TAKEN: "An account with that email already exists.",
+  ADMIN_ACCESS_DENIED: "Admin access is required for this operation.",
   USER_NOT_FOUND: "The requested user account does not exist.",
   RUN_NOT_FOUND: "The requested generation run does not exist.",
   RUN_CONFLICT:

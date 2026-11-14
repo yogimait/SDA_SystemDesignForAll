@@ -20,6 +20,7 @@ import { DrizzleUserRepository } from "../../src/database/repositories/drizzle-u
 import { DrizzleSessionRepository } from "../../src/database/repositories/drizzle-session.repository.js";
 import { DrizzleAccountRepository } from "../../src/database/repositories/drizzle-account.repository.js";
 import { DrizzleAnalyticsRepository } from "../../src/database/repositories/drizzle-analytics.repository.js";
+import { DrizzleAbuseAnalyticsRepository } from "../../src/database/repositories/drizzle-abuse-analytics.repository.js";
 import { DrizzleTokenRepository } from "../../src/database/repositories/drizzle-token.repository.js";
 import { DrizzleBillingRepository } from "../../src/database/repositories/drizzle-billing.repository.js";
 import { DrizzleOutboxRepository } from "../../src/database/repositories/drizzle-outbox.repository.js";
@@ -105,6 +106,7 @@ describe("Drizzle repositories on in-memory PGlite", () => {
   let sessions: DrizzleSessionRepository;
   let account: DrizzleAccountRepository;
   let analytics: DrizzleAnalyticsRepository;
+  let abuse: DrizzleAbuseAnalyticsRepository;
   let tokens: DrizzleTokenRepository;
   let billing: DrizzleBillingRepository;
   let outbox: DrizzleOutboxRepository;
@@ -125,6 +127,7 @@ describe("Drizzle repositories on in-memory PGlite", () => {
     sessions = new DrizzleSessionRepository(database);
     account = new DrizzleAccountRepository(database);
     analytics = new DrizzleAnalyticsRepository(database);
+    abuse = new DrizzleAbuseAnalyticsRepository(database);
     tokens = new DrizzleTokenRepository(database);
     billing = new DrizzleBillingRepository(database);
     outbox = new DrizzleOutboxRepository(database);
@@ -198,6 +201,7 @@ describe("Drizzle repositories on in-memory PGlite", () => {
       stages: ["analyze_idea", "persist"],
     });
     expect(await runs.hasActiveRun(projectId)).toBe(true);
+    expect(await runs.countActive()).toBe(1);
 
     const claimed = await runs.claimNextQueued();
     expect(claimed).toMatchObject({ id: runId, status: "running" });
@@ -218,6 +222,7 @@ describe("Drizzle repositories on in-memory PGlite", () => {
       usageCompletionTokens: 20,
     });
     expect(await runs.hasActiveRun(projectId)).toBe(false);
+    expect(await runs.countActive()).toBe(0);
     expect((await runs.findById(runId))?.status).toBe("succeeded");
 
     const interruptedId = randomUUID();
@@ -604,5 +609,59 @@ describe("Drizzle repositories on in-memory PGlite", () => {
     ).toBeNull();
     // billing_events.user_id cascades with the user row.
     expect(await billing.findEvent("evt_delete")).toBeNull();
+  });
+
+  it("aggregates system-wide abuse/usage rows for the ops view", async () => {
+    const userId = `usr_${randomUUID().replaceAll("-", "")}`;
+    const email = `${userId}@example.com`;
+    await users.create({
+      id: userId,
+      email,
+      passwordHash: "scrypt$test",
+      planTier: "free",
+    });
+    const projectId = randomUUID();
+    await projects.create({
+      id: projectId,
+      ownerId: userId,
+      idea: "Abuse metrics project",
+      accessKeyHash: new AccessKeyService().hash("metrics-key"),
+    });
+    const runId = randomUUID();
+    await runs.create({
+      id: runId,
+      projectId,
+      type: "requirements",
+      provider: "mock",
+      model: "test/model",
+      scope: null,
+      inputHash: "",
+      stages: ["analyze_idea", "persist"],
+    });
+    await runs.updateRun(runId, {
+      status: "failed",
+      errorCode: "GENERATION_REPAIR_FAILED",
+      usagePromptTokens: 13,
+      usageCompletionTokens: 17,
+      finishedAt: new Date(),
+    });
+
+    const from = new Date(Date.now() - 60_000);
+    const usersSince = await abuse.listUsersSince(from);
+    expect(usersSince.some((row) => row.id === userId)).toBe(true);
+    const projectsSince = await abuse.listProjectsSince(from);
+    expect(projectsSince.some((row) => row.ownerId === userId)).toBe(true);
+    const runsSince = await abuse.listRunsSince(from);
+    const run = runsSince.find((row) => row.id === runId);
+    expect(run).toMatchObject({
+      ownerId: userId,
+      ownerEmail: email,
+      ownerPlanTier: "free",
+      usagePromptTokens: 13,
+      usageCompletionTokens: 17,
+      status: "failed",
+    });
+    expect(await abuse.countUsers()).toBeGreaterThan(0);
+    expect(await abuse.countActiveRuns()).toBe(0);
   });
 });

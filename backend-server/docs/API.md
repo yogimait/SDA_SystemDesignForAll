@@ -68,6 +68,7 @@ Unknown API routes return a 404 envelope with `ROUTE_NOT_FOUND`. Responses set `
 | `DELETE` | `/api/users/me` | 200 | Password-confirmed account deletion; throttled step-up. |
 | `GET` | `/api/dev/outbox` | 200 | Development-only email links; 404 in production. |
 | `GET` | `/api/dashboard` | 200 | Usage totals, daily buckets, top models, recent runs. |
+| `GET` | `/api/admin/abuse` | 200 | Ops-only system-wide signup/run/token/failure snapshot; `ADMIN_EMAILS` allowlist. |
 | `POST` | `/api/projects/:id/requirements` | 202 | Start a requirements generation run. |
 | `GET` | `/api/projects/:id/requirements` | 200 | Current editable spec + confirmation timestamp. |
 | `PUT` | `/api/projects/:id/requirements` | 200 | Save edits; optionally confirm and snapshot. |
@@ -78,7 +79,7 @@ Unknown API routes return a 404 envelope with `ROUTE_NOT_FOUND`. Responses set `
 | `GET` | `/api/runs/:runId/events` | 200 | SSE live/replayed run and stage events. |
 | `GET` | `/api/runs/:runId/events?lastEventId=...` | 200 | SSE reconnect fallback when `Last-Event-ID` cannot be sent. |
 
-Run-start endpoints are throttled per IP (`THROTTLE_LIMIT` per `THROTTLE_TTL_MS`). Exceeding the window returns `429 QUOTA_EXCEEDED`.
+Run-start endpoints are throttled per owner (fallback: IP) with `GENERATION_THROTTLE_LIMIT` per `GENERATION_THROTTLE_TTL_MS`; account registration uses `SIGNUP_THROTTLE_LIMIT` per IP. Exceeding either window returns `429 QUOTA_EXCEEDED`. The global queued+running cap is `GENERATION_MAX_QUEUED`; a full queue also returns `429 QUOTA_EXCEEDED` with `details.reason = "generation_queue_full"`.
 
 ## List providers
 
@@ -219,6 +220,8 @@ save.
 ## Dashboard and plans
 
 `GET /api/dashboard?range=last_7_days|last_30_days|last_90_days` aggregates only projects owned by the authenticated user. It returns usage totals, daily buckets, top models, and recent runs.
+
+`GET /api/admin/abuse?range=last_7_days|last_30_days|last_90_days` is the ops view: total/new users, new projects, runs, tokens, failures, active runs, daily buckets, and the top accounts by tokens. It requires a Bearer session whose email is in `ADMIN_EMAILS`; an empty allowlist disables it. Non-admin accounts receive `403 ADMIN_ACCESS_DENIED`. See [[Abuse-Protection]].
 
 Plan limits use existing error codes:
 
@@ -407,11 +410,12 @@ data: {"type":"run","status":"succeeded","error":null,"usage":{"promptTokens":12
 | `AUTH_REQUIRED` | 401 | Missing, invalid, expired, or revoked Bearer session; also the unverified-email gate. |
 | `AUTH_INVALID_CREDENTIALS` | 401 | Login email/password mismatch; also invalid, expired, or reused tokens. |
 | `AUTH_EMAIL_TAKEN` | 409 | Registration email already exists. |
+| `ADMIN_ACCESS_DENIED` | 403 | Ops route requires an email in `ADMIN_EMAILS`. |
 | `USER_NOT_FOUND` | 404 | Requested user does not exist. |
 | `RUN_NOT_FOUND` | 404 | Run does not exist. |
 | `RUN_CONFLICT` | 409 | A run is already queued or running for the project. |
 | `PAYLOAD_TOO_LARGE` | 413 | JSON body exceeds `MAX_REQUEST_BYTES`. |
-| `QUOTA_EXCEEDED` | 429 | Per-IP run-start or auth throttle hit. |
+| `QUOTA_EXCEEDED` | 429 | Signup, auth, run-start, or queue-cap throttle hit. |
 | `PLAN_LIMIT_EXCEEDED` | 402 | Project/run/token allowance exceeded. |
 | `PLAN_UPGRADE_REQUIRED` | 402 | Feature requires Pro. |
 | `PROVIDER_CONFIG_NOT_FOUND` | 404 | No saved provider configuration. |

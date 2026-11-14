@@ -25,6 +25,11 @@ describe("Auth throttle (e2e)", () => {  let app: INestApplication<App>;
       THROTTLE_TTL_MS: "60000",
       AUTH_THROTTLE_LIMIT: "2",
       AUTH_THROTTLE_TTL_MS: "60000",
+    SIGNUP_THROTTLE_LIMIT: "1000",
+    SIGNUP_THROTTLE_TTL_MS: "60000",
+    GENERATION_THROTTLE_LIMIT: "1000",
+    GENERATION_THROTTLE_TTL_MS: "60000",
+    GENERATION_MAX_QUEUED: "1000",
       MAX_REQUEST_BYTES: "1000000",
     });
     const moduleRef = await Test.createTestingModule({

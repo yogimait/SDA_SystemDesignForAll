@@ -13,6 +13,7 @@ export const ErrorCodeSchema = z.enum([
   "AUTH_REQUIRED",
   "AUTH_INVALID_CREDENTIALS",
   "AUTH_EMAIL_TAKEN",
+  "ADMIN_ACCESS_DENIED",
   "USER_NOT_FOUND",
   "RUN_NOT_FOUND",
   "RUN_CONFLICT",

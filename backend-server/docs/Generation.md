@@ -21,6 +21,7 @@ stateDiagram-v2
 - The unique-violation path is translated to `RUN_CONFLICT`.
 - A failed or interrupted run does not block a retry.
 - At startup, `reconcileInterrupted()` marks every queued/running run as `interrupted` and its pending/running stages as `failed`. There is no silent auto-restart.
+- Before queueing, `RunService` rejects when queued+running reaches `GENERATION_MAX_QUEUED`; run starts are also throttled per owner/IP. See [[Abuse-Protection]].
 
 ## Stages
 

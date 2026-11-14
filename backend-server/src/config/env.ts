@@ -9,6 +9,12 @@ const BooleanFlagSchema = z
   .default("0")
   .transform((value) => value === "1" || value === "true");
 
+/** Opt-out flags: safe to enable by default, kill-switchable by env. */
+const EnabledFlagSchema = z
+  .enum(["0", "1", "true", "false"])
+  .default("1")
+  .transform((value) => value === "1" || value === "true");
+
 /** Comma-separated model catalog: trimmed, de-duplicated, blanks dropped. */
 const ModelListSchema = (fallback: string) =>
   z
@@ -26,6 +32,21 @@ const ModelListSchema = (fallback: string) =>
     .refine((models) => models.length > 0, {
       message: "At least one model slug is required.",
     });
+
+/** Comma-separated admin emails; empty disables the ops surface. */
+const EmailListSchema = z
+  .string()
+  .trim()
+  .default("")
+  .transform((value) => [
+    ...new Set(
+      value
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => item.length > 0),
+    ),
+  ])
+  .pipe(z.array(z.string().email()));
 
 const DURATION_UNITS_MS = {
   s: 1_000,
@@ -92,6 +113,11 @@ export const EnvSchema = z
     DATABASE_URL: z.string().trim().url().optional(),
     GENERATION_CONCURRENCY: z.coerce.number().int().min(1).default(1),
     GENERATION_POLL_INTERVAL_MS: z.coerce.number().int().min(10).default(100),
+    GENERATION_ENABLED: EnabledFlagSchema,
+    GENERATION_MAX_QUEUED: z.coerce.number().int().min(1).default(10),
+    GLOBAL_DAILY_TOKEN_LIMIT: z.coerce.number().int().min(1).default(2_000_000),
+    GLOBAL_DAILY_RUN_LIMIT: z.coerce.number().int().min(1).default(100),
+    SIGNUP_ENABLED: EnabledFlagSchema,
     MOCK_PROVIDER: BooleanFlagSchema,
     DEFAULT_PROVIDER: z.string().trim().min(1).default("openrouter"),
     DEFAULT_MODEL: z.string().trim().min(1).default("z-ai/glm-5.3-flash"),
@@ -122,6 +148,17 @@ export const EnvSchema = z
     MAX_REQUEST_BYTES: z.coerce.number().int().min(1024).default(1_000_000),
     THROTTLE_LIMIT: z.coerce.number().int().min(1).default(10),
     THROTTLE_TTL_MS: z.coerce.number().int().min(1000).default(3_600_000),
+    // Account creation is cheaper to retry than generation; keep a tight
+    // per-IP budget so a single host cannot mint a free-tier farm.
+    SIGNUP_THROTTLE_LIMIT: z.coerce.number().int().min(1).default(3),
+    SIGNUP_THROTTLE_TTL_MS: z.coerce.number().int().min(1000).default(3_600_000),
+    // Run starts are tracked per authenticated owner (fallback: IP).
+    GENERATION_THROTTLE_LIMIT: z.coerce.number().int().min(1).default(10),
+    GENERATION_THROTTLE_TTL_MS: z.coerce.number().int().min(1000).default(3_600_000),
+    // Hard stop for a runaway queue; protects the single worker and spend.
+    // (GENERATION_MAX_QUEUED is declared above with the safety flags.)
+    // Ops-only abuse dashboard. Empty disables the route for everyone.
+    ADMIN_EMAILS: EmailListSchema,
     // Auth: short-lived Bearer sessions plus a rotating refresh cookie.
     ACCESS_TOKEN_TTL: DurationSchema("15m"),
     REFRESH_TOKEN_TTL: DurationSchema("30d"),
@@ -141,6 +178,14 @@ export const EnvSchema = z
     STRIPE_PRICE_PRO: OPTIONAL_SECRET,
   })
   .superRefine((value, ctx) => {
+    if (value.NODE_ENV === "production" && !value.REQUIRE_EMAIL_VERIFICATION) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["REQUIRE_EMAIL_VERIFICATION"],
+        message:
+          "Production requires REQUIRE_EMAIL_VERIFICATION=1 before generation is exposed publicly.",
+      });
+    }
     if (value.DATABASE_DRIVER === "postgres" && !value.DATABASE_URL) {
       ctx.addIssue({
         code: "custom",

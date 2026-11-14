@@ -35,6 +35,16 @@ describe("loadConfig", () => {
       EMAIL_PROVIDER: "outbox",
       AUTH_THROTTLE_LIMIT: 5,
       AUTH_THROTTLE_TTL_MS: 60_000,
+      SIGNUP_THROTTLE_LIMIT: 3,
+      SIGNUP_THROTTLE_TTL_MS: 3_600_000,
+      GENERATION_THROTTLE_LIMIT: 10,
+      GENERATION_THROTTLE_TTL_MS: 3_600_000,
+      GENERATION_MAX_QUEUED: 10,
+      GENERATION_ENABLED: true,
+      GLOBAL_DAILY_TOKEN_LIMIT: 2_000_000,
+      GLOBAL_DAILY_RUN_LIMIT: 100,
+      SIGNUP_ENABLED: true,
+      ADMIN_EMAILS: [],
       TRUST_PROXY: false,
     });
     expect(config.CSRF_SECRET).toBeUndefined();
@@ -117,6 +127,29 @@ describe("loadConfig", () => {
         DATABASE_URL: "not-a-url",
       } as NodeJS.ProcessEnv),
     ).toThrow(/DATABASE_URL/);
+  });
+
+  it("requires email verification in production", () => {
+    expect(() =>
+      loadConfig({ NODE_ENV: "production" } as NodeJS.ProcessEnv),
+    ).toThrow(/REQUIRE_EMAIL_VERIFICATION/);
+    expect(
+      loadConfig({
+        NODE_ENV: "production",
+        REQUIRE_EMAIL_VERIFICATION: "1",
+      } as NodeJS.ProcessEnv).REQUIRE_EMAIL_VERIFICATION,
+    ).toBe(true);
+  });
+
+  it("parses the admin allowlist and rejects invalid emails", () => {
+    expect(
+      loadConfig({
+        ADMIN_EMAILS: " Ops@Example.com, admin@example.com ,,",
+      } as NodeJS.ProcessEnv).ADMIN_EMAILS,
+    ).toEqual(["ops@example.com", "admin@example.com"]);
+    expect(() =>
+      loadConfig({ ADMIN_EMAILS: "not-an-email" } as NodeJS.ProcessEnv),
+    ).toThrow(/ADMIN_EMAILS/);
   });
 
   it("requires Resend credentials when the Resend provider is selected", () => {

@@ -17,7 +17,7 @@ import {
   GenerationOptionsSchema,
   RegenerateArchitectureRequestSchema,
 } from "@sda/contracts";
-import { ThrottlerGuard } from "@nestjs/throttler";
+import { GenerationThrottlerGuard } from "../common/access/generation-throttler.guard.js";
 import {
   ProjectAccessGuard,
   requireProject,
@@ -38,7 +38,7 @@ export class ArchitectureController {
 
   @Post()
   @HttpCode(202)
-  @UseGuards(ThrottlerGuard, RequireVerifiedEmailGuard)
+  @UseGuards(GenerationThrottlerGuard, RequireVerifiedEmailGuard)
   start(
     @Req() request: ProjectRequest,
     @Body(new ZodValidationPipe(GenerationOptionsSchema.default({})))
@@ -53,7 +53,7 @@ export class ArchitectureController {
 
   @Post("regenerate")
   @HttpCode(202)
-  @UseGuards(ThrottlerGuard, RequireVerifiedEmailGuard)
+  @UseGuards(GenerationThrottlerGuard, RequireVerifiedEmailGuard)
   regenerate(
     @Req() request: ProjectRequest,
     @Body(new ZodValidationPipe(RegenerateArchitectureRequestSchema))

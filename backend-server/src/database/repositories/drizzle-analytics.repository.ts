@@ -1,10 +1,11 @@
 import { Injectable } from "@nestjs/common";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { DatabaseService } from "../database.service.js";
 import { generationRuns, projects } from "../schema.js";
 import type {
   AnalyticsRepository,
   AnalyticsRunRow,
+  GlobalUsage,
 } from "./analytics.repository.js";
 
 @Injectable()
@@ -37,5 +38,22 @@ export class DrizzleAnalyticsRepository implements AnalyticsRepository {
         ),
       )
       .orderBy(desc(generationRuns.createdAt));
+  }
+
+  async sumGlobalUsageSince(from: Date): Promise<GlobalUsage> {
+    const [row] = await this.database.db
+      .select({
+        runCount: sql<number>`count(*)`,
+        promptTokens: sql<number>`coalesce(sum(${generationRuns.usagePromptTokens}), 0)`,
+        completionTokens: sql<number>`coalesce(sum(${generationRuns.usageCompletionTokens}), 0)`,
+      })
+      .from(generationRuns)
+      .where(gte(generationRuns.createdAt, from));
+
+    return {
+      runCount: Number(row?.runCount ?? 0),
+      promptTokens: Number(row?.promptTokens ?? 0),
+      completionTokens: Number(row?.completionTokens ?? 0),
+    };
   }
 }

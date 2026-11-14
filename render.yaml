@@ -37,6 +37,16 @@ services:
         value: low
       - key: GENERATION_CONCURRENCY
         value: "1"
+      - key: GENERATION_ENABLED
+        value: "1"
+      - key: GENERATION_MAX_QUEUED
+        value: "10"
+      - key: GLOBAL_DAILY_TOKEN_LIMIT
+        value: "2000000"
+      - key: GLOBAL_DAILY_RUN_LIMIT
+        value: "100"
+      - key: SIGNUP_ENABLED
+        value: "1"
       - key: OPENROUTER_API_KEY
         sync: false
       - key: CSRF_SECRET
@@ -50,7 +60,7 @@ services:
       - key: TRUST_PROXY
         value: "1"
       - key: REQUIRE_EMAIL_VERIFICATION
-        value: "0"
+        value: "1"
       - key: EMAIL_PROVIDER
         sync: false
       - key: RESEND_API_KEY
@@ -65,7 +75,17 @@ services:
         sync: false
       - key: THROTTLE_LIMIT
         value: "60"
+      - key: SIGNUP_THROTTLE_LIMIT
+        value: "2"
+      - key: SIGNUP_THROTTLE_TTL_MS
+        value: "3600000"
+      - key: GENERATION_THROTTLE_LIMIT
+        value: "3"
+      - key: GENERATION_THROTTLE_TTL_MS
+        value: "3600000"
       - key: AUTH_THROTTLE_LIMIT
         value: "10"
       - key: AUTH_THROTTLE_TTL_MS
         value: "60000"
+      - key: ADMIN_EMAILS
+        sync: false

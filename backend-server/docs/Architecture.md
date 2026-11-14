@@ -125,7 +125,15 @@ Run SSE uses the same guard. The controller writes raw `text/event-stream` frame
 | `PGLITE_DATA_DIR` | `.data/pglite` | PGlite directory; `memory://` in tests. |
 | `DATABASE_URL` | — | Required for Postgres. |
 | `GENERATION_CONCURRENCY` | `1` | Reserved; the worker is single-run. |
+| `GENERATION_ENABLED` | `1` | Global kill switch for new generation runs. |
 | `GENERATION_POLL_INTERVAL_MS` | `100` | Worker polling cadence. |
+| `GENERATION_MAX_QUEUED` | `10` | Maximum queued + running runs for the single worker. |
+| `GLOBAL_DAILY_TOKEN_LIMIT` | `2,000,000` | Process-wide daily prompt + completion token budget. |
+| `GLOBAL_DAILY_RUN_LIMIT` | `100` | Process-wide daily run budget. |
+| `SIGNUP_ENABLED` | `1` | Global kill switch for new account creation. |
+| `SIGNUP_THROTTLE_LIMIT` | `3` | Per-IP signup budget per window. |
+| `GENERATION_THROTTLE_LIMIT` | `10` | Per-owner/IP run-start budget per window. |
+| `ADMIN_EMAILS` | empty | Enables the ops abuse dashboard when set. |
 | `MOCK_PROVIDER` | `0` | Explicit deterministic mock provider. |
 | `DEFAULT_PROVIDER` | `openrouter` | Provider when the request omits one. |
 | `DEFAULT_MODEL` | `z-ai/glm-5.3-flash` | Model when the request omits one. |

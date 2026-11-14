@@ -28,6 +28,7 @@ import type { Request, Response } from "express";
 import { AppError } from "../common/errors/app-error.js";
 import { AuthGuard, OptionalAuthGuard } from "../common/access/auth.guard.js";
 import { AuthThrottlerGuard } from "../common/access/auth-throttler.guard.js";
+import { SignupThrottlerGuard } from "../common/access/signup-throttler.guard.js";
 import {
   requireUser,
   type AuthRequest,
@@ -51,7 +52,7 @@ export class AuthController {
 
   @Post("register")
   @HttpCode(201)
-  @UseGuards(AuthThrottlerGuard)
+  @UseGuards(SignupThrottlerGuard)
   async register(
     @Body(new ZodValidationPipe(RegisterUserRequestSchema))
     body: RegisterUserRequest,

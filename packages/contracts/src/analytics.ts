@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RunStatusSchema, RunTypeSchema } from "./runs.js";
+import { PlanTierSchema } from "./users.js";
 
 export const DashboardRangeSchema = z.enum([
   "last_7_days",
@@ -59,3 +60,50 @@ export const DashboardDataSchema = z.object({
   recentRuns: z.array(RecentRunSchema).max(20),
 });
 export type DashboardData = z.infer<typeof DashboardDataSchema>;
+
+/** Ops-only abuse/usage snapshot. Never expose this route without AdminGuard. */
+export const AdminAbuseQuerySchema = z.object({
+  range: DashboardRangeSchema.default("last_30_days"),
+});
+export type AdminAbuseQuery = z.infer<typeof AdminAbuseQuerySchema>;
+
+export const AdminAbuseTotalsSchema = z.object({
+  totalUsers: z.number().int().min(0),
+  newUsers: z.number().int().min(0),
+  newProjects: z.number().int().min(0),
+  runs: z.number().int().min(0),
+  tokens: z.number().int().min(0),
+  failures: z.number().int().min(0),
+  activeRuns: z.number().int().min(0),
+});
+export type AdminAbuseTotals = z.infer<typeof AdminAbuseTotalsSchema>;
+
+export const AdminAbuseBucketSchema = z.object({
+  periodStart: z.string().min(1),
+  periodEnd: z.string().min(1),
+  newUsers: z.number().int().min(0),
+  newProjects: z.number().int().min(0),
+  runs: z.number().int().min(0),
+  tokens: z.number().int().min(0),
+  failures: z.number().int().min(0),
+});
+export type AdminAbuseBucket = z.infer<typeof AdminAbuseBucketSchema>;
+
+export const AdminAbuseUserSchema = z.object({
+  id: z.string().min(1),
+  email: z.string().email(),
+  planTier: PlanTierSchema,
+  runs: z.number().int().min(0),
+  tokens: z.number().int().min(0),
+  lastRunAt: z.string().nullable(),
+});
+export type AdminAbuseUser = z.infer<typeof AdminAbuseUserSchema>;
+
+export const AdminAbuseDataSchema = z.object({
+  range: DashboardRangeSchema,
+  generatedAt: z.string().min(1),
+  totals: AdminAbuseTotalsSchema,
+  buckets: z.array(AdminAbuseBucketSchema).max(92),
+  topUsers: z.array(AdminAbuseUserSchema).max(20),
+});
+export type AdminAbuseData = z.infer<typeof AdminAbuseDataSchema>;

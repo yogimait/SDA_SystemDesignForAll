@@ -160,6 +160,11 @@ function setEnv(overrides: Record<string, string>): void {
     THROTTLE_TTL_MS: "60000",
     AUTH_THROTTLE_LIMIT: "1000",
     AUTH_THROTTLE_TTL_MS: "60000",
+    SIGNUP_THROTTLE_LIMIT: "1000",
+    SIGNUP_THROTTLE_TTL_MS: "60000",
+    GENERATION_THROTTLE_LIMIT: "1000",
+    GENERATION_THROTTLE_TTL_MS: "60000",
+    GENERATION_MAX_QUEUED: "1000",
     MAX_REQUEST_BYTES: "2048",
     ...overrides,
   });
@@ -991,7 +996,10 @@ describe("API (e2e)", () => {
     let server: App;
 
     beforeAll(async () => {
-      ({ app, server } = await createTestApp({ THROTTLE_LIMIT: "1" }));
+      ({ app, server } = await createTestApp({
+        GENERATION_THROTTLE_LIMIT: "1",
+        GENERATION_THROTTLE_TTL_MS: "60000",
+      }));
     });
 
     afterAll(async () => {

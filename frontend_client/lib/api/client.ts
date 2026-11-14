@@ -70,6 +70,7 @@ export const USER_MESSAGES: Record<ApiErrorCode, string> = {
     "The email or password is incorrect. Check your entries and retry.",
   AUTH_EMAIL_TAKEN:
     "That email is already registered. Sign in instead, or use another email.",
+  ADMIN_ACCESS_DENIED: "Admin access is required for this operation.",
   USER_NOT_FOUND: "The requested user account was not found.",
   RUN_NOT_FOUND: "The generation run was not found. Start a new generation.",
   RUN_CONFLICT:

@@ -13,6 +13,7 @@ import type { UserRow } from "../../src/database/repositories/user.repository.js
 const CONFIG = {
   ACCESS_TOKEN_TTL: 15 * 60 * 1000,
   REFRESH_TOKEN_TTL: 30 * 24 * 60 * 60 * 1000,
+  SIGNUP_ENABLED: true,
 } as AppConfig;
 
 function makeService(
@@ -310,6 +311,27 @@ describe("AuthService", () => {
       }),
     ).rejects.toMatchObject({ code: "AUTH_INVALID_CREDENTIALS" });
     expect(verifyDummy).toHaveBeenCalledWith("Password123!");
+  });
+
+  it("can pause new signups without touching existing accounts", async () => {
+    const service = new AuthService(
+      { ...CONFIG, SIGNUP_ENABLED: false } as AppConfig,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      new PasswordService(),
+    );
+
+    await expect(
+      service.register({
+        email: "new@example.com",
+        password: "Password123!",
+      }),
+    ).rejects.toMatchObject({
+      code: "QUOTA_EXCEEDED",
+      details: { reason: "signup_disabled" },
+    });
   });
 
   it("rotates the refresh token and revokes the family on reuse", async () => {

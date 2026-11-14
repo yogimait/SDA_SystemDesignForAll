@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { HldModel } from "@sda/contracts";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../database.service.js";
 import { generationRuns, generationStages } from "../schema.js";
@@ -126,6 +126,14 @@ export class DrizzleRunRepository implements RunRepository {
       )
       .limit(1);
     return Boolean(row);
+  }
+
+  async countActive(): Promise<number> {
+    const [row] = await this.database.db
+      .select({ count: count() })
+      .from(generationRuns)
+      .where(inArray(generationRuns.status, ["queued", "running"]));
+    return row?.count ?? 0;
   }
 
   async reconcileInterrupted(): Promise<number> {

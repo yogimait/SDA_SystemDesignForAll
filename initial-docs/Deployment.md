@@ -154,7 +154,23 @@ Wait for TLS certificates to become active before testing auth.
 7. Restart the Render service and confirm data persists.
 8. Confirm `MOCK_PROVIDER=false` and `DATABASE_DRIVER=postgres` in Render logs.
 
-## 6. Beta limitations to keep visible
+## 6. Public-link abuse controls
+
+Before posting a live URL publicly:
+
+- Keep registration behind email verification. Production boot requires `REQUIRE_EMAIL_VERIFICATION=1`; make sure Resend is working first or users cannot generate.
+- Set `SIGNUP_ENABLED=1` while registering, and switch it to `0` for an immediate signup freeze.
+- Set `GENERATION_ENABLED=1`; switch it to `0` for an immediate generation kill switch.
+- Keep `GLOBAL_DAILY_TOKEN_LIMIT` and `GLOBAL_DAILY_RUN_LIMIT` low enough to cap provider spend. These are process-wide, not per account.
+- Keep `GENERATION_MAX_QUEUED` small on a single Render instance. The default is 10; 100 is too high for a free instance.
+- Keep `SIGNUP_THROTTLE_LIMIT` and `GENERATION_THROTTLE_LIMIT` tight. The blueprint uses 2 signups/hour/IP and 3 runs/hour/owner.
+- Set a **hard spending limit on the OpenRouter key** as a second line of defence. The application budget is not a provider-side cap.
+- Set `ADMIN_EMAILS` to enable the ops abuse dashboard and monitor signup spikes, queue depth, failures, and provider spend.
+- Put Cloudflare or an equivalent WAF in front of the API. CORS is not a rate limit. Add rules for `/api/auth/*`, `/api/projects`, and `/api/runs/*/events`.
+- Cap concurrent SSE connections per user/IP at the edge; each stream is long-lived.
+- Do not use the Render free plan for a public launch. It sleeps and can interrupt runs.
+
+## 7. Beta limitations to keep visible
 
 - Resend verification and password reset are verified for `nerddog.me`. Keep
   `REQUIRE_EMAIL_VERIFICATION=1` once the production sender is confirmed.
@@ -165,7 +181,7 @@ Wait for TLS certificates to become active before testing auth.
 - Supabase Free can pause; Render Free can sleep.
 - Groq free-tier keys cannot fit the full combined LLD/DSA generation.
 
-## 7. What not to do
+## 8. What not to do
 
 - Do not set `DATABASE_DRIVER=pglite` on Render.
 - Do not deploy the backend to Vercel serverless: the worker, SSE stream, and

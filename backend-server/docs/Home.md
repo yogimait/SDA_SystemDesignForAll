@@ -12,6 +12,7 @@ Living documentation for `backend-server/` and the backend side of `packages/con
 | [[Generation]] | Run queue, stages, repair loops, two-phase generation, scoped regeneration. |
 | [[Providers]] | Hosted key, OpenRouter adapter, structured-output fallback, mock provider. |
 | [[Auth]] | Sessions, refresh rotation, CSRF, email tokens, verification gate, account deletion. |
+| [[Abuse-Protection]] | Signup/generation throttles, queue cap, plan limits, ops abuse dashboard, launch checklist. |
 | [[Billing]] | Plan catalogue, stub and Stripe providers, webhook ledger, plan changes. |
 | [[Testing]] | Unit, integration, e2e tests and local verification commands. |
 
@@ -19,6 +20,7 @@ Living documentation for `backend-server/` and the backend side of `packages/con
 
 - Phases B0-B5 of the [backend roadmap](../../initial-docs/Roadmap-Planner-Backend.md) are implemented for the MVP, plus user accounts/Bearer auth, project ownership, preferences, plans, and dashboard analytics. Generation is paid and uses the hosted provider key.
 - Auth hardening is in place: short-lived access tokens, rotating refresh cookies with reuse detection, CSRF/Origin checks, email verification and reset tokens with a development outbox, stricter auth throttles, and password-confirmed account deletion.
+- Public-launch abuse controls are in place: per-IP signup budget, per-owner run-start budget, global queue cap, production email-verification guard, and an allowlisted ops dashboard at `/admin/abuse`. See [[Abuse-Protection]].
 - Billing ships a plan catalogue, a local stub provider for development, a Stripe-ready REST adapter, and an idempotent webhook ledger. No real payment is processed in development.
 - Build, lint, unit tests, and e2e tests pass locally.
 - Local persistence uses PGlite; production uses Postgres through the same repositories and migrations.

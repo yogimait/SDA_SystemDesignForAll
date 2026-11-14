@@ -61,6 +61,13 @@ export class AuthService {
   ) {}
 
   async register(request: RegisterUserRequest): Promise<IssuedSession> {
+    if (!this.config.SIGNUP_ENABLED) {
+      throw new AppError(
+        "QUOTA_EXCEEDED",
+        "New account creation is temporarily paused.",
+        { reason: "signup_disabled" },
+      );
+    }
     const email = normalizeEmail(request.email);
     if (await this.users.findByEmail(email)) {
       throw new AppError("AUTH_EMAIL_TAKEN");

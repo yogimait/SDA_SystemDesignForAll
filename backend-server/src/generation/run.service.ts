@@ -10,6 +10,8 @@ import type {
 import { createHash, randomUUID } from "node:crypto";
 import { AppError } from "../common/errors/app-error.js";
 import { isActiveRunConflict } from "../common/errors/database-error.js";
+import { APP_CONFIG } from "../config/config.module.js";
+import type { AppConfig } from "../config/env.js";
 import {
   ARCHITECTURE_REPOSITORY,
   type ArchitectureRepository,
@@ -24,6 +26,7 @@ import {
   type StageRow,
 } from "../database/repositories/run.repository.js";
 import { ProviderRegistry } from "../providers/provider.registry.js";
+import { GenerationBudgetService } from "./generation-budget.service.js";
 import { GenerationWorker } from "./generation.worker.js";
 import {
   RunEventsService,
@@ -48,6 +51,8 @@ export class RunService {
     private readonly worker: GenerationWorker,
     private readonly plans: PlanService,
     private readonly events: RunEventsService,
+    private readonly budget: GenerationBudgetService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   async startRequirements(
@@ -145,9 +150,14 @@ export class RunService {
     options: GenerationOptions,
     stageNames: string[],
   ): Promise<StartRunResponse> {
+    await this.budget.assertCanStart();
     if (await this.runs.hasActiveRun(project.id)) {
       throw new AppError("RUN_CONFLICT");
     }
+    assertQueueCapacity(
+      await this.runs.countActive(),
+      this.config.GENERATION_MAX_QUEUED,
+    );
 
     const providerId = options.provider ?? this.registry.defaultProvider;
     const model = options.model ?? this.registry.defaultModel;
@@ -190,6 +200,17 @@ export class RunService {
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+/** Exported for the run-service unit check; branch is intentionally tiny. */
+export function assertQueueCapacity(active: number, limit: number): void {
+  if (active >= limit) {
+    throw new AppError(
+      "QUOTA_EXCEEDED",
+      "The generation queue is full. Try again in a few minutes.",
+      { reason: "generation_queue_full", limit, active },
+    );
+  }
 }
 
 function emptyUsage(): TokenUsage {

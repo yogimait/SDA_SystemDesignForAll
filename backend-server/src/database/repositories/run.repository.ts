@@ -55,6 +55,8 @@ export interface RunRepository {
   updateRun(id: string, patch: RunPatch): Promise<RunRow | null>;
   updateStage(runId: string, name: string, patch: StagePatch): Promise<void>;
   hasActiveRun(projectId: string): Promise<boolean>;
+  /** Queued + running runs; used for the global queue cap. */
+  countActive(): Promise<number>;
   reconcileInterrupted(): Promise<number>;
   /** A validated HLD from an earlier failed full run with the same input. */
   findReusableHld(

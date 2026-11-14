@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ProvidersModule } from "../providers/providers.module.js";
 import { ArchitectureGenerator } from "./architecture.generator.js";
+import { GenerationBudgetService } from "./generation-budget.service.js";
 import { GenerationWorker } from "./generation.worker.js";
 import { RequirementsGenerator } from "./requirements.generator.js";
 import { RunController } from "./run.controller.js";
@@ -14,6 +15,7 @@ import { RunService } from "./run.service.js";
     RequirementsGenerator,
     ArchitectureGenerator,
     GenerationWorker,
+    GenerationBudgetService,
     RunEventsService,
     RunService,
   ],
