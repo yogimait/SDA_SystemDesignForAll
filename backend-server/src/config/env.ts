@@ -178,14 +178,6 @@ export const EnvSchema = z
     STRIPE_PRICE_PRO: OPTIONAL_SECRET,
   })
   .superRefine((value, ctx) => {
-    if (value.NODE_ENV === "production" && !value.REQUIRE_EMAIL_VERIFICATION) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["REQUIRE_EMAIL_VERIFICATION"],
-        message:
-          "Production requires REQUIRE_EMAIL_VERIFICATION=1 before generation is exposed publicly.",
-      });
-    }
     if (value.DATABASE_DRIVER === "postgres" && !value.DATABASE_URL) {
       ctx.addIssue({
         code: "custom",

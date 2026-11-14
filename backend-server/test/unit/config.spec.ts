@@ -129,10 +129,12 @@ describe("loadConfig", () => {
     ).toThrow(/DATABASE_URL/);
   });
 
-  it("requires email verification in production", () => {
-    expect(() =>
-      loadConfig({ NODE_ENV: "production" } as NodeJS.ProcessEnv),
-    ).toThrow(/REQUIRE_EMAIL_VERIFICATION/);
+  it("allows a stale production flag but keeps verification mandatory in the guard", () => {
+    const config = loadConfig({
+      NODE_ENV: "production",
+      REQUIRE_EMAIL_VERIFICATION: "0",
+    } as NodeJS.ProcessEnv);
+    expect(config.REQUIRE_EMAIL_VERIFICATION).toBe(false);
     expect(
       loadConfig({
         NODE_ENV: "production",

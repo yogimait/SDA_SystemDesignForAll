@@ -10,7 +10,9 @@ import { AppError } from "../errors/app-error.js";
 import type { AuthRequest } from "./auth-context.service.js";
 
 /**
- * Gates project creation and run starts when REQUIRE_EMAIL_VERIFICATION=true.
+ * Gates project creation and run starts when verification is required.
+ * Production always enforces this regardless of the legacy env flag so a
+ * stale `REQUIRE_EMAIL_VERIFICATION=0` cannot expose hosted generation.
  * AuthGuard/ProjectAccessGuard must run first so `request.user` is resolved.
  */
 @Injectable()
@@ -18,7 +20,10 @@ export class RequireVerifiedEmailGuard implements CanActivate {
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
 
   canActivate(context: ExecutionContext): boolean {
-    if (!this.config.REQUIRE_EMAIL_VERIFICATION) return true;
+    const required =
+      this.config.NODE_ENV === "production" ||
+      this.config.REQUIRE_EMAIL_VERIFICATION;
+    if (!required) return true;
     const request = context.switchToHttp().getRequest<AuthRequest>();
     if (request.user && !request.user.emailVerifiedAt) {
       throw new AppError(

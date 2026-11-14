@@ -158,7 +158,7 @@ Wait for TLS certificates to become active before testing auth.
 
 Before posting a live URL publicly:
 
-- Keep registration behind email verification. Production boot requires `REQUIRE_EMAIL_VERIFICATION=1`; make sure Resend is working first or users cannot generate.
+- Keep registration behind email verification. Set `REQUIRE_EMAIL_VERIFICATION=1`; production also enforces the gate in code, but the flag should match. Make sure Resend is working first or users cannot generate.
 - Set `SIGNUP_ENABLED=1` while registering, and switch it to `0` for an immediate signup freeze.
 - Set `GENERATION_ENABLED=1`; switch it to `0` for an immediate generation kill switch.
 - Keep `GLOBAL_DAILY_TOKEN_LIMIT` and `GLOBAL_DAILY_RUN_LIMIT` low enough to cap provider spend. These are process-wide, not per account.

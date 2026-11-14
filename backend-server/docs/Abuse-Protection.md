@@ -34,9 +34,10 @@ The queue cap is checked before a run is queued. A full queue returns
 `GLOBAL_DAILY_TOKEN_LIMIT` and `GLOBAL_DAILY_RUN_LIMIT` are process-wide
 budgets across every account and are checked before each run is queued.
 
-Production boot fails when `REQUIRE_EMAIL_VERIFICATION` is not `1`. This is a
-deliberate fail-fast guard: an unverified public deployment lets one person
-mint free accounts and spend the hosted provider key.
+Production always enforces email verification before project creation and
+generation through `RequireVerifiedEmailGuard`, even if a stale deployment
+still has `REQUIRE_EMAIL_VERIFICATION=0`. The flag remains for local/test
+control; set it to `1` in production so intent and behavior agree.
 
 ## Ops analytics
 
