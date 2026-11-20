@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { BoxIcon, GlobeIcon, LayersIcon } from "lucide-react";
 import { Capabilities } from "@/components/landing/capabilities";
 import { HowItWorks } from "@/components/landing/how-it-works";
@@ -24,9 +25,67 @@ const CTA_PILLARS = [
   },
 ] as const;
 
+const SITE_URL = "https://sda.nerddog.me";
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      url: `${SITE_URL}/`,
+      name: "SDA Nerd Dog",
+      alternateName: ["SDA", "System Design All-in-One"],
+      description:
+        "System Design All-in-One turns an idea into an editable specification and interactive LLD, HLD, and DSA views.",
+      inLanguage: "en",
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": `${SITE_URL}/#software`,
+      name: "SDA Nerd Dog",
+      alternateName: ["SDA", "System Design All-in-One"],
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: "Web",
+      url: `${SITE_URL}/`,
+      description:
+        "An AI-assisted system design workspace for editable requirements and interactive LLD, HLD, and DSA views.",
+      isAccessibleForFree: true,
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD",
+      },
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://nerddog.me/#organization",
+      name: "Nerd Dog",
+      url: "https://nerddog.me",
+      sameAs: ["https://github.com/yogimait/SDA_SystemDesignForAll"],
+    },
+  ],
+};
+
+export const metadata: Metadata = {
+  title: {
+    absolute: "SDA Nerd Dog — System Design All-in-One",
+  },
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    url: "/",
+  },
+};
+
 export default function LandingPage() {
   return (
     <div className="font-landing bg-background text-foreground flex min-h-screen flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <SiteHeader />
 
       <main className="flex-grow">
@@ -139,6 +198,10 @@ export default function LandingPage() {
         <div className="text-muted-foreground mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-4 text-xs sm:flex-row sm:px-6 lg:px-8">
           <div className="flex items-center gap-2">
             <span className="text-primary font-heading font-semibold">sda/</span>
+            <span>SDA Nerd Dog</span>
+            <span className="text-border" aria-hidden="true">
+              ·
+            </span>
             <span>© 2026 System Design All-in-One.</span>
           </div>
           <div className="flex items-center gap-6">

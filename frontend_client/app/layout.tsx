@@ -40,12 +40,45 @@ const landingHand = Caveat({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://sda.nerddog.me"),
   title: {
-    default: "System Design All-in-One",
-    template: "%s · System Design All-in-One",
+    default: "SDA Nerd Dog — System Design All-in-One",
+    template: "%s — SDA Nerd Dog",
   },
   description:
-    "Turn any software idea or interview problem into interactive, explained LLD, HLD, and DSA learning experiences.",
+    "SDA Nerd Dog turns any software idea or interview problem into an editable specification and interactive, explained LLD, HLD, and DSA views.",
+  applicationName: "SDA Nerd Dog",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "/",
+    siteName: "SDA Nerd Dog",
+    title: "SDA Nerd Dog — System Design All-in-One",
+    description:
+      "Turn any software idea or interview problem into an editable specification and interactive, explained LLD, HLD, and DSA views.",
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "SDA Nerd Dog — System Design All-in-One",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SDA Nerd Dog — System Design All-in-One",
+    description:
+      "Turn any software idea or interview problem into an editable specification and interactive, explained LLD, HLD, and DSA views.",
+    images: ["/og.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
