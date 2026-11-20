@@ -9,10 +9,20 @@ export const metadata: Metadata = {
     canonical: "/pricing",
   },
   openGraph: {
+    type: "website",
+    siteName: "SDA Nerd Dog",
     title: "Pricing — SDA Nerd Dog",
     description:
       "Compare the free and Pro plans for SDA Nerd Dog — the System Design All-in-One workspace for LLD, HLD and DSA.",
     url: "/pricing",
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "SDA Nerd Dog — System Design All-in-One",
+      },
+    ],
   },
 };
 
