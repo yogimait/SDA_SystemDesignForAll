@@ -4,7 +4,7 @@ Build plan for `frontend_client/`. Each phase ends in a **checkpoint** — a con
 
 Shared dependency: **B0/F0** create the root npm workspaces and the `@sda/contracts` package (see [[Roadmap-Planner-Backend]] Phase B0). Frontend phases assume contracts types exist from F1 on.
 
-Environment facts to respect: Next.js 16.4.2 (Turbopack default, `cacheComponents: true`), React 19.3, Tailwind v4, strict TypeScript, async `params`/`searchParams` with `PageProps`/`LayoutProps` helpers. Read the bundled docs under `frontend_client/node_modules/next/dist/docs/` when touching App Router APIs.
+Environment facts to respect: Next.js 16.4.6 (Turbopack default, `cacheComponents: true`), React 19.3, Tailwind v4, strict TypeScript, async `params`/`searchParams` with `PageProps`/`LayoutProps` helpers. Read the bundled docs under `frontend_client/node_modules/next/dist/docs/` when touching App Router APIs.
 
 ---
 
