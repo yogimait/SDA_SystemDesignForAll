@@ -14,6 +14,7 @@ Living documentation for `frontend_client/` (Next.js 16). Keep in sync with the 
 | [[Auth-Flows]] `/login|forgot-password|reset-password|verify-email` | Memory-only access tokens + refresh cookie, CSRF, verification banner, account deletion. |
 | [[Billing]] `/pricing|billing/*` | Plan catalogue, checkout (Stripe or local stub), success/cancel, settings billing card, plan gate. |
 | [[Export]] `/projects/[id]/export` | Client-side export/PDF: document composition, SVG serialization, light paper palette, print CSS, fit-to-page diagrams, limitations. |
+| [[SEO]] `/` `/pricing` | Public metadata, canonical URLs, robots/sitemap, JSON-LD, Open Graph image, private-route noindex, deployment verification. |
 | [[Responsive-States]] | F6 hardening: breakpoint layout (≥1024 / 768–1023 / <768), use-media-query, sheets, skeletons, validation banners, guided-resume guard, operator details (throttle, e2e). |
 
 ## Build facts (learned the hard way — do not regress)
