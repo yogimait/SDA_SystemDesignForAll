@@ -10,6 +10,9 @@ const workspaceRoot = path.resolve(__dirname, "..");
 const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
+  experimental: {
+    agentUpgrade: "security",
+  },
   turbopack: {
     root: workspaceRoot,
     rules: {
